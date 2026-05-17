@@ -163,6 +163,3 @@ export async function listTemplates(
   const json = await res.json()
   return json.data ?? []
 }
-  }
-  return res.json()
-}
