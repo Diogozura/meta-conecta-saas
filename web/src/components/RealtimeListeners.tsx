@@ -2,11 +2,12 @@
 
 import { useEffect } from 'react'
 import { toast } from 'sonner'
-import { pusherClient } from '@/lib/pusher'
+import { createPusherClient } from '@/lib/pusher'
 
 export function RealtimeListeners() {
   useEffect(() => {
     // Inscreve no canal que criamos no backend
+    const pusherClient = createPusherClient()
     const channel = pusherClient.subscribe('whatsapp-chat')
 
     // Escuta o evento 'new-message'
@@ -22,6 +23,7 @@ export function RealtimeListeners() {
     return () => {
       channel.unbind_all()
       channel.unsubscribe()
+      pusherClient.disconnect()
     }
   }, [])
 

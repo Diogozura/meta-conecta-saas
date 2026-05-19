@@ -1,5 +1,5 @@
 import { createHmac } from 'crypto'
-import { pusherServer } from '@/lib/pusher'
+import { createPusherServer } from '@/lib/pusher'
 
 /* ─── GET: verificação do endpoint pelo Meta ─────────────────────────────── */
 export async function GET(request: Request) {
@@ -64,6 +64,7 @@ export async function POST(request: Request) {
         
         // Envia a mensagem imediatamente para o front-end via Pusher (realtime)
         // Canal: 'whatsapp-chat' | Evento: 'new-message'
+        const pusherServer = createPusherServer()
         pusherServer.trigger('whatsapp-chat', 'new-message', {
           id: msg.id,
           from: msg.from,
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
           text: msg.text?.body,
           timestamp: msg.timestamp,
           direction: 'inbound' // Marca que é mensagem recebida
-        }).catch(err => console.error('[Pusher Error]', err))
+        }).catch((err: any) => console.error('[Pusher Error]', err))
       }
 
       // Status de mensagens enviadas
