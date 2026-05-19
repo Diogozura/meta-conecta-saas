@@ -16,6 +16,8 @@ import {
   Plug,
 } from 'lucide-react'
 import { useState } from 'react'
+import { Toaster } from 'sonner'
+import { RealtimeListeners } from '@/components/RealtimeListeners'
 
 const navItems = [
   { href: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard },
@@ -119,6 +121,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+      
+      {/* Alertas bonitinhos e Listeners de Webhooks em tempo real */}
+      <Toaster richColors />
+      <RealtimeListeners />
     </div>
   )
 }

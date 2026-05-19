@@ -98,68 +98,70 @@ export default function EmbeddedSignup({ onSuccess }: EmbeddedSignupProps) {
     ])
 
     window.FB.login(
-      async (response) => {
-        const code = response.authResponse?.code
+      (response) => {
+        void (async () => {
+          const code = response.authResponse?.code
 
-        if (!code) {
-          setStep(0, { status: 'error', detail: 'Autenticação cancelada ou negada.' })
-          return
-        }
-        setStep(0, { status: 'done', detail: 'Autenticado com sucesso.' })
+          if (!code) {
+            setStep(0, { status: 'error', detail: 'Autenticação cancelada ou negada.' })
+            return
+          }
+          setStep(0, { status: 'done', detail: 'Autenticado com sucesso.' })
 
-        // Passo 1: trocar código por token
-        setStep(1, { status: 'loading' })
-        let accessToken: string
-        try {
-          const res = await fetch('/api/meta/exchange-token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code }),
-          })
-          const json = await res.json()
-          if (!res.ok) throw new Error(json.error)
-          accessToken = json.access_token
-          setStep(1, { status: 'done', detail: 'Token de negócio obtido.' })
-        } catch (err) {
-          setStep(1, { status: 'error', detail: String(err) })
-          return
-        }
+          // Passo 1: trocar código por token
+          setStep(1, { status: 'loading' })
+          let accessToken: string
+          try {
+            const res = await fetch('/api/meta/exchange-token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            accessToken = json.access_token
+            setStep(1, { status: 'done', detail: 'Token de negócio obtido.' })
+          } catch (err) {
+            setStep(1, { status: 'error', detail: String(err) })
+            return
+          }
 
-        // Passo 2: registrar número
-        setStep(2, { status: 'loading' })
-        const phoneNumberId = phoneNumberIdRef.current
-        try {
-          const res = await fetch('/api/meta/register-phone', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phoneNumberId, accessToken }),
-          })
-          const json = await res.json()
-          if (!res.ok) throw new Error(json.error)
-          setStep(2, { status: 'done', detail: `Número registrado (ID: ${phoneNumberId}).` })
-        } catch (err) {
-          setStep(2, { status: 'error', detail: String(err) })
-          return
-        }
+          // Passo 2: registrar número
+          setStep(2, { status: 'loading' })
+          const phoneNumberId = phoneNumberIdRef.current
+          try {
+            const res = await fetch('/api/meta/register-phone', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phoneNumberId, accessToken }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            setStep(2, { status: 'done', detail: `Número registrado (ID: ${phoneNumberId}).` })
+          } catch (err) {
+            setStep(2, { status: 'error', detail: String(err) })
+            return
+          }
 
-        // Passo 3: assinar webhooks
-        setStep(3, { status: 'loading' })
-        const wabaId = wabaIdRef.current
-        try {
-          const res = await fetch('/api/meta/subscribe-webhooks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ wabaId, accessToken }),
-          })
-          const json = await res.json()
-          if (!res.ok) throw new Error(json.error)
-          setStep(3, { status: 'done', detail: `WABA ${wabaId} inscrita nos webhooks.` })
-        } catch (err) {
-          setStep(3, { status: 'error', detail: String(err) })
-          return
-        }
+          // Passo 3: assinar webhooks
+          setStep(3, { status: 'loading' })
+          const wabaId = wabaIdRef.current
+          try {
+            const res = await fetch('/api/meta/subscribe-webhooks', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ wabaId, accessToken }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            setStep(3, { status: 'done', detail: `WABA ${wabaId} inscrita nos webhooks.` })
+          } catch (err) {
+            setStep(3, { status: 'error', detail: String(err) })
+            return
+          }
 
-        onSuccess?.({ wabaId, phoneNumberId, accessToken })
+          onSuccess?.({ wabaId, phoneNumberId, accessToken })
+        })()
       },
       {
         config_id: process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID,
