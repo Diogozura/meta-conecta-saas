@@ -43,4 +43,17 @@ Na tela de "Configuração da API" o Meta fornece um token, mas **ATENÇÃO: ele
    - **Permissões:** Role a lista de permissões e marque OBRIGATORIAMENTE `whatsapp_business_messaging` e `whatsapp_business_management`.
 6. Finalize clicando em **Gerar token**.
 7. Um token longo começando com **EAA...** será exibido. **Copie imediatamente** pois ele não aparecerá de novo.
-8. Cole este valor na variável `META_BUSINESS_TOKEN`.
+## 4. META_APP_SECRET (Chave Secreta do Aplicativo)
+
+O App Secret é crucial para a segurança do seu Webhook. Ele é usado pela API para descriptografar os eventos e mensagens que chegam do WhatsApp; se estiver incorreto, seu Webhook retornará erro 401.
+
+**Passo a passo:**
+1. Acesse o **Meta for Developers**: [developers.facebook.com/apps](https://developers.facebook.com/apps).
+2. Selecione o seu aplicativo (`agente-zap`).
+3. No menu lateral esquerdo, expanda **Configurações do Aplicativo** (Settings) e clique em **Básico** (Basic).
+4. No topo da tela, você verá o campo **Chave Secreta do Aplicativo** (App Secret).
+5. Clique no botão **Mostrar** (será necessário digitar sua senha do Facebook).
+6. Copie a chave (é um código hexadecimal de 32 caracteres, como `a1b2c3d4...`).
+7. Cole o valor na sua variável `META_APP_SECRET`. *(Atenção: esse código nunca começa com "EAA...")*.
+8. Lembre-se de atualizar na Vercel e realizar um **Redeploy** para a alteração entrar em vigor em produção.
+
