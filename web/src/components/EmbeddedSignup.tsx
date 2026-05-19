@@ -56,7 +56,7 @@ export default function EmbeddedSignup({ onSuccess }: EmbeddedSignupProps) {
         appId: process.env.NEXT_PUBLIC_META_APP_ID,
         autoLogAppEvents: true,
         xfbml: true,
-        version: process.env.META_GRAPH_API_VERSION ?? 'v21.0',
+        version: process.env.NEXT_PUBLIC_META_GRAPH_API_VERSION ?? 'v21.0',
       })
       setSdkReady(true)
     }
