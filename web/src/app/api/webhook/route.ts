@@ -7,8 +7,16 @@ export async function GET(request: Request) {
   const token = searchParams.get('hub.verify_token')
   const challenge = searchParams.get('hub.challenge')
 
+  // Fluxo padrão do Meta (query params)
   if (mode === 'subscribe' && token === process.env.META_WEBHOOK_VERIFY_TOKEN) {
     return new Response(challenge, { status: 200 })
+  }
+
+  // Fluxo alternativo via Bearer Token (testes diretos, ex: Postman)
+  const authHeader = request.headers.get('Authorization') ?? ''
+  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+  if (bearerToken && bearerToken === process.env.META_WEBHOOK_VERIFY_TOKEN) {
+    return new Response('OK', { status: 200 })
   }
 
   return new Response('Forbidden', { status: 403 })
