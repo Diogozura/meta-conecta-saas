@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   const components: TemplateComponent[] = []
 
   if (body.header?.trim()) {
-    components.push({ type: 'HEADER', text: body.header.trim() })
+    components.push({ type: 'HEADER', format: 'TEXT', text: body.header.trim() })
   }
   components.push({ type: 'BODY', text: body.bodyText.trim() })
   if (body.footer?.trim()) {

@@ -106,7 +106,8 @@ export type TemplateCategory = 'MARKETING' | 'UTILITY' | 'AUTHENTICATION'
 
 export interface TemplateComponent {
   type: 'HEADER' | 'BODY' | 'FOOTER'
-  text: string
+  format?: 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT'
+  text?: string
 }
 
 export interface MetaTemplate {
