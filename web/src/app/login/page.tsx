@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import { login } from '@/lib/auth'
 import { MessageSquare } from 'lucide-react'
+
+export const metadata: Metadata = {
+  title: "Entrar",
+  description: "Acesse o painel DyBot e gerencie seus bots, templates e conversas via WhatsApp Business API.",
+  robots: { index: false, follow: false },
+};
 
 export default function LoginPage() {
   return (
