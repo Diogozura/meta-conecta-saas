@@ -20,7 +20,24 @@ type Conversation = {
   messages: Message[]
 }
 
+const STORAGE_KEY = 'meta-conversas'
+
 const initialConversations: Conversation[] = []
+
+function loadFromStorage(): Conversation[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveToStorage(convs: Conversation[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(convs))
+  } catch {}
+}
 
 export default function ConversasPage() {
   return (
@@ -31,7 +48,7 @@ export default function ConversasPage() {
 }
 
 function ConversasInner() {
-  const [conversations, setConversations] = useState<Conversation[]>(initialConversations)
+  const [conversations, setConversations] = useState<Conversation[]>(() => loadFromStorage())
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [message, setMessage] = useState('')
   const [sendStatus, setSendStatus] = useState<'idle' | 'loading' | 'error'>('idle')
@@ -42,6 +59,11 @@ function ConversasInner() {
   const [newName, setNewName] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const searchParams = useSearchParams()
+
+  // Persiste conversas no localStorage sempre que mudarem
+  useEffect(() => {
+    saveToStorage(conversations)
+  }, [conversations])
 
   // Abre conversa ao navegar via toast (?from=NUMERO)
   useEffect(() => {
