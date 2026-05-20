@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X } from 'lucide-react'
-import { createPusherClient } from '@/lib/pusher'
 
 type Message = {
   id: string
@@ -47,50 +46,67 @@ export default function ConversasPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [currentConv?.messages.length])
 
-  // Escuta mensagens recebidas via Pusher (webhook → Pusher → aqui)
+  // Polling a cada 3s para receber mensagens do WhatsApp
   useEffect(() => {
-    const pusher = createPusherClient()
-    const channel = pusher.subscribe('whatsapp-chat')
+    let since = Date.now()
 
-    channel.bind('new-message', (data: { id: string; from: string; text?: string; timestamp: string }) => {
-      const incomingTime = new Date(parseInt(data.timestamp) * 1000)
-        .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-      const incomingMsg: Message = {
-        id: data.id,
-        text: data.text ?? '(mídia)',
-        direction: 'received',
-        time: incomingTime,
-      }
-
-      setConversations((prev) => {
-        const idx = prev.findIndex((c) => c.number.replace(/\D/g, '') === data.from)
-        if (idx !== -1) {
-          // Conversa já existe: adiciona a mensagem
-          return prev.map((c, i) =>
-            i === idx
-              ? { ...c, messages: [...c.messages, incomingMsg], last: incomingMsg.text, time: incomingTime, status: 'Recebida' }
-              : c
-          )
-        } else {
-          // Nova conversa: cria no topo da lista
-          const newConv: Conversation = {
-            name: data.from,
-            number: data.from,
-            last: incomingMsg.text,
-            time: incomingTime,
-            status: 'Recebida',
-            messages: [incomingMsg],
-          }
-          return [newConv, ...prev]
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/messages?since=${since}`)
+        if (!res.ok) return
+        const { messages, serverTime } = await res.json() as {
+          messages: { id: string; from: string; text: string; timestamp: number }[]
+          serverTime: number
         }
-      })
-    })
+        since = serverTime
 
-    return () => {
-      channel.unbind_all()
-      channel.unsubscribe()
-      pusher.disconnect()
+        if (messages.length === 0) return
+
+        setConversations((prev) => {
+          let next = [...prev]
+          for (const data of messages) {
+            const incomingTime = new Date(data.timestamp * 1000)
+              .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            const incomingMsg: Message = {
+              id: data.id,
+              text: data.text,
+              direction: 'received',
+              time: incomingTime,
+            }
+            const idx = next.findIndex(
+              (c) => c.number.replace(/\D/g, '') === data.from.replace(/\D/g, '')
+            )
+            if (idx !== -1) {
+              // Evita duplicata
+              if (next[idx].messages.some((m) => m.id === data.id)) continue
+              next = next.map((c, i) =>
+                i === idx
+                  ? { ...c, messages: [...c.messages, incomingMsg], last: incomingMsg.text, time: incomingTime, status: 'Recebida' as const }
+                  : c
+              )
+            } else {
+              next = [
+                {
+                  name: data.from,
+                  number: data.from,
+                  last: incomingMsg.text,
+                  time: incomingTime,
+                  status: 'Recebida' as const,
+                  messages: [incomingMsg],
+                },
+                ...next,
+              ]
+            }
+          }
+          return next
+        })
+      } catch {
+        // silencioso — tenta no próximo ciclo
+      }
     }
+
+    const id = setInterval(poll, 3000)
+    return () => clearInterval(id)
   }, [])
 
   function now() {

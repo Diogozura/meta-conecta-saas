@@ -1,31 +1,38 @@
 'use client'
 
 import { useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import { toast } from 'sonner'
-import { createPusherClient } from '@/lib/pusher'
 
 export function RealtimeListeners() {
+  const pathname = usePathname()
+
   useEffect(() => {
-    // Inscreve no canal que criamos no backend
-    const pusherClient = createPusherClient()
-    const channel = pusherClient.subscribe('whatsapp-chat')
+    // Só mostra toast quando não está na página de conversas
+    // (lá as mensagens já aparecem direto no chat)
+    if (pathname === '/dashboard/conversas') return
 
-    // Escuta o evento 'new-message'
-    channel.bind('new-message', (data: any) => {
-      // Exibe um toast bonitinho
-      toast.success(`Nova mensagem de ${data.from}`, {
-        description: data.text || 'Mensagem recebida',
-        duration: 5000,
-        position: 'top-right',
-      })
-    })
+    let since = Date.now()
 
-    return () => {
-      channel.unbind_all()
-      channel.unsubscribe()
-      pusherClient.disconnect()
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/messages?since=${since}`)
+        if (!res.ok) return
+        const { messages, serverTime } = await res.json()
+        since = serverTime
+        for (const msg of messages) {
+          toast.message(`Nova mensagem de ${msg.from}`, {
+            description: msg.text,
+            duration: 5000,
+            position: 'top-right',
+          })
+        }
+      } catch {}
     }
-  }, [])
+
+    const id = setInterval(poll, 3000)
+    return () => clearInterval(id)
+  }, [pathname])
 
   return null
 }
