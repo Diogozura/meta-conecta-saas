@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X } from 'lucide-react'
 
 type Message = {
@@ -32,6 +33,31 @@ export default function ConversasPage() {
   const [newNumber, setNewNumber] = useState('')
   const [newName, setNewName] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const searchParams = useSearchParams()
+
+  // Abre conversa ao navegar via toast (?from=NUMERO)
+  useEffect(() => {
+    const from = searchParams.get('from')
+    if (!from) return
+    setConversations((prev) => {
+      const idx = prev.findIndex((c) => c.number.replace(/\D/g, '') === from.replace(/\D/g, ''))
+      if (idx !== -1) {
+        setSelectedIdx(idx)
+        return prev
+      }
+      // Cria conversa nova para o número caso não exista
+      const newConv: Conversation = {
+        name: from,
+        number: from,
+        last: '',
+        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        status: 'Recebida',
+        messages: [],
+      }
+      setSelectedIdx(0)
+      return [newConv, ...prev]
+    })
+  }, [searchParams])
 
   const filtered = conversations.filter(
     (c) =>

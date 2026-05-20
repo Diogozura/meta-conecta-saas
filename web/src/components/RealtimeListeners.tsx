@@ -1,15 +1,14 @@
 'use client'
 
 import { useEffect } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
 export function RealtimeListeners() {
   const pathname = usePathname()
+  const router = useRouter()
 
   useEffect(() => {
-    // Só mostra toast quando não está na página de conversas
-    // (lá as mensagens já aparecem direto no chat)
     if (pathname === '/dashboard/conversas') return
 
     let since = Date.now()
@@ -25,6 +24,10 @@ export function RealtimeListeners() {
             description: msg.text,
             duration: 5000,
             position: 'top-right',
+            action: {
+              label: 'Abrir',
+              onClick: () => router.push(`/dashboard/conversas?from=${msg.from}`),
+            },
           })
         }
       } catch {}
@@ -32,7 +35,7 @@ export function RealtimeListeners() {
 
     const id = setInterval(poll, 3000)
     return () => clearInterval(id)
-  }, [pathname])
+  }, [pathname, router])
 
   return null
 }
