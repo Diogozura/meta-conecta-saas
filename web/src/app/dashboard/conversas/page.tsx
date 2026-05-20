@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X } from 'lucide-react'
+import { createPusherClient } from '@/lib/pusher'
 
 type Message = {
   id: string
@@ -41,9 +42,56 @@ export default function ConversasPage() {
 
   const currentConv = selectedIdx !== null ? conversations[selectedIdx] : null
 
+  // Scroll automático ao chegar nova mensagem
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [currentConv?.messages.length])
+
+  // Escuta mensagens recebidas via Pusher (webhook → Pusher → aqui)
+  useEffect(() => {
+    const pusher = createPusherClient()
+    const channel = pusher.subscribe('whatsapp-chat')
+
+    channel.bind('new-message', (data: { id: string; from: string; text?: string; timestamp: string }) => {
+      const incomingTime = new Date(parseInt(data.timestamp) * 1000)
+        .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      const incomingMsg: Message = {
+        id: data.id,
+        text: data.text ?? '(mídia)',
+        direction: 'received',
+        time: incomingTime,
+      }
+
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.number.replace(/\D/g, '') === data.from)
+        if (idx !== -1) {
+          // Conversa já existe: adiciona a mensagem
+          return prev.map((c, i) =>
+            i === idx
+              ? { ...c, messages: [...c.messages, incomingMsg], last: incomingMsg.text, time: incomingTime, status: 'Recebida' }
+              : c
+          )
+        } else {
+          // Nova conversa: cria no topo da lista
+          const newConv: Conversation = {
+            name: data.from,
+            number: data.from,
+            last: incomingMsg.text,
+            time: incomingTime,
+            status: 'Recebida',
+            messages: [incomingMsg],
+          }
+          return [newConv, ...prev]
+        }
+      })
+    })
+
+    return () => {
+      channel.unbind_all()
+      channel.unsubscribe()
+      pusher.disconnect()
+    }
+  }, [])
 
   function now() {
     return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
