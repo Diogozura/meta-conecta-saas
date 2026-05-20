@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X } from 'lucide-react'
 
@@ -23,6 +23,14 @@ type Conversation = {
 const initialConversations: Conversation[] = []
 
 export default function ConversasPage() {
+  return (
+    <Suspense>
+      <ConversasInner />
+    </Suspense>
+  )
+}
+
+function ConversasInner() {
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations)
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [message, setMessage] = useState('')
