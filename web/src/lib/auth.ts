@@ -58,7 +58,23 @@ export async function auth() {
     
     // Buscar usuário em todas as contas (subcoleção usuarios)
     // Nota: Em produção, seria melhor armazenar a relação uid -> contaId em uma coleção separada
-    const contasSnapshot = await db.collection('contas').get()
+    let contasSnapshot
+    try {
+      contasSnapshot = await db.collection('contas').get()
+    } catch (error: any) {
+      // Se a coleção não existe ainda (5 NOT_FOUND), retorna dados básicos
+      console.error('Erro ao buscar dados do usuário:', error)
+      return {
+        user: {
+          uid: session.uid,
+          email: session.email || '',
+          name: session.name || session.email || '',
+          contaId: null,
+          usuarioId: null,
+          nivel: null,
+        }
+      }
+    }
     
     for (const contaDoc of contasSnapshot.docs) {
       const usuariosSnapshot = await contaDoc.ref.collection('usuarios')
