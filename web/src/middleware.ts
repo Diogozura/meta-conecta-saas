@@ -13,6 +13,11 @@ export function middleware(request: NextRequest) {
   const session = request.cookies.get('session')
   const { pathname } = request.nextUrl
 
+  // APIs fazem sua própria autenticação, não precisa do middleware
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next()
+  }
+
   const isPublic = PUBLIC_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(route + '/')
   )
