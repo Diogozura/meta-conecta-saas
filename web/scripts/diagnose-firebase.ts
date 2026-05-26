@@ -11,10 +11,6 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
 
-import { initializeApp, getApps, cert } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
-import { getAuth } from 'firebase-admin/auth'
-
 async function diagnose() {
   console.log('🔍 Diagnóstico Firebase\n')
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
