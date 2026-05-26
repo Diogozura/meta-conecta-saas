@@ -10,7 +10,17 @@ import { Conta, Usuario, MetaAccess, ContaVinculada, Cliente, Mensagem } from '@
 // Firebase Admin já foi inicializado em lib/firebase-admin.ts
 function getDb() {
   const { getApps } = require('firebase-admin/app')
-  const db = getFirestore(getApps()[0], 'zybot-data')
+  const apps = getApps()
+  
+  if (!apps || apps.length === 0) {
+    console.error('❌ Firebase Admin não inicializado! Verifique as variáveis de ambiente:')
+    console.error('   - FIREBASE_PROJECT_ID')
+    console.error('   - FIREBASE_CLIENT_EMAIL')
+    console.error('   - FIREBASE_PRIVATE_KEY')
+    throw new Error('Firebase Admin não está inicializado. Configure as variáveis de ambiente.')
+  }
+  
+  const db = getFirestore(apps[0], 'zybot-data')
   
   // Log de debug para verificar a inicialização
   if (!db) {
@@ -133,8 +143,12 @@ export async function obterMetaAccess(contaId: string): Promise<MetaAccess | nul
 export async function obterMetaAccessPorWabaId(wabaId: string): Promise<{ metaAccess: MetaAccess; contaId: string } | null> {
   const db = getDb()
   
+  console.log('🔍 Buscando conta pelo WABA ID:', wabaId)
+  
   // Buscar em todas as contas
   const contasSnapshot = await db.collection('contas').get()
+  
+  console.log('📊 Total de contas:', contasSnapshot.size)
   
   for (const contaDoc of contasSnapshot.docs) {
     const metaSnapshot = await contaDoc.ref.collection('metaAccess')
@@ -142,15 +156,20 @@ export async function obterMetaAccessPorWabaId(wabaId: string): Promise<{ metaAc
       .limit(1)
       .get()
     
+    console.log(`  Conta ${contaDoc.id}: ${metaSnapshot.size} metaAccess com WABA ${wabaId}`)
+    
     if (!metaSnapshot.empty) {
       const metaDoc = metaSnapshot.docs[0]
+      const metaData = metaDoc.data()
+      console.log('✅ Encontrado! WABA:', metaData.wabaId, 'Conta:', contaDoc.id)
       return {
-        metaAccess: { id: metaDoc.id, ...metaDoc.data() } as MetaAccess,
+        metaAccess: { id: metaDoc.id, ...metaData } as MetaAccess,
         contaId: contaDoc.id
       }
     }
   }
   
+  console.log('❌ Nenhuma conta encontrada com WABA:', wabaId)
   return null
 }
 

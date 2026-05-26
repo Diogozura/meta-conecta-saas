@@ -52,19 +52,23 @@ export async function POST(request: Request) {
   }
 
   for (const entry of payload.entry ?? []) {
+    // Buscar conta pelo WABA ID (vem no entry.id, não no metadata)
+    let contaId: string | undefined
+    const wabaId = entry.id  // ✅ WABA ID correto
+    
+    console.log('[Webhook] Buscando conta para WABA:', wabaId)
+    
+    const result = await obterMetaAccessPorWabaId(wabaId)
+    contaId = result?.contaId
+    
+    if (!contaId) {
+      console.warn('⚠️ WABA não encontrado:', wabaId)
+    } else {
+      console.log('✅ Conta encontrada:', contaId)
+    }
+    
     for (const change of entry.changes ?? []) {
       const value = change.value
-
-      // Buscar conta pelo WABA ID
-      let contaId: string | undefined
-      const wabaId = value.metadata?.phone_number_id
-      if (wabaId) {
-        const result = await obterMetaAccessPorWabaId(wabaId)
-        contaId = result?.contaId
-        if (!contaId) {
-          console.warn('⚠️ WABA não encontrado:', wabaId)
-        }
-      }
 
       // Mensagens recebidas
       for (const msg of value.messages ?? []) {
@@ -98,6 +102,8 @@ export async function POST(request: Request) {
           } catch (error) {
             console.error('❌ Erro ao salvar mensagem no Firebase:', error)
           }
+        } else {
+          console.error('❌ Não foi possível salvar - contaId não encontrado para WABA:', wabaId)
         }
       }
 
