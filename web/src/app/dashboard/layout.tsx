@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   Plug,
+  UserCog,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Toaster } from 'sonner'
@@ -23,6 +24,7 @@ const navItems = [
   { href: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard },
   { href: '/dashboard/conversas', label: 'Conversas', icon: MessageSquare },
   { href: '/dashboard/clientes', label: 'Clientes', icon: Users },
+  { href: '/dashboard/usuarios', label: 'Usuários', icon: UserCog },
   { href: '/dashboard/templates', label: 'Templates', icon: FileText },
   { href: '/dashboard/numeros', label: 'Números', icon: PhoneCall },
   { href: '/dashboard/onboarding', label: 'Conectar WABA', icon: Plug },

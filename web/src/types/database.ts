@@ -78,6 +78,23 @@ export interface ContaVinculada {
 }
 
 // ─────────────────────────────────────────
+// Cliente (Subcoleção: contas/{contaId}/clientes)
+// ─────────────────────────────────────────
+export interface Cliente {
+  id: string
+  contaId: string
+  nome: string
+  email?: string
+  telefone?: string
+  whatsapp?: string          // Número do WhatsApp
+  tag?: string               // Lead, Cliente, Inativo, etc.
+  notas?: string
+  dataCadastro: Date
+  dataAtualizacao: Date
+  status: 'ativo' | 'inativo'
+}
+
+// ─────────────────────────────────────────
 // Sessão (para controle de acesso no app)
 // ─────────────────────────────────────────
 export interface SessaoUsuario {

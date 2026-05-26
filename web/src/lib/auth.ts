@@ -3,6 +3,7 @@
 import { adminAuth } from './firebase-admin'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { getFirestore } from 'firebase-admin/firestore'
 
 const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 7 * 1000 // 7 dias em ms
 const SESSION_MAX_AGE_S = SESSION_MAX_AGE_MS / 1000  // 7 dias em segundos
@@ -41,6 +42,60 @@ export async function getSession() {
   try {
     return await adminAuth.verifySessionCookie(sessionCookie, true)
   } catch {
+    return null
+  }
+}
+
+/**
+ * Retorna informações completas do usuário autenticado incluindo contaId
+ */
+export async function auth() {
+  const session = await getSession()
+  if (!session) return null
+
+  try {
+    const db = getFirestore()
+    
+    // Buscar usuário em todas as contas (subcoleção usuarios)
+    // Nota: Em produção, seria melhor armazenar a relação uid -> contaId em uma coleção separada
+    const contasSnapshot = await db.collection('contas').get()
+    
+    for (const contaDoc of contasSnapshot.docs) {
+      const usuariosSnapshot = await contaDoc.ref.collection('usuarios')
+        .where('email', '==', session.email)
+        .limit(1)
+        .get()
+      
+      if (!usuariosSnapshot.empty) {
+        const usuarioDoc = usuariosSnapshot.docs[0]
+        const usuarioData = usuarioDoc.data()
+        
+        return {
+          user: {
+            uid: session.uid,
+            email: session.email || '',
+            name: usuarioData.nome || '',
+            contaId: contaDoc.id,
+            usuarioId: usuarioDoc.id,
+            nivel: usuarioData.nivel,
+          }
+        }
+      }
+    }
+    
+    // Se não encontrou o usuário em nenhuma conta, retorna dados básicos
+    return {
+      user: {
+        uid: session.uid,
+        email: session.email || '',
+        name: session.name || session.email || '',
+        contaId: null, // Usuário sem conta vinculada
+        usuarioId: null,
+        nivel: null,
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao buscar dados do usuário:', error)
     return null
   }
 }

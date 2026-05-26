@@ -11,6 +11,9 @@ contas/
 │   ├── usuarios/
 │   │   ├── {usuarioId}
 │   │   │   └── (dados do usuário: nome, email, nível, etc)
+│   ├── clientes/
+│   │   ├── {clienteId}
+│   │   │   └── (dados do cliente: nome, email, telefone, etc)
 │   ├── metaAccess/
 │   │   ├── {accessId}
 │   │   │   └── (wabaId, accessToken, businessId, etc)
@@ -96,7 +99,44 @@ Usuários com acesso à conta, cada um com um nível de permissão.
 
 ---
 
-### 3. **metaAccess** (Subcoleção em `contas/{contaId}/metaAccess`)
+### 3. **clientes** (Subcoleção em `contas/{contaId}/clientes`)
+
+Contatos e clientes da empresa. Gerenciados pelos usuários da conta.
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `id` | `string` | ID único |
+| `contaId` | `string` | Referência à conta |
+| `nome` | `string` | Nome do cliente |
+| `email` | `string?` | Email do cliente |
+| `telefone` | `string?` | Telefone do cliente |
+| `whatsapp` | `string?` | Número do WhatsApp |
+| `tag` | `string?` | Tag/categoria (Lead, Cliente, VIP, Inativo, etc) |
+| `notas` | `string?` | Notas e observações |
+| `dataCadastro` | `Date` | Data de criação |
+| `dataAtualizacao` | `Date` | Última atualização |
+| `status` | `enum` | `ativo` \| `inativo` |
+
+**Exemplo:**
+```json
+{
+  "id": "cliente_001",
+  "contaId": "conta_001",
+  "nome": "Maria Silva",
+  "email": "maria@cliente.com",
+  "telefone": "+55 11 99999-0001",
+  "whatsapp": "5511999990001",
+  "tag": "Cliente",
+  "notas": "Cliente VIP, preferência por atendimento via WhatsApp",
+  "status": "ativo",
+  "dataCadastro": "2024-03-10T14:30:00Z",
+  "dataAtualizacao": "2024-05-26T10:00:00Z"
+}
+```
+
+---
+
+### 4. **metaAccess** (Subcoleção em `contas/{contaId}/metaAccess`)
 
 Dados de integração com Meta/WhatsApp Business API. Geralmente há apenas um por conta (ou múltiplos se WABA múltipla).
 
@@ -130,7 +170,7 @@ Dados de integração com Meta/WhatsApp Business API. Geralmente há apenas um p
 
 ---
 
-### 4. **contasVinculadas** (Subcoleção em `contas/{contaId}/contasVinculadas`)
+### 5. **contasVinculadas** (Subcoleção em `contas/{contaId}/contasVinculadas`)
 
 Relações entre contas. Permite modelar hierarquias (contas "pai" que controlam contas "filhas").
 
@@ -177,11 +217,13 @@ import {
   atualizarConta,
   criarUsuario,
   listarUsuarios,
+  criarCliente,
+  listarClientes,
   obterMetaAccess,
   criarContaVinculada,
   listarContasVinculadas
 } from '@/lib/firestore'
-import { Conta, Usuario, NivelUsuario } from '@/types/database'
+import { Conta, Usuario, Cliente, NivelUsuario } from '@/types/database'
 ```
 
 ### Exemplos
@@ -225,6 +267,33 @@ async function convidarUsuario(contaId: string, email: string) {
 async function listarTodosUsuarios(contaId: string) {
   const usuarios = await listarUsuarios(contaId)
   return usuarios
+}
+```
+
+#### Adicionar um cliente
+
+```ts
+async function adicionarCliente(contaId: string, dadosCliente: any) {
+  const cliente = await criarCliente(contaId, {
+    contaId,
+    nome: dadosCliente.nome,
+    email: dadosCliente.email,
+    telefone: dadosCliente.telefone,
+    whatsapp: dadosCliente.whatsapp,
+    tag: dadosCliente.tag || 'Lead',
+    notas: dadosCliente.notas,
+    status: 'ativo',
+  })
+  return cliente.id
+}
+```
+
+#### Listar todos os clientes de uma conta
+
+```ts
+async function listarTodosClientes(contaId: string) {
+  const clientes = await listarClientes(contaId)
+  return clientes
 }
 ```
 

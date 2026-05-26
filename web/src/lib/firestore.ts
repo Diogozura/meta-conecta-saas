@@ -4,7 +4,7 @@
  */
 
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
-import { Conta, Usuario, MetaAccess, ContaVinculada } from '@/types/database'
+import { Conta, Usuario, MetaAccess, ContaVinculada, Cliente } from '@/types/database'
 
 // Garante que apenas uma instância do Firestore é inicializada
 // Firebase Admin já foi inicializado em lib/firebase-admin.ts
@@ -130,4 +130,49 @@ export async function listarContasVinculadas(contaId: string): Promise<ContaVinc
   const db = getDb()
   const snapshot = await db.collection('contas').doc(contaId).collection('contasVinculadas').get()
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ContaVinculada))
+}
+
+// ─────────────────────────────────────────
+// CLIENTES
+// ─────────────────────────────────────────
+
+export async function criarCliente(contaId: string, data: Omit<Cliente, 'id' | 'dataCadastro' | 'dataAtualizacao'>): Promise<Cliente> {
+  const db = getDb()
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('clientes').add({
+    ...data,
+    dataCadastro: now,
+    dataAtualizacao: now,
+  })
+  return { id: docRef.id, ...data, dataCadastro: now.toDate(), dataAtualizacao: now.toDate() }
+}
+
+export async function obterCliente(contaId: string, clienteId: string): Promise<Cliente | null> {
+  const db = getDb()
+  try {
+    const docSnap = await db.collection('contas').doc(contaId).collection('clientes').doc(clienteId).get()
+    if (!docSnap.exists) return null
+    return { id: docSnap.id, ...docSnap.data() } as Cliente
+  } catch {
+    return null
+  }
+}
+
+export async function listarClientes(contaId: string): Promise<Cliente[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('clientes').orderBy('dataCadastro', 'desc').get()
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cliente))
+}
+
+export async function atualizarCliente(contaId: string, clienteId: string, data: Partial<Omit<Cliente, 'id' | 'dataCadastro'>>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('clientes').doc(clienteId).update({
+    ...data,
+    dataAtualizacao: Timestamp.now(),
+  })
+}
+
+export async function deletarCliente(contaId: string, clienteId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('clientes').doc(clienteId).delete()
 }
