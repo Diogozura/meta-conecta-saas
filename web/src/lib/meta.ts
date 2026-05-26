@@ -1,10 +1,39 @@
+import { obterMetaAccess } from './firestore'
+import { auth } from './auth'
+
 const GRAPH_API = `https://graph.facebook.com/${process.env.META_GRAPH_API_VERSION ?? 'v21.0'}`
+
+/**
+ * Busca as credenciais da Meta armazenadas no Firebase para a conta do usuário logado
+ */
+export async function getMetaCredentials() {
+  const session = await auth()
+  if (!session?.user?.contaId) {
+    throw new Error('Usuário não autenticado')
+  }
+
+  const metaAccess = await obterMetaAccess(session.user.contaId)
+  if (!metaAccess) {
+    throw new Error('Credenciais da Meta não configuradas. Acesse Configurações para adicionar.')
+  }
+
+  return {
+    wabaId: metaAccess.wabaId,
+    phoneNumberId: metaAccess.phoneNumberId,
+    businessToken: metaAccess.businessToken,
+    appId: metaAccess.appId,
+    appSecret: metaAccess.appSecret,
+    webhookVerifyToken: metaAccess.webhookVerifyToken,
+  }
+}
 
 /** Troca o code retornado pelo Embedded Signup por um business token. */
 export async function exchangeCodeForToken(code: string): Promise<{ access_token: string; token_type: string }> {
+  const credentials = await getMetaCredentials()
+  
   const url = new URL('https://graph.facebook.com/oauth/access_token')
-  url.searchParams.set('client_id', process.env.NEXT_PUBLIC_META_APP_ID!)
-  url.searchParams.set('client_secret', process.env.META_APP_SECRET!)
+  url.searchParams.set('client_id', credentials.appId)
+  url.searchParams.set('client_secret', credentials.appSecret)
   url.searchParams.set('code', code)
 
   const res = await fetch(url.toString())

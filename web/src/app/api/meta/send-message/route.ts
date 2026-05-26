@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers'
-import { sendTextMessage } from '@/lib/meta'
+import { sendTextMessage, getMetaCredentials } from '@/lib/meta'
 
 async function requireAuth() {
   const store = await cookies()
@@ -22,24 +22,17 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Campos "to" e "message" são obrigatórios' }, { status: 400 })
   }
 
-  const phoneNumberId = process.env.META_PHONE_NUMBER_ID
-  const businessToken = process.env.META_BUSINESS_TOKEN
-
-  if (!phoneNumberId || !businessToken) {
-    return Response.json(
-      { error: 'META_PHONE_NUMBER_ID e META_BUSINESS_TOKEN não configurados no .env' },
-      { status: 503 },
-    )
-  }
-
-  // Sanitiza o número: apenas dígitos
-  const to = body.to.replace(/\D/g, '')
-  if (to.length < 10) {
-    return Response.json({ error: 'Número de telefone inválido' }, { status: 400 })
-  }
-
   try {
-    const result = await sendTextMessage(phoneNumberId, businessToken, to, body.message)
+    // Busca as credenciais do Firebase
+    const credentials = await getMetaCredentials()
+    
+    // Sanitiza o número: apenas dígitos
+    const to = body.to.replace(/\D/g, '')
+    if (to.length < 10) {
+      return Response.json({ error: 'Número de telefone inválido' }, { status: 400 })
+    }
+
+    const result = await sendTextMessage(credentials.phoneNumberId, credentials.businessToken, to, body.message)
     return Response.json(result)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido'

@@ -9,7 +9,16 @@ import { Conta, Usuario, MetaAccess, ContaVinculada, Cliente } from '@/types/dat
 // Garante que apenas uma instância do Firestore é inicializada
 // Firebase Admin já foi inicializado em lib/firebase-admin.ts
 function getDb() {
-  return getFirestore()
+  const { getApps } = require('firebase-admin/app')
+  const db = getFirestore(getApps()[0], 'zybot-data')
+  
+  // Log de debug para verificar a inicialização
+  if (!db) {
+    console.error('❌ Firestore não inicializado!')
+    throw new Error('Firestore não está disponível')
+  }
+  
+  return db
 }
 
 // ─────────────────────────────────────────
@@ -19,12 +28,27 @@ function getDb() {
 export async function criarConta(data: Omit<Conta, 'id' | 'dataCadastro' | 'dataAtualizacao'>): Promise<Conta> {
   const db = getDb()
   const now = Timestamp.now()
-  const docRef = await db.collection('contas').add({
-    ...data,
-    dataCadastro: now,
-    dataAtualizacao: now,
-  })
-  return { id: docRef.id, ...data, dataCadastro: now.toDate(), dataAtualizacao: now.toDate() }
+  
+  console.log('📝 Criando conta:', data)
+  
+  try {
+    const docRef = await db.collection('contas').add({
+      ...data,
+      dataCadastro: now,
+      dataAtualizacao: now,
+    })
+    
+    console.log('✅ Conta criada com ID:', docRef.id)
+    
+    return { id: docRef.id, ...data, dataCadastro: now.toDate(), dataAtualizacao: now.toDate() }
+  } catch (error: any) {
+    console.error('❌ Erro detalhado ao criar conta:', {
+      code: error.code,
+      message: error.message,
+      stack: error.stack
+    })
+    throw error
+  }
 }
 
 export async function obterConta(contaId: string): Promise<Conta | null> {
@@ -101,6 +125,33 @@ export async function obterMetaAccess(contaId: string): Promise<MetaAccess | nul
   if (snapshot.empty) return null
   const doc = snapshot.docs[0]
   return { id: doc.id, ...doc.data() } as MetaAccess
+}
+
+/**
+ * Busca MetaAccess por WABA ID (usado em webhooks)
+ */
+export async function obterMetaAccessPorWabaId(wabaId: string): Promise<{ metaAccess: MetaAccess; contaId: string } | null> {
+  const db = getDb()
+  
+  // Buscar em todas as contas
+  const contasSnapshot = await db.collection('contas').get()
+  
+  for (const contaDoc of contasSnapshot.docs) {
+    const metaSnapshot = await contaDoc.ref.collection('metaAccess')
+      .where('wabaId', '==', wabaId)
+      .limit(1)
+      .get()
+    
+    if (!metaSnapshot.empty) {
+      const metaDoc = metaSnapshot.docs[0]
+      return {
+        metaAccess: { id: metaDoc.id, ...metaDoc.data() } as MetaAccess,
+        contaId: contaDoc.id
+      }
+    }
+  }
+  
+  return null
 }
 
 export async function atualizarMetaAccess(contaId: string, accessId: string, data: Partial<Omit<MetaAccess, 'id'>>): Promise<void> {

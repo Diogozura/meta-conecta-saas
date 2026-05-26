@@ -54,7 +54,8 @@ export async function auth() {
   if (!session) return null
 
   try {
-    const db = getFirestore()
+    const { getApps } = await import('firebase-admin/app')
+    const db = getFirestore(getApps()[0], 'zybot-data')
     
     // Buscar usuário em todas as contas (subcoleção usuarios)
     // Nota: Em produção, seria melhor armazenar a relação uid -> contaId em uma coleção separada

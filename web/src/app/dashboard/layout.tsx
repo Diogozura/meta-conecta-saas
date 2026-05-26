@@ -15,6 +15,7 @@ import {
   X,
   Plug,
   UserCog,
+  Settings,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Toaster } from 'sonner'
@@ -28,6 +29,7 @@ const navItems = [
   { href: '/dashboard/templates', label: 'Templates', icon: FileText },
   { href: '/dashboard/numeros', label: 'Números', icon: PhoneCall },
   { href: '/dashboard/onboarding', label: 'Conectar WABA', icon: Plug },
+  { href: '/dashboard/configuracoes', label: 'Configurações', icon: Settings },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

@@ -42,19 +42,18 @@ export interface Usuario {
 
 // ─────────────────────────────────────────
 // MetaAccess (Subcoleção: contas/{contaId}/metaAccess)
-// Dados de integração com Meta/WhatsApp Business API
+// Credenciais de integração com Meta/WhatsApp Business API
 // ─────────────────────────────────────────
 export interface MetaAccess {
   id: string
-  contaId: string
   wabaId: string                    // WhatsApp Business Account ID
-  accessToken: string               // Token de acesso Meta (criptografado em prod)
-  businessId: string                // Business ID
-  phoneNumberIds: string[]          // IDs dos números vinculados
+  phoneNumberId: string             // ID do número de telefone principal
+  businessToken: string             // Business Access Token (do Embedded Signup)
+  appId: string                     // Meta App ID
+  appSecret: string                 // Meta App Secret
+  webhookVerifyToken: string        // Token para verificar webhooks
+  embeddedSignupConfigId?: string   // Config ID do Embedded Signup (opcional)
   dataAtualizacao: Date
-  dataExpiracao?: Date              // Quando o token expira
-  status: 'ativo' | 'expirado' | 'erro'
-  webhookToken?: string             // Token para validar webhooks
 }
 
 // ─────────────────────────────────────────
