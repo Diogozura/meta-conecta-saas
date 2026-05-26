@@ -4,7 +4,7 @@
  */
 
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
-import { Conta, Usuario, MetaAccess, ContaVinculada, Cliente } from '@/types/database'
+import { Conta, Usuario, MetaAccess, ContaVinculada, Cliente, Mensagem } from '@/types/database'
 
 // Garante que apenas uma instância do Firestore é inicializada
 // Firebase Admin já foi inicializado em lib/firebase-admin.ts
@@ -227,3 +227,95 @@ export async function deletarCliente(contaId: string, clienteId: string): Promis
   const db = getDb()
   await db.collection('contas').doc(contaId).collection('clientes').doc(clienteId).delete()
 }
+
+// ─────────────────────────────────────────
+// MENSAGENS
+// ─────────────────────────────────────────
+
+/**
+ * Cria uma mensagem no Firebase (global, não por conta)
+ */
+export async function criarMensagem(data: Omit<Mensagem, 'dataCriacao'>): Promise<Mensagem> {
+  const db = getDb()
+  const now = Timestamp.now()
+  
+  console.log('📝 Salvando mensagem no Firebase:', {
+    id: data.id,
+    from: data.from,
+    text: data.text?.substring(0, 50),
+    contaId: data.contaId
+  })
+  
+  try {
+    // Usa o ID do WhatsApp como document ID para evitar duplicatas
+    await db.collection('mensagens').doc(data.id).set({
+      ...data,
+      dataCriacao: now,
+    })
+    
+    console.log('✅ Mensagem salva com sucesso:', data.id)
+    
+    return { ...data, dataCriacao: now.toDate() }
+  } catch (error: any) {
+    console.error('❌ Erro ao salvar mensagem:', {
+      code: error.code,
+      message: error.message,
+      id: data.id
+    })
+    throw error
+  }
+}
+
+/**
+ * Busca mensagens de uma conta específica
+ */
+export async function listarMensagens(contaId: string, limit = 100): Promise<Mensagem[]> {
+  const db = getDb()
+  const snapshot = await db.collection('mensagens')
+    .where('contaId', '==', contaId)
+    .orderBy('timestamp', 'desc')
+    .limit(limit)
+    .get()
+  
+  return snapshot.docs.map(doc => ({ ...doc.data() } as Mensagem))
+}
+
+/**
+ * Busca mensagens de uma conta específica por número de telefone
+ */
+export async function listarMensagensPorNumero(contaId: string, numeroTelefone: string, limit = 100): Promise<Mensagem[]> {
+  const db = getDb()
+  const snapshot = await db.collection('mensagens')
+    .where('contaId', '==', contaId)
+    .where('from', '==', numeroTelefone)
+    .orderBy('timestamp', 'desc')
+    .limit(limit)
+    .get()
+  
+  return snapshot.docs.map(doc => ({ ...doc.data() } as Mensagem))
+}
+
+/**
+ * Atualiza status de uma mensagem enviada
+ */
+export async function atualizarStatusMensagem(mensagemId: string, status: Mensagem['status']): Promise<void> {
+  const db = getDb()
+  
+  console.log('📝 Atualizando status da mensagem:', { mensagemId, status })
+  
+  try {
+    await db.collection('mensagens').doc(mensagemId).update({
+      status,
+    })
+    
+    console.log('✅ Status atualizado:', mensagemId)
+  } catch (error: any) {
+    console.error('❌ Erro ao atualizar status:', {
+      code: error.code,
+      message: error.message,
+      id: mensagemId
+    })
+    throw error
+  }
+}
+

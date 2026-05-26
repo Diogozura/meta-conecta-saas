@@ -94,6 +94,22 @@ export interface Cliente {
 }
 
 // ─────────────────────────────────────────
+// Mensagem WhatsApp (Coleção global: mensagens)
+// ─────────────────────────────────────────
+export interface Mensagem {
+  id: string                    // ID da mensagem do WhatsApp
+  contaId: string               // Conta que recebeu/enviou
+  clienteId?: string            // ID do cliente (se identificado)
+  from: string                  // Número de telefone de origem (5511999999999)
+  to?: string                   // Número de telefone de destino (para mensagens enviadas)
+  text: string                  // Conteúdo da mensagem
+  timestamp: number             // Unix timestamp em segundos (do Meta)
+  tipo: 'recebida' | 'enviada'  // Direção da mensagem
+  status?: 'enviada' | 'entregue' | 'lida' | 'falhou'  // Status (para mensagens enviadas)
+  dataCriacao: Date             // Data de criação no Firebase
+}
+
+// ─────────────────────────────────────────
 // Sessão (para controle de acesso no app)
 // ─────────────────────────────────────────
 export interface SessaoUsuario {

@@ -1,5 +1,7 @@
 import { createHmac } from 'crypto'
 import { addMessage } from '@/lib/messageStore'
+import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem } from '@/lib/firestore'
+import { Mensagem } from '@/types/database'
 
 /* ─── GET: verificação do endpoint pelo Meta ─────────────────────────────── */
 export async function GET(request: Request) {
@@ -53,6 +55,17 @@ export async function POST(request: Request) {
     for (const change of entry.changes ?? []) {
       const value = change.value
 
+      // Buscar conta pelo WABA ID
+      let contaId: string | undefined
+      const wabaId = value.metadata?.phone_number_id
+      if (wabaId) {
+        const result = await obterMetaAccessPorWabaId(wabaId)
+        contaId = result?.contaId
+        if (!contaId) {
+          console.warn('⚠️ WABA não encontrado:', wabaId)
+        }
+      }
+
       // Mensagens recebidas
       for (const msg of value.messages ?? []) {
         console.log('[Webhook] Mensagem recebida:', {
@@ -60,14 +73,32 @@ export async function POST(request: Request) {
           type: msg.type,
           text: msg.text?.body,
           timestamp: msg.timestamp,
+          contaId,
         })
 
+        // Salva na memória (para polling rápido)
         addMessage({
           id: msg.id,
           from: msg.from,
           text: msg.text?.body ?? '(mídia)',
           timestamp: parseInt(msg.timestamp),
         })
+
+        // Salva no Firebase (persistência)
+        if (contaId) {
+          try {
+            await criarMensagem({
+              id: msg.id,
+              contaId,
+              from: msg.from,
+              text: msg.text?.body ?? '(mídia)',
+              timestamp: parseInt(msg.timestamp),
+              tipo: 'recebida',
+            })
+          } catch (error) {
+            console.error('❌ Erro ao salvar mensagem no Firebase:', error)
+          }
+        }
       }
 
       // Status de mensagens enviadas
@@ -77,7 +108,13 @@ export async function POST(request: Request) {
           status: status.status,
           recipient_id: status.recipient_id,
         })
-        // TODO: atualizar status no banco de dados
+        
+        // Atualiza status no Firebase
+        try {
+          await atualizarStatusMensagem(status.id, status.status as Mensagem['status'])
+        } catch (error) {
+          console.error('❌ Erro ao atualizar status no Firebase:', error)
+        }
       }
     }
   }
