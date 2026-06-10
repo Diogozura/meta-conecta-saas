@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers'
-import { createTemplate, type TemplateCategory, type TemplateComponent } from '@/lib/meta'
+import { createTemplate, getMetaCredentials, type TemplateCategory, type TemplateComponent } from '@/lib/meta'
 
 async function requireAuth() {
   const store = await cookies()
@@ -30,34 +30,27 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Campos "name", "category" e "bodyText" são obrigatórios' }, { status: 400 })
   }
 
-  const wabaId = process.env.META_WABA_ID
-  const businessToken = process.env.META_BUSINESS_TOKEN
-
-  if (!wabaId || !businessToken) {
-    return Response.json(
-      { error: 'META_WABA_ID e META_BUSINESS_TOKEN não configurados no .env.local' },
-      { status: 503 },
-    )
-  }
-
-  // Monta os componentes: nome do template deve ser snake_case, sem espaços
-  const templateName = body.name
-    .toLowerCase()
-    .replace(/\s+/g, '_')
-    .replace(/[^a-z0-9_]/g, '')
-
-  const components: TemplateComponent[] = []
-
-  if (body.header?.trim()) {
-    components.push({ type: 'HEADER', format: 'TEXT', text: body.header.trim() })
-  }
-  components.push({ type: 'BODY', text: body.bodyText.trim() })
-  if (body.footer?.trim()) {
-    components.push({ type: 'FOOTER', text: body.footer.trim() })
-  }
-
   try {
-    const result = await createTemplate(wabaId, businessToken, {
+    // Busca as credenciais do Firebase
+    const credentials = await getMetaCredentials()
+    
+    // Monta os componentes: nome do template deve ser snake_case, sem espaços
+    const templateName = body.name
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '')
+
+    const components: TemplateComponent[] = []
+
+    if (body.header?.trim()) {
+      components.push({ type: 'HEADER', format: 'TEXT', text: body.header.trim() })
+    }
+    components.push({ type: 'BODY', text: body.bodyText.trim() })
+    if (body.footer?.trim()) {
+      components.push({ type: 'FOOTER', text: body.footer.trim() })
+    }
+
+    const result = await createTemplate(credentials.wabaId, credentials.businessToken, {
       name: templateName,
       category: body.category,
       language: body.language ?? 'pt_BR',
