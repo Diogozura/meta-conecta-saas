@@ -31,6 +31,18 @@ function getDb() {
   return db
 }
 
+// Converte campos Timestamp do Firestore Admin em Date antes de devolver ao front,
+// caso contrário `new Date(timestamp)` no cliente vira "Invalid Date".
+function convertTimestamps<T extends Record<string, any>>(data: T): T {
+  const result: Record<string, any> = { ...data }
+  for (const key of ['dataCadastro', 'dataAtualizacao']) {
+    if (result[key] && typeof result[key].toDate === 'function') {
+      result[key] = result[key].toDate()
+    }
+  }
+  return result as T
+}
+
 // ─────────────────────────────────────────
 // CONTAS
 // ─────────────────────────────────────────
@@ -65,7 +77,7 @@ export async function obterConta(contaId: string): Promise<Conta | null> {
   const db = getDb()
   const docSnap = await db.collection('contas').doc(contaId).get()
   if (!docSnap.exists) return null
-  return { id: docSnap.id, ...docSnap.data() } as Conta
+  return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Conta
 }
 
 export async function atualizarConta(contaId: string, data: Partial<Omit<Conta, 'id' | 'dataCadastro'>>): Promise<void> {
@@ -96,7 +108,7 @@ export async function obterUsuario(contaId: string, usuarioId: string): Promise<
   try {
     const docSnap = await db.collection('contas').doc(contaId).collection('usuarios').doc(usuarioId).get()
     if (!docSnap.exists) return null
-    return { id: docSnap.id, ...docSnap.data() } as Usuario
+    return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Usuario
   } catch {
     return null
   }
@@ -105,7 +117,7 @@ export async function obterUsuario(contaId: string, usuarioId: string): Promise<
 export async function listarUsuarios(contaId: string): Promise<Usuario[]> {
   const db = getDb()
   const snapshot = await db.collection('contas').doc(contaId).collection('usuarios').get()
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Usuario))
+  return snapshot.docs.map(doc => ({ id: doc.id, ...convertTimestamps(doc.data()) } as Usuario))
 }
 
 export async function atualizarUsuario(contaId: string, usuarioId: string, data: Partial<Omit<Usuario, 'id' | 'dataCadastro'>>): Promise<void> {
@@ -134,7 +146,7 @@ export async function obterMetaAccess(contaId: string): Promise<MetaAccess | nul
   const snapshot = await db.collection('contas').doc(contaId).collection('metaAccess').limit(1).get()
   if (snapshot.empty) return null
   const doc = snapshot.docs[0]
-  return { id: doc.id, ...doc.data() } as MetaAccess
+  return { id: doc.id, ...convertTimestamps(doc.data()) } as MetaAccess
 }
 
 /**
@@ -199,7 +211,7 @@ export async function criarContaVinculada(contaId: string, data: Omit<ContaVincu
 export async function listarContasVinculadas(contaId: string): Promise<ContaVinculada[]> {
   const db = getDb()
   const snapshot = await db.collection('contas').doc(contaId).collection('contasVinculadas').get()
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ContaVinculada))
+  return snapshot.docs.map(doc => ({ id: doc.id, ...convertTimestamps(doc.data()) } as ContaVinculada))
 }
 
 // ─────────────────────────────────────────
@@ -222,7 +234,7 @@ export async function obterCliente(contaId: string, clienteId: string): Promise<
   try {
     const docSnap = await db.collection('contas').doc(contaId).collection('clientes').doc(clienteId).get()
     if (!docSnap.exists) return null
-    return { id: docSnap.id, ...docSnap.data() } as Cliente
+    return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Cliente
   } catch {
     return null
   }
@@ -231,7 +243,7 @@ export async function obterCliente(contaId: string, clienteId: string): Promise<
 export async function listarClientes(contaId: string): Promise<Cliente[]> {
   const db = getDb()
   const snapshot = await db.collection('contas').doc(contaId).collection('clientes').orderBy('dataCadastro', 'desc').get()
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cliente))
+  return snapshot.docs.map(doc => ({ id: doc.id, ...convertTimestamps(doc.data()) } as Cliente))
 }
 
 export async function atualizarCliente(contaId: string, clienteId: string, data: Partial<Omit<Cliente, 'id' | 'dataCadastro'>>): Promise<void> {

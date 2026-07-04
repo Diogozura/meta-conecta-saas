@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { UserPlus, Search, Shield, Mail, Calendar, MoreHorizontal } from 'lucide-react'
+import { UserPlus, Search, Shield, Mail, Calendar, MoreHorizontal, Copy, Check, X } from 'lucide-react'
 import AddUserModal from './AddUserModal'
 import { Usuario, NivelUsuario } from '@/types/database'
 
@@ -24,6 +24,8 @@ export default function UsuariosPage() {
   const [users, setUsers] = useState<Usuario[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [inviteInfo, setInviteInfo] = useState<{ nome: string; email: string } | null>(null)
+  const [copied, setCopied] = useState(false)
 
   // Carregar usuários
   useEffect(() => {
@@ -55,6 +57,8 @@ export default function UsuariosPage() {
       if (response.ok) {
         await loadUsers()
         setIsModalOpen(false)
+        setInviteInfo({ nome: userData.nome, email: userData.email })
+        setCopied(false)
       } else {
         throw new Error('Erro ao adicionar usuário')
       }
@@ -64,16 +68,28 @@ export default function UsuariosPage() {
     }
   }
 
+  const inviteInstructions = (email: string) =>
+    `Acesse o Meta Conecta e clique em "Entrar com Google" usando o email ${email}. Seu acesso será liberado automaticamente no primeiro login.`
+
+  const handleCopyInstructions = async () => {
+    if (!inviteInfo) return
+    await navigator.clipboard.writeText(inviteInstructions(inviteInfo.email))
+    setCopied(true)
+  }
+
   const filteredUsers = users.filter(user =>
     user.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('pt-BR', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric' 
+  const formatDate = (date: unknown) => {
+    if (!date) return '—'
+    const parsed = new Date(date as string | number | Date)
+    if (Number.isNaN(parsed.getTime())) return '—'
+    return parsed.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
     })
   }
 
@@ -93,6 +109,31 @@ export default function UsuariosPage() {
           Adicionar Usuário
         </button>
       </div>
+
+      {/* Invite instructions banner */}
+      {inviteInfo && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start justify-between gap-3">
+          <div className="text-sm text-blue-900">
+            <p className="font-medium">Usuário {inviteInfo.nome} adicionado.</p>
+            <p className="text-blue-800 mt-0.5">{inviteInstructions(inviteInfo.email)}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleCopyInstructions}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-300 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? 'Copiado' : 'Copiar'}
+            </button>
+            <button
+              onClick={() => setInviteInfo(null)}
+              className="p-1.5 rounded-md text-blue-400 hover:text-blue-600 hover:bg-blue-100 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">

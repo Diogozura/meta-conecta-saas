@@ -58,8 +58,8 @@ export async function POST(req: NextRequest) {
       status: status || 'ativo',
     })
 
-    // TODO: Se status for 'convite_pendente', enviar email de convite
-    // Pode usar um serviço como SendGrid, AWS SES, etc.
+    // Não há envio de email de convite: o acesso é liberado automaticamente
+    // quando a pessoa faz login com o mesmo email (ver lib/auth.ts `auth()`).
 
     return NextResponse.json({ usuario }, { status: 201 })
   } catch (error) {

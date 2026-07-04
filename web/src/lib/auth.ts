@@ -3,7 +3,7 @@
 import { adminAuth } from './firebase-admin'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { getFirestore } from 'firebase-admin/firestore'
+import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 
 const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 7 * 1000 // 7 dias em ms
 const SESSION_MAX_AGE_S = SESSION_MAX_AGE_MS / 1000  // 7 dias em segundos
@@ -86,7 +86,13 @@ export async function auth() {
       if (!usuariosSnapshot.empty) {
         const usuarioDoc = usuariosSnapshot.docs[0]
         const usuarioData = usuarioDoc.data()
-        
+
+        // Primeiro login do convite: marca o usuário como ativo
+        if (usuarioData.status === 'convite_pendente') {
+          await usuarioDoc.ref.update({ status: 'ativo', dataAtualizacao: Timestamp.now() })
+          usuarioData.status = 'ativo'
+        }
+
         return {
           user: {
             uid: session.uid,

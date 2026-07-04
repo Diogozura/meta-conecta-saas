@@ -21,7 +21,6 @@ export default function AddUserModal({ isOpen, onClose, onAdd }: AddUserModalPro
     nome: '',
     email: '',
     nivel: NivelUsuario.OPERADOR,
-    enviarConvite: true,
   })
 
   if (!isOpen) return null
@@ -34,9 +33,9 @@ export default function AddUserModal({ isOpen, onClose, onAdd }: AddUserModalPro
         nome: formData.nome,
         email: formData.email,
         nivel: formData.nivel,
-        status: formData.enviarConvite ? 'convite_pendente' : 'ativo',
+        status: 'convite_pendente',
       })
-      setFormData({ nome: '', email: '', nivel: NivelUsuario.OPERADOR, enviarConvite: true })
+      setFormData({ nome: '', email: '', nivel: NivelUsuario.OPERADOR })
       onClose()
     } catch (error) {
       console.error('Erro ao adicionar usuário:', error)
@@ -134,21 +133,17 @@ export default function AddUserModal({ isOpen, onClose, onAdd }: AddUserModalPro
             </div>
           </div>
 
-          {/* Enviar Convite */}
+          {/* Como o acesso é liberado */}
           <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-            <input
-              type="checkbox"
-              id="enviarConvite"
-              checked={formData.enviarConvite}
-              onChange={(e) => setFormData({ ...formData, enviarConvite: e.target.checked })}
-              className="mt-0.5 w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-            />
-            <label htmlFor="enviarConvite" className="text-sm text-gray-700">
-              <span className="font-medium">Enviar convite por email</span>
-              <p className="text-xs text-gray-500 mt-0.5">
-                O usuário receberá um email para criar sua senha e acessar o sistema
+            <Info className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+            <div className="text-xs text-gray-600">
+              <p className="font-medium text-gray-700">Nenhum email é enviado automaticamente</p>
+              <p className="mt-0.5">
+                Depois de adicionar, avise a pessoa para acessar a tela de login e entrar com
+                <strong> &quot;Entrar com Google&quot;</strong> usando exatamente este mesmo email.
+                O acesso é liberado assim que ela fizer o primeiro login.
               </p>
-            </label>
+            </div>
           </div>
 
           {/* Actions */}
