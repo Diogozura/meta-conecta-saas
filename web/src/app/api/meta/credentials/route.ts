@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth, getSession } from '@/lib/auth'
-import { obterMetaAccess, criarMetaAccess, atualizarMetaAccess, criarConta, criarUsuario } from '@/lib/firestore'
+import {
+  obterMetaAccess,
+  criarMetaAccess,
+  atualizarMetaAccess,
+  criarConta,
+  criarUsuario,
+  obterContaPorEmail,
+} from '@/lib/firestore'
 import { NivelUsuario } from '@/types/database'
 
 // GET - Buscar credenciais da conta
@@ -45,35 +52,41 @@ export async function POST(request: NextRequest) {
     const session = await auth()
     let contaId = session?.user?.contaId
 
-    // Se não tem conta, cria uma nova (primeira configuração)
+    // Se não tem conta, cria uma nova (primeira configuração) — mas só depois
+    // de checar se já não existe uma conta com este e-mail. auth() resolve
+    // contaId escaneando a subcoleção "usuarios" de cada conta; se por algum
+    // motivo esse vínculo não existir ainda (ex: dado legado, ou uma corrida
+    // entre duas chamadas concorrentes a esta rota), essa checagem extra por
+    // e-mail direto em "contas" evita criar uma segunda conta duplicada.
     if (!contaId) {
-      console.log('🚀 Criando primeira conta para:', sessionData.email)
-      
-      try {
-        const novaConta = await criarConta({
-          nome: sessionData.name || sessionData.email || 'Minha Empresa',
-          email: sessionData.email,
-          status: 'ativo'
-        })
-        
-        contaId = novaConta.id
-        
-        // Criar usuário proprietário
-        await criarUsuario(contaId, {
-          contaId,
-          nome: sessionData.name || sessionData.email || 'Usuário',
-          email: sessionData.email,
-          nivel: NivelUsuario.PROPRIETARIO,
-          status: 'ativo'
-        })
-        
-        console.log('✅ Conta criada:', contaId)
-      } catch (error: any) {
-        console.error('❌ Erro ao criar conta:', error)
-        return NextResponse.json({ 
-          error: 'Erro ao criar conta no Firebase. Verifique se a coleção "contas" existe no Firestore.',
-          details: error.message 
-        }, { status: 500 })
+      const contaExistente = await obterContaPorEmail(sessionData.email)
+      if (contaExistente) {
+        contaId = contaExistente.id
+      } else {
+        try {
+          const novaConta = await criarConta({
+            nome: sessionData.name || sessionData.email || 'Minha Empresa',
+            email: sessionData.email,
+            status: 'ativo'
+          })
+
+          contaId = novaConta.id
+
+          // Criar usuário proprietário
+          await criarUsuario(contaId, {
+            contaId,
+            nome: sessionData.name || sessionData.email || 'Usuário',
+            email: sessionData.email,
+            nivel: NivelUsuario.PROPRIETARIO,
+            status: 'ativo'
+          })
+        } catch (error: unknown) {
+          console.error('❌ Erro ao criar conta:', error)
+          return NextResponse.json({
+            error: 'Erro ao criar conta no Firebase. Verifique se a coleção "contas" existe no Firestore.',
+            details: error instanceof Error ? error.message : 'Erro desconhecido'
+          }, { status: 500 })
+        }
       }
     }
 
@@ -113,11 +126,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, message: 'Credenciais salvas com sucesso!' })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ Erro ao salvar credenciais:', error)
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Erro ao salvar credenciais',
-      details: error.message || 'Erro desconhecido'
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
     }, { status: 500 })
   }
 }

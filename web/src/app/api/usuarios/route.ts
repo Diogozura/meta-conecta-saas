@@ -1,69 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { criarUsuario, listarUsuarios } from '@/lib/firestore'
-import { auth } from '@/lib/auth'
-import { NivelUsuario } from '@/types/database'
+import { getBackendUser, getSessionCookieValue } from '@/lib/auth'
+import { backendErrorResponse } from '@/lib/apiRouteHelpers'
+import { createUser, listUsers } from '@/lib/usersApi'
 
-// GET /api/usuarios - Listar usuários
-export async function GET(req: NextRequest) {
+// GET /api/usuarios - Lista os usuários da empresa do usuário autenticado
+export async function GET() {
+  const user = await getBackendUser()
+  const sessionCookie = await getSessionCookieValue()
+  if (!user || !sessionCookie) {
+    return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+  }
+
   try {
-    const session = await auth()
-    if (!session?.user?.contaId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-    }
-
-    // Verificar se tem permissão (apenas admin e proprietário podem listar usuários)
-    if (session.user.nivel && !['admin', 'proprietario'].includes(session.user.nivel)) {
-      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
-    }
-
-    const usuarios = await listarUsuarios(session.user.contaId)
+    const usuarios = await listUsers(sessionCookie)
     return NextResponse.json({ usuarios })
   } catch (error) {
-    console.error('Erro ao listar usuários:', error)
-    return NextResponse.json({ error: 'Erro ao listar usuários' }, { status: 500 })
+    return backendErrorResponse(error)
   }
 }
 
-// POST /api/usuarios - Criar usuário
+// POST /api/usuarios - Cria um usuário vinculado à empresa do usuário autenticado
 export async function POST(req: NextRequest) {
+  const user = await getBackendUser()
+  const sessionCookie = await getSessionCookieValue()
+  if (!user || !sessionCookie) {
+    return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+  }
+
   try {
-    const session = await auth()
-    if (!session?.user?.contaId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-    }
-
-    // Verificar se tem permissão (apenas admin e proprietário podem adicionar usuários)
-    if (session.user.nivel && !['admin', 'proprietario'].includes(session.user.nivel)) {
-      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
-    }
-
-    const body = await req.json()
-    const { nome, email, nivel, status } = body
-
-    if (!nome || !email || !nivel) {
-      return NextResponse.json({ error: 'Campos obrigatórios faltando' }, { status: 400 })
-    }
-
-    // Validar nível
-    const niveisValidos = Object.values(NivelUsuario)
-    if (!niveisValidos.includes(nivel)) {
-      return NextResponse.json({ error: 'Nível inválido' }, { status: 400 })
-    }
-
-    const usuario = await criarUsuario(session.user.contaId, {
-      contaId: session.user.contaId,
-      nome,
-      email,
-      nivel: nivel as NivelUsuario,
-      status: status || 'ativo',
-    })
-
-    // Não há envio de email de convite: o acesso é liberado automaticamente
-    // quando a pessoa faz login com o mesmo email (ver lib/auth.ts `auth()`).
-
-    return NextResponse.json({ usuario }, { status: 201 })
+    const payload = await req.json()
+    const result = await createUser(sessionCookie, payload)
+    return NextResponse.json(result, { status: 201 })
   } catch (error) {
-    console.error('Erro ao criar usuário:', error)
-    return NextResponse.json({ error: 'Erro ao criar usuário' }, { status: 500 })
+    return backendErrorResponse(error)
   }
 }

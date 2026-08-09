@@ -47,6 +47,7 @@ export default function EmbeddedSignup({ onSuccess }: EmbeddedSignupProps) {
   // Carrega o Facebook JS SDK
   useEffect(() => {
     if (document.getElementById('facebook-jssdk')) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- SDK já carregado por uma montagem anterior do componente
       setSdkReady(true)
       return
     }

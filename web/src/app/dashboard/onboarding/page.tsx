@@ -35,9 +35,14 @@ export default function OnboardingPage() {
         <p className="text-sm font-semibold text-blue-800">Antes de começar</p>
         <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
           <li>Configure <code className="bg-blue-100 px-1 rounded text-xs">NEXT_PUBLIC_META_APP_ID</code> e <code className="bg-blue-100 px-1 rounded text-xs">NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID</code> no <code className="bg-blue-100 px-1 rounded text-xs">.env.local</code></li>
+          <li>
+            Salve o <strong>App ID</strong> e o <strong>App Secret</strong> do seu app Meta em{' '}
+            <a href="/dashboard/configuracoes" className="underline">Configurações</a> antes de clicar em conectar — a
+            troca do código de autorização por token usa essas credenciais salvas, não só as do <code className="bg-blue-100 px-1 rounded text-xs">.env.local</code>
+          </li>
           <li>Seu app Meta deve ter o WhatsApp use case habilitado</li>
           <li>O negócio no Meta deve estar verificado (<a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/solution-providers/get-started-for-tech-providers" target="_blank" rel="noopener noreferrer" className="underline">saiba mais</a>)</li>
-          <li>Após o onboarding, salve os dados abaixo no seu <code className="bg-blue-100 px-1 rounded text-xs">.env.local</code></li>
+          <li>Após o onboarding, salve os dados abaixo em <a href="/dashboard/configuracoes" className="underline">Configurações</a></li>
         </ul>
       </div>
 

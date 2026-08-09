@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X } from 'lucide-react'
+import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck } from 'lucide-react'
 
 type Message = {
   id: string
@@ -22,7 +22,14 @@ type Conversation = {
 
 const STORAGE_KEY = 'meta-conversas'
 
-const initialConversations: Conversation[] = []
+type HistoryMessage = {
+  id: string
+  from: string
+  to?: string
+  text: string
+  timestamp: number // unix seconds
+  tipo: 'recebida' | 'enviada'
+}
 
 function loadFromStorage(): Conversation[] {
   try {
@@ -37,6 +44,50 @@ function saveToStorage(convs: Conversation[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(convs))
   } catch {}
+}
+
+function formatTime(unixSeconds: number) {
+  return new Date(unixSeconds * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+/**
+ * Reconstrói as conversas a partir do histórico persistido no Firestore
+ * (/api/messages/history) — o localStorage sozinho não sobrevive a outro
+ * navegador/dispositivo, e o polling em memória (/api/messages) é perdido a
+ * cada reinício do servidor. Preserva o `name` já digitado localmente pro
+ * número (localStorage não guarda nome no Firestore hoje).
+ */
+function buildConversationsFromHistory(mensagens: HistoryMessage[], existingNames: Map<string, string>): Conversation[] {
+  const byNumber = new Map<string, HistoryMessage[]>()
+  for (const m of mensagens) {
+    const rawNumber = m.tipo === 'recebida' ? m.from : (m.to || m.from)
+    const number = (rawNumber ?? '').replace(/\D/g, '')
+    if (!number) continue
+    if (!byNumber.has(number)) byNumber.set(number, [])
+    byNumber.get(number)!.push(m)
+  }
+
+  const conversations = Array.from(byNumber.entries()).map(([number, msgs]) => {
+    const sorted = [...msgs].sort((a, b) => a.timestamp - b.timestamp)
+    const messages: Message[] = sorted.map((m) => ({
+      id: m.id,
+      text: m.text,
+      direction: m.tipo === 'recebida' ? 'received' : 'sent',
+      time: formatTime(m.timestamp),
+    }))
+    const lastMsg = sorted[sorted.length - 1]
+    const conv: Conversation = {
+      name: existingNames.get(number) || number,
+      number,
+      last: lastMsg.text,
+      time: formatTime(lastMsg.timestamp),
+      status: lastMsg.tipo === 'recebida' ? 'Recebida' : 'Enviada',
+      messages,
+    }
+    return { conv, lastTimestamp: lastMsg.timestamp }
+  })
+
+  return conversations.sort((a, b) => b.lastTimestamp - a.lastTimestamp).map((c) => c.conv)
 }
 
 export default function ConversasPage() {
@@ -65,10 +116,38 @@ function ConversasInner() {
     saveToStorage(conversations)
   }, [conversations])
 
+  // Carrega o histórico persistido no Firestore uma vez ao montar — sem
+  // isso, trocar de navegador/dispositivo (ou limpar o localStorage) perdia
+  // todo o histórico de conversas, mesmo as mensagens já estando salvas.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/messages/history')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { mensagens?: HistoryMessage[] } | null) => {
+        if (cancelled || !data?.mensagens?.length) return
+        setConversations((prev) => {
+          const existingNames = new Map(prev.map((c) => [c.number, c.name]))
+          const fromHistory = buildConversationsFromHistory(data.mensagens!, existingNames)
+          // Conversas locais sem nenhuma mensagem ainda (recém-iniciadas) não
+          // existem no histórico do Firestore — preserva essas.
+          const historyNumbers = new Set(fromHistory.map((c) => c.number))
+          const localOnly = prev.filter((c) => !historyNumbers.has(c.number) && c.messages.length === 0)
+          return [...fromHistory, ...localOnly]
+        })
+      })
+      .catch(() => {
+        // silencioso — mantém o que já tinha no localStorage/memória
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Abre conversa ao navegar via toast (?from=NUMERO)
   useEffect(() => {
     const from = searchParams.get('from')
     if (!from) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
     setConversations((prev) => {
       const idx = prev.findIndex((c) => c.number.replace(/\D/g, '') === from.replace(/\D/g, ''))
       if (idx !== -1) {
@@ -101,6 +180,44 @@ function ConversasInner() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [currentConv?.messages.length])
+
+  // Estado da IA na conversa selecionada — se um humano assumiu (ou a
+  // própria IA transferiu), mostra o aviso e a opção de reativar.
+  const [iaStatus, setIaStatus] = useState<{ iaAtiva: boolean; motivoTransferencia: string | null } | null>(null)
+
+  useEffect(() => {
+    if (!currentConv) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+      setIaStatus(null)
+      return
+    }
+    let cancelled = false
+    fetch(`/api/conversas/${currentConv.number}/ia`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setIaStatus(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só precisa reagir à troca de conversa, não a todo objeto novo
+  }, [currentConv?.number])
+
+  async function handleReativarIA() {
+    if (!currentConv) return
+    try {
+      const res = await fetch(`/api/conversas/${currentConv.number}/ia`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ iaAtiva: true }),
+      })
+      if (!res.ok) throw new Error('Erro ao reativar a IA')
+      setIaStatus({ iaAtiva: true, motivoTransferencia: null })
+    } catch {
+      // silencioso — o usuário pode tentar de novo
+    }
+  }
 
   // Polling a cada 3s para receber mensagens do WhatsApp
   useEffect(() => {
@@ -326,6 +443,23 @@ function ConversasInner() {
                 <p className="text-xs text-gray-500">{currentConv.number}</p>
               </div>
             </div>
+
+            {iaStatus && !iaStatus.iaAtiva && (
+              <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs text-amber-800 min-w-0">
+                  <UserCheck className="w-4 h-4 shrink-0" />
+                  <span className="truncate">
+                    IA pausada nessa conversa{iaStatus.motivoTransferencia ? ` — ${iaStatus.motivoTransferencia}` : ''}
+                  </span>
+                </div>
+                <button
+                  onClick={handleReativarIA}
+                  className="shrink-0 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-full transition-colors"
+                >
+                  Reativar IA
+                </button>
+              </div>
+            )}
 
             {/* Messages area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#f0f2f5]">

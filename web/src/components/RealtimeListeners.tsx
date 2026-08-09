@@ -37,5 +37,65 @@ export function RealtimeListeners() {
     return () => clearInterval(id)
   }, [pathname, router])
 
+  // Notifica a empresa sobre novos agendamentos (criados manualmente por
+  // outro usuário, ou no futuro pelo agente de IA no WhatsApp).
+  useEffect(() => {
+    if (pathname === '/dashboard/agenda') return
+
+    let since = Date.now()
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/agenda/agendamentos/recentes?since=${since}`)
+        if (!res.ok) return
+        const { eventos, serverTime } = await res.json()
+        since = serverTime
+        for (const evt of eventos) {
+          const hora = new Date(evt.inicio).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+          toast.message('Novo agendamento', {
+            description: `${evt.clienteNome} com ${evt.profissionalNome} às ${hora}`,
+            duration: 5000,
+            position: 'top-right',
+            action: {
+              label: 'Abrir',
+              onClick: () => router.push('/dashboard/agenda'),
+            },
+          })
+        }
+      } catch {}
+    }
+
+    const id = setInterval(poll, 3000)
+    return () => clearInterval(id)
+  }, [pathname, router])
+
+  // Notifica a empresa quando a IA transfere uma conversa pra atendimento humano.
+  useEffect(() => {
+    let since = Date.now()
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/handoff/recentes?since=${since}`)
+        if (!res.ok) return
+        const { eventos, serverTime } = await res.json()
+        since = serverTime
+        for (const evt of eventos) {
+          toast.message('Atendimento humano necessário', {
+            description: `${evt.numero} — ${evt.motivo}`,
+            duration: 8000,
+            position: 'top-right',
+            action: {
+              label: 'Abrir',
+              onClick: () => router.push(`/dashboard/conversas?from=${evt.numero}`),
+            },
+          })
+        }
+      } catch {}
+    }
+
+    const id = setInterval(poll, 3000)
+    return () => clearInterval(id)
+  }, [router])
+
   return null
 }

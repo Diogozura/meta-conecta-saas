@@ -15,6 +15,35 @@ export interface Conta {
   dataCadastro: Date
   dataAtualizacao: Date
   status: 'ativo' | 'inativo' | 'suspenso'
+  ai?: ContaAiConfig
+}
+
+// Configuração do agente de IA que responde as mensagens do WhatsApp
+// automaticamente (Gemini, com function calling sobre a agenda). apiKey é
+// segredo real (chave da própria conta do cliente) — sempre criptografada
+// antes de gravar, mesmo padrão do businessToken/appSecret da Meta.
+export interface ContaAiConfig {
+  enabled: boolean
+  provider: 'gemini' | 'openai' | 'anthropic'
+  model: string
+  prompt: string
+  apiKey: string
+  /** Texto livre sobre o negócio (o que vende/atende, horários, endereço,
+   *  políticas, perguntas frequentes) — entra no prompt do agente pra ele
+   *  responder dúvidas gerais, não só sobre agenda. */
+  informacoesNegocio?: string
+}
+
+// ─────────────────────────────────────────
+// Conversa (Subcoleção: contas/{contaId}/conversas)
+// Estado de controle por número de telefone — principalmente se a IA está
+// respondendo automaticamente ou se um atendente humano assumiu.
+// ─────────────────────────────────────────
+export interface Conversa {
+  numero: string
+  iaAtiva: boolean
+  motivoTransferencia?: string
+  dataTransferencia?: Date
 }
 
 // ─────────────────────────────────────────
@@ -107,6 +136,72 @@ export interface Mensagem {
   tipo: 'recebida' | 'enviada'  // Direção da mensagem
   status?: 'enviada' | 'entregue' | 'lida' | 'falhou'  // Status (para mensagens enviadas)
   dataCriacao: Date             // Data de criação no Firebase
+}
+
+// ─────────────────────────────────────────
+// Profissional (Subcoleção: contas/{contaId}/profissionais)
+// ─────────────────────────────────────────
+export interface Profissional {
+  id: string
+  contaId: string
+  nome: string
+  telefone?: string
+  ativo: boolean
+  google?: {
+    conectado: boolean
+    calendarId: string        // "primary" por padrão
+    refreshTokenEnc: string   // criptografado (mesmo padrão do MetaAccess)
+    email?: string
+  }
+  dataCadastro: Date
+  dataAtualizacao: Date
+}
+
+// ─────────────────────────────────────────
+// Servico (Subcoleção: contas/{contaId}/servicos)
+// ─────────────────────────────────────────
+export interface Servico {
+  id: string
+  contaId: string
+  nome: string
+  duracaoMinutos: number
+  profissionalIds?: string[]  // vazio/ausente = qualquer profissional atende
+  ativo: boolean
+  dataCadastro: Date
+  dataAtualizacao: Date
+}
+
+// ─────────────────────────────────────────
+// Disponibilidade (Subcoleção: contas/{contaId}/disponibilidades)
+// Bloco avulso de data/hora em que um profissional está disponível
+// ─────────────────────────────────────────
+export interface Disponibilidade {
+  id: string
+  contaId: string
+  profissionalId: string
+  inicio: Date
+  fim: Date
+  dataCadastro: Date
+}
+
+// ─────────────────────────────────────────
+// Agendamento (Subcoleção: contas/{contaId}/agendamentos)
+// ─────────────────────────────────────────
+export interface Agendamento {
+  id: string
+  contaId: string
+  profissionalId: string
+  servicoId: string
+  clienteNome: string
+  clienteTelefone: string
+  inicio: Date
+  fim: Date                    // calculado: inicio + servico.duracaoMinutos
+  status: 'confirmado' | 'cancelado' | 'concluido'
+  origem: 'manual' | 'agente_ia'
+  googleEventId?: string
+  observacoes?: string
+  dataCriacao: Date
+  dataAtualizacao: Date
 }
 
 // ─────────────────────────────────────────

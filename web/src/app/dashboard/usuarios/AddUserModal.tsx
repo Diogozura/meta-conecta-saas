@@ -2,26 +2,27 @@
 
 import { useState } from 'react'
 import { X, Info } from 'lucide-react'
-import { NivelUsuario } from '@/types/database'
+import type { AccessLevel, UserCreateInput } from '@/types/user'
 
 interface AddUserModalProps {
   isOpen: boolean
   onClose: () => void
-  onAdd: (user: {
-    nome: string
-    email: string
-    nivel: NivelUsuario
-    status: 'ativo' | 'inativo' | 'convite_pendente'
-  }) => Promise<void>
+  onAdd: (user: UserCreateInput) => Promise<void>
+}
+
+const accessLevelInfo: Record<AccessLevel, { label: string; description: string }> = {
+  administrador: { label: 'Administrador', description: 'Controle total: usuários, integrações, configurações da empresa.' },
+  supervisor: { label: 'Supervisor', description: 'Gerencia usuários, templates, números e webhooks.' },
+  atendente: { label: 'Atendente', description: 'Envia mensagens, gerencia conversas, visualiza clientes.' },
 }
 
 export default function AddUserModal({ isOpen, onClose, onAdd }: AddUserModalProps) {
   const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState({
-    nome: '',
-    email: '',
-    nivel: NivelUsuario.OPERADOR,
-  })
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState('')
+  const [accessLevel, setAccessLevel] = useState<AccessLevel>('atendente')
+  const [sector, setSector] = useState('')
 
   if (!isOpen) return null
 
@@ -30,16 +31,21 @@ export default function AddUserModal({ isOpen, onClose, onAdd }: AddUserModalPro
     setLoading(true)
     try {
       await onAdd({
-        nome: formData.nome,
-        email: formData.email,
-        nivel: formData.nivel,
-        status: 'convite_pendente',
+        name,
+        email,
+        role,
+        access_level: accessLevel,
+        sector: sector || null,
       })
-      setFormData({ nome: '', email: '', nivel: NivelUsuario.OPERADOR })
+      setName('')
+      setEmail('')
+      setRole('')
+      setAccessLevel('atendente')
+      setSector('')
       onClose()
     } catch (error) {
       console.error('Erro ao adicionar usuário:', error)
-      alert('Erro ao adicionar usuário. Tente novamente.')
+      alert(error instanceof Error ? error.message : 'Erro ao adicionar usuário. Tente novamente.')
     } finally {
       setLoading(false)
     }
@@ -51,35 +57,28 @@ export default function AddUserModal({ isOpen, onClose, onAdd }: AddUserModalPro
         className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-gray-200">
           <h3 className="text-lg font-bold text-gray-900">Adicionar Usuário</h3>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-          >
+          <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Nome */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Nome Completo <span className="text-red-500">*</span>
+              Nome completo <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               required
-              value={formData.nome}
-              onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               placeholder="Ex: João Silva"
             />
           </div>
 
-          {/* Email */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Email <span className="text-red-500">*</span>
@@ -87,66 +86,72 @@ export default function AddUserModal({ isOpen, onClose, onAdd }: AddUserModalPro
             <input
               type="email"
               required
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               placeholder="Ex: joao@empresa.com"
             />
           </div>
 
-          {/* Nível de Acesso */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Cargo <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              placeholder="Ex: Atendente de Vendas"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Setor
+            </label>
+            <input
+              type="text"
+              value={sector}
+              onChange={(e) => setSector(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              placeholder="Ex: Vendas"
+            />
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Nível de Acesso <span className="text-red-500">*</span>
             </label>
             <select
               required
-              value={formData.nivel}
-              onChange={(e) => setFormData({ ...formData, nivel: e.target.value as NivelUsuario })}
+              value={accessLevel}
+              onChange={(e) => setAccessLevel(e.target.value as AccessLevel)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
             >
-              <option value={NivelUsuario.PROPRIETARIO}>Proprietário - Acesso total</option>
-              <option value={NivelUsuario.ADMIN}>Admin - Gerencia usuários, templates e números</option>
-              <option value={NivelUsuario.OPERADOR}>Operador - Envia mensagens e gerencia conversas</option>
-              <option value={NivelUsuario.VISUALIZADOR}>Visualizador - Apenas leitura</option>
+              <option value="administrador">Administrador</option>
+              <option value="supervisor">Supervisor</option>
+              <option value="atendente">Atendente</option>
             </select>
-            
-            {/* Info sobre permissões */}
+
             <div className="mt-2 p-3 bg-blue-50 rounded-lg">
               <div className="flex gap-2">
                 <Info className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-                <div className="text-xs text-blue-700">
-                  {formData.nivel === NivelUsuario.PROPRIETARIO && (
-                    <p><strong>Proprietário:</strong> Controle total da conta, incluindo exclusão e gerenciamento de todos os recursos.</p>
-                  )}
-                  {formData.nivel === NivelUsuario.ADMIN && (
-                    <p><strong>Admin:</strong> Pode adicionar/remover usuários, criar templates, conectar números e configurar webhooks.</p>
-                  )}
-                  {formData.nivel === NivelUsuario.OPERADOR && (
-                    <p><strong>Operador:</strong> Pode enviar mensagens, gerenciar conversas, visualizar clientes e templates.</p>
-                  )}
-                  {formData.nivel === NivelUsuario.VISUALIZADOR && (
-                    <p><strong>Visualizador:</strong> Apenas visualização de dados, sem permissão para realizar ações.</p>
-                  )}
-                </div>
+                <p className="text-xs text-blue-700">
+                  <strong>{accessLevelInfo[accessLevel].label}:</strong> {accessLevelInfo[accessLevel].description}
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Como o acesso é liberado */}
           <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
             <Info className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
-            <div className="text-xs text-gray-600">
-              <p className="font-medium text-gray-700">Nenhum email é enviado automaticamente</p>
-              <p className="mt-0.5">
-                Depois de adicionar, avise a pessoa para acessar a tela de login e entrar com
-                <strong> &quot;Entrar com Google&quot;</strong> usando exatamente este mesmo email.
-                O acesso é liberado assim que ela fizer o primeiro login.
-              </p>
-            </div>
+            <p className="text-xs text-gray-600">
+              Ao adicionar, um link de convite é gerado para a pessoa definir a própria senha.
+            </p>
           </div>
 
-          {/* Actions */}
           <div className="flex gap-2 pt-2">
             <button
               type="button"

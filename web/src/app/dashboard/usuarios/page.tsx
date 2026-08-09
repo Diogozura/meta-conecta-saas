@@ -3,34 +3,32 @@
 import { useState, useEffect } from 'react'
 import { UserPlus, Search, Shield, Mail, Calendar, MoreHorizontal, Copy, Check, X } from 'lucide-react'
 import AddUserModal from './AddUserModal'
-import { Usuario, NivelUsuario } from '@/types/database'
+import EditUserModal from './EditUserModal'
+import type { AccessLevel, UserCreateInput, UserResponse, UserStatus, UserUpdateInput } from '@/types/user'
 
-const nivelColors: Record<string, string> = {
-  proprietario: 'bg-purple-50 text-purple-700',
-  admin: 'bg-blue-50 text-blue-700',
-  operador: 'bg-green-50 text-green-700',
-  visualizador: 'bg-gray-100 text-gray-500',
+const accessLevelColors: Record<AccessLevel, string> = {
+  administrador: 'bg-purple-50 text-purple-700',
+  supervisor: 'bg-blue-50 text-blue-700',
+  atendente: 'bg-green-50 text-green-700',
 }
 
-const nivelLabels: Record<string, string> = {
-  proprietario: 'Proprietário',
-  admin: 'Admin',
-  operador: 'Operador',
-  visualizador: 'Visualizador',
+const accessLevelLabels: Record<AccessLevel, string> = {
+  administrador: 'Administrador',
+  supervisor: 'Supervisor',
+  atendente: 'Atendente',
 }
 
 export default function UsuariosPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [users, setUsers] = useState<Usuario[]>([])
+  const [editingUser, setEditingUser] = useState<UserResponse | null>(null)
+  const [users, setUsers] = useState<UserResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [inviteInfo, setInviteInfo] = useState<{ nome: string; email: string } | null>(null)
+  const [inviteInfo, setInviteInfo] = useState<{ name: string; link: string } | null>(null)
   const [copied, setCopied] = useState(false)
-
-  // Carregar usuários
-  useEffect(() => {
-    loadUsers()
-  }, [])
+  // null = ainda carregando; usado pra decidir quais ações mostrar, espelhando
+  // exatamente as regras de permissão do backend (require_role em users_router.py).
+  const [me, setMe] = useState<{ id: string; accessLevel: AccessLevel } | null>(null)
 
   const loadUsers = async () => {
     try {
@@ -46,51 +44,94 @@ export default function UsuariosPage() {
     }
   }
 
-  const handleAddUser = async (userData: Omit<Usuario, 'id' | 'contaId' | 'dataCadastro' | 'dataAtualizacao'>) => {
+  const loadMe = async () => {
     try {
-      const response = await fetch('/api/usuarios', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData),
-      })
-
+      const response = await fetch('/api/me')
       if (response.ok) {
-        await loadUsers()
-        setIsModalOpen(false)
-        setInviteInfo({ nome: userData.nome, email: userData.email })
-        setCopied(false)
-      } else {
-        throw new Error('Erro ao adicionar usuário')
+        const data = await response.json()
+        setMe({ id: data.id, accessLevel: data.access_level })
       }
     } catch (error) {
-      console.error('Erro ao adicionar usuário:', error)
-      throw error
+      console.error('Erro ao carregar perfil:', error)
     }
   }
 
-  const inviteInstructions = (email: string) =>
-    `Acesse o Meta Conecta e clique em "Entrar com Google" usando o email ${email}. Seu acesso será liberado automaticamente no primeiro login.`
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    loadUsers()
+    loadMe()
+  }, [])
 
-  const handleCopyInstructions = async () => {
+  // Mesmas regras de app/api/routers/users_router.py: criar/editar exige
+  // administrador ou supervisor; ativar/desativar exige administrador.
+  const canManageUsers = me?.accessLevel === 'administrador' || me?.accessLevel === 'supervisor'
+  const canToggleStatus = me?.accessLevel === 'administrador'
+
+  const handleAddUser = async (payload: UserCreateInput) => {
+    const response = await fetch('/api/usuarios', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error || 'Erro ao adicionar usuário')
+    }
+    await loadUsers()
+    setInviteInfo({ name: data.user.name, link: data.invite_link })
+    setCopied(false)
+  }
+
+  const handleEditUser = async (payload: UserUpdateInput) => {
+    if (!editingUser) return
+    const response = await fetch(`/api/usuarios/${editingUser.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error || 'Erro ao editar usuário')
+    }
+    await loadUsers()
+  }
+
+  const toggleStatus = async (user: UserResponse) => {
+    const nextStatus: UserStatus = user.status === 'ativo' ? 'inativo' : 'ativo'
+    try {
+      const response = await fetch(`/api/usuarios/${user.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Erro ao atualizar status')
+      }
+      await loadUsers()
+    } catch (error) {
+      console.error('Erro ao atualizar status:', error)
+      alert(error instanceof Error ? error.message : 'Erro ao atualizar status')
+    }
+  }
+
+  const handleCopyInvite = async () => {
     if (!inviteInfo) return
-    await navigator.clipboard.writeText(inviteInstructions(inviteInfo.email))
+    await navigator.clipboard.writeText(inviteInfo.link)
     setCopied(true)
   }
 
-  const filteredUsers = users.filter(user =>
-    user.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredUsers = users.filter(
+    (user) =>
+      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const formatDate = (date: unknown) => {
     if (!date) return '—'
     const parsed = new Date(date as string | number | Date)
     if (Number.isNaN(parsed.getTime())) return '—'
-    return parsed.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    })
+    return parsed.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
   }
 
   return (
@@ -99,27 +140,29 @@ export default function UsuariosPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-900">Usuários</h2>
-          <p className="text-sm text-gray-500">Gerencie os usuários e permissões da conta</p>
+          <p className="text-sm text-gray-500">Gerencie os usuários e permissões da sua empresa</p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-        >
-          <UserPlus className="w-4 h-4" />
-          Adicionar Usuário
-        </button>
+        {canManageUsers && (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <UserPlus className="w-4 h-4" />
+            Adicionar Usuário
+          </button>
+        )}
       </div>
 
-      {/* Invite instructions banner */}
+      {/* Banner de convite pós-criação */}
       {inviteInfo && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start justify-between gap-3">
           <div className="text-sm text-blue-900">
-            <p className="font-medium">Usuário {inviteInfo.nome} adicionado.</p>
-            <p className="text-blue-800 mt-0.5">{inviteInstructions(inviteInfo.email)}</p>
+            <p className="font-medium">Usuário {inviteInfo.name} adicionado.</p>
+            <p className="text-blue-800 mt-0.5 break-all">Link de convite: {inviteInfo.link}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={handleCopyInstructions}
+              onClick={handleCopyInvite}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-300 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
             >
               {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -163,6 +206,7 @@ export default function UsuariosPage() {
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Usuário</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Cargo</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Nível</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Cadastro</th>
@@ -170,65 +214,139 @@ export default function UsuariosPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center shrink-0">
-                        <span className="text-xs font-bold text-green-700">{user.nome[0]}</span>
+              {filteredUsers.map((user) => {
+                const isSelf = me?.id === user.id
+                const showMenu = (canManageUsers || canToggleStatus) && !isSelf
+                return (
+                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center shrink-0">
+                          <span className="text-xs font-bold text-green-700">{user.name[0]}</span>
+                        </div>
+                        <span className="font-medium text-gray-900">
+                          {user.name}
+                          {isSelf && <span className="text-xs text-gray-400 font-normal"> (você)</span>}
+                        </span>
                       </div>
-                      <span className="font-medium text-gray-900">{user.nome}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-1.5 text-gray-600">
-                      <Mail className="w-3 h-3 text-gray-400" />
-                      {user.email}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <Shield className="w-3 h-3 text-gray-400" />
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${nivelColors[user.nivel] ?? 'bg-gray-100 text-gray-500'}`}>
-                        {nivelLabels[user.nivel] ?? user.nivel}
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-1.5 text-gray-600">
+                        <Mail className="w-3 h-3 text-gray-400" />
+                        {user.email}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-gray-600">{user.role}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <Shield className="w-3 h-3 text-gray-400" />
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${accessLevelColors[user.access_level]}`}>
+                          {accessLevelLabels[user.access_level]}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          user.status === 'ativo' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {user.status === 'ativo' ? 'Ativo' : 'Inativo'}
                       </span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      user.status === 'ativo' ? 'bg-green-50 text-green-700' :
-                      user.status === 'convite_pendente' ? 'bg-yellow-50 text-yellow-700' :
-                      'bg-gray-100 text-gray-500'
-                    }`}>
-                      {user.status === 'ativo' ? 'Ativo' :
-                       user.status === 'convite_pendente' ? 'Convite Pendente' :
-                       'Inativo'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-1.5 text-gray-500">
-                      <Calendar className="w-3 h-3 text-gray-400" />
-                      {formatDate(user.dataCadastro)}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    <button className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-1.5 text-gray-500">
+                        <Calendar className="w-3 h-3 text-gray-400" />
+                        {formatDate(user.created_at)}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      {showMenu && (
+                        <UserActionsMenu
+                          user={user}
+                          canEdit={canManageUsers && !isSelf}
+                          canToggleStatus={canToggleStatus && !isSelf}
+                          onEdit={() => setEditingUser(user)}
+                          onToggleStatus={toggleStatus}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
       </div>
 
-      {/* Modal */}
-      <AddUserModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onAdd={handleAddUser}
-      />
+      {canManageUsers && (
+        <>
+          <AddUserModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={handleAddUser} />
+          <EditUserModal
+            key={editingUser?.id}
+            isOpen={editingUser !== null}
+            user={editingUser}
+            onClose={() => setEditingUser(null)}
+            onSave={handleEditUser}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+function UserActionsMenu({
+  user,
+  canEdit,
+  canToggleStatus,
+  onEdit,
+  onToggleStatus,
+}: {
+  user: UserResponse
+  canEdit: boolean
+  canToggleStatus: boolean
+  onEdit: () => void
+  onToggleStatus: (user: UserResponse) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="relative inline-block text-left">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-20 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+            {canEdit && (
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onEdit()
+                }}
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Editar
+              </button>
+            )}
+            {canToggleStatus && (
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onToggleStatus(user)
+                }}
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                {user.status === 'ativo' ? 'Desativar' : 'Ativar'}
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }

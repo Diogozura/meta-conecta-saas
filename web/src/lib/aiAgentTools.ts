@@ -1,0 +1,145 @@
+import { listarServicos, listarProfissionais, definirIaAtivaConversa } from '@/lib/firestore'
+import { buscarHorariosLivres, criarAgendamentoInterno, AgendaServiceError } from '@/lib/agendaService'
+import { addHandoffEvent } from '@/lib/handoffStore'
+import { Profissional, Servico } from '@/types/database'
+
+// Ferramentas do agente em formato neutro (JSON Schema simples, só strings)
+// — cada provedor de IA (Gemini, OpenAI, Anthropic) converte essa mesma
+// lista pro formato que ele espera. A execução de fato (executarFuncaoAgente)
+// também é uma só, compartilhada por todos os provedores.
+
+export interface ToolParam {
+  name: string
+  description: string
+  required: boolean
+}
+
+export interface ToolDef {
+  name: string
+  description: string
+  params: ToolParam[]
+}
+
+export const FERRAMENTAS_AGENTE: ToolDef[] = [
+  {
+    name: 'listar_servicos',
+    description: 'Lista os serviços/produtos que a empresa oferece, com nome e duração em minutos (quando aplicável, ex: para agendamentos).',
+    params: [],
+  },
+  {
+    name: 'buscar_horarios_livres',
+    description: 'Busca os horários livres disponíveis para agendar um serviço em uma data específica. Use antes de oferecer qualquer horário ao cliente.',
+    params: [
+      { name: 'nomeServico', description: 'Nome do serviço, ex: Corte', required: true },
+      { name: 'nomeProfissional', description: 'Nome do profissional (opcional — se não informado, considera qualquer um disponível para o serviço)', required: false },
+      { name: 'data', description: 'Data no formato YYYY-MM-DD', required: true },
+    ],
+  },
+  {
+    name: 'criar_agendamento',
+    description: 'Confirma e cria o agendamento. Só chame depois que o cliente confirmar explicitamente um horário específico que você ofereceu.',
+    params: [
+      { name: 'nomeServico', description: 'Nome do serviço', required: true },
+      { name: 'nomeProfissional', description: 'Opcional', required: false },
+      { name: 'data', description: 'YYYY-MM-DD', required: true },
+      { name: 'hora', description: 'HH:MM', required: true },
+      { name: 'clienteNome', description: 'Nome do cliente, perguntado na conversa', required: true },
+    ],
+  },
+  {
+    name: 'transferir_para_humano',
+    description: 'Transfere a conversa para um atendente humano e para de responder automaticamente. Use quando não conseguir resolver a dúvida ou o problema do cliente sozinho, quando ele pedir explicitamente para falar com uma pessoa, ou em qualquer situação sensível (reclamação, cancelamento, cobrança, algo fora do que você sabe responder).',
+    params: [
+      { name: 'motivo', description: 'Resumo curto do que o cliente precisa, pro atendente entender rápido o contexto ao assumir', required: true },
+    ],
+  },
+]
+
+async function resolverServico(contaId: string, nomeServico: string): Promise<Servico> {
+  const servicos = await listarServicos(contaId)
+  const encontrado = servicos.find((s) => s.ativo && s.nome.toLowerCase().includes(nomeServico.toLowerCase()))
+  if (!encontrado) throw new Error(`Serviço "${nomeServico}" não encontrado.`)
+  return encontrado
+}
+
+async function resolverProfissional(contaId: string, nomeProfissional: string | undefined, servico: Servico): Promise<Profissional> {
+  const profissionais = (await listarProfissionais(contaId)).filter((p) => p.ativo)
+
+  if (nomeProfissional) {
+    const encontrado = profissionais.find((p) => p.nome.toLowerCase().includes(nomeProfissional.toLowerCase()))
+    if (!encontrado) throw new Error(`Profissional "${nomeProfissional}" não encontrado.`)
+    return encontrado
+  }
+
+  const elegivel = profissionais.find((p) => !servico.profissionalIds?.length || servico.profissionalIds.includes(p.id))
+  if (!elegivel) throw new Error(`Nenhum profissional disponível para o serviço "${servico.nome}".`)
+  return elegivel
+}
+
+function formatarHora(iso: string): string {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/** Executa uma chamada de função pedida pelo modelo (qualquer provedor) e devolve o resultado. */
+export async function executarFuncaoAgente(
+  contaId: string,
+  telefoneCliente: string,
+  nome: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  try {
+    switch (nome) {
+      case 'listar_servicos': {
+        const servicos = (await listarServicos(contaId)).filter((s) => s.ativo)
+        return { servicos: servicos.map((s) => ({ nome: s.nome, duracaoMinutos: s.duracaoMinutos })) }
+      }
+
+      case 'buscar_horarios_livres': {
+        const { nomeServico, nomeProfissional, data } = args as { nomeServico: string; nomeProfissional?: string; data: string }
+        const servico = await resolverServico(contaId, nomeServico)
+        const profissional = await resolverProfissional(contaId, nomeProfissional, servico)
+        const de = new Date(`${data}T00:00:00`)
+        const ate = new Date(`${data}T23:59:59`)
+        const slots = await buscarHorariosLivres(contaId, profissional.id, servico.id, de, ate)
+        return {
+          profissional: profissional.nome,
+          horarios: slots.map((s) => formatarHora(s.inicio.toISOString())),
+        }
+      }
+
+      case 'criar_agendamento': {
+        const { nomeServico, nomeProfissional, data, hora, clienteNome } = args as {
+          nomeServico: string; nomeProfissional?: string; data: string; hora: string; clienteNome: string
+        }
+        const servico = await resolverServico(contaId, nomeServico)
+        const profissional = await resolverProfissional(contaId, nomeProfissional, servico)
+        const inicio = new Date(`${data}T${hora}:00`)
+        if (isNaN(inicio.getTime())) throw new Error('Data/hora inválida.')
+
+        const agendamento = await criarAgendamentoInterno(contaId, {
+          profissionalId: profissional.id,
+          servicoId: servico.id,
+          clienteNome,
+          clienteTelefone: telefoneCliente,
+          inicio,
+          origem: 'agente_ia',
+        })
+        return { confirmado: true, profissional: profissional.nome, servico: servico.nome, inicio: agendamento.inicio.toISOString() }
+      }
+
+      case 'transferir_para_humano': {
+        const { motivo } = args as { motivo: string }
+        await definirIaAtivaConversa(contaId, telefoneCliente, false, motivo)
+        addHandoffEvent({ contaId, numero: telefoneCliente, motivo })
+        return { transferido: true }
+      }
+
+      default:
+        return { erro: `Função desconhecida: ${nome}` }
+    }
+  } catch (error) {
+    if (error instanceof AgendaServiceError) return { erro: error.message }
+    return { erro: error instanceof Error ? error.message : 'Erro ao executar a ação.' }
+  }
+}

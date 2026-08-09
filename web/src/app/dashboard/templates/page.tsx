@@ -65,7 +65,10 @@ export default function TemplatesPage() {
     }
   }
 
-  useEffect(() => { fetchTemplates() }, [])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    fetchTemplates()
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
