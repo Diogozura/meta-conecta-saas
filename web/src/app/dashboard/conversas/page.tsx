@@ -22,7 +22,14 @@ type Conversation = {
 
 const STORAGE_KEY = 'meta-conversas'
 
-const initialConversations: Conversation[] = []
+type HistoryMessage = {
+  id: string
+  from: string
+  to?: string
+  text: string
+  timestamp: number // unix seconds
+  tipo: 'recebida' | 'enviada'
+}
 
 function loadFromStorage(): Conversation[] {
   try {
@@ -37,6 +44,50 @@ function saveToStorage(convs: Conversation[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(convs))
   } catch {}
+}
+
+function formatTime(unixSeconds: number) {
+  return new Date(unixSeconds * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+/**
+ * Reconstrói as conversas a partir do histórico persistido no Firestore
+ * (/api/messages/history) — o localStorage sozinho não sobrevive a outro
+ * navegador/dispositivo, e o polling em memória (/api/messages) é perdido a
+ * cada reinício do servidor. Preserva o `name` já digitado localmente pro
+ * número (localStorage não guarda nome no Firestore hoje).
+ */
+function buildConversationsFromHistory(mensagens: HistoryMessage[], existingNames: Map<string, string>): Conversation[] {
+  const byNumber = new Map<string, HistoryMessage[]>()
+  for (const m of mensagens) {
+    const rawNumber = m.tipo === 'recebida' ? m.from : (m.to || m.from)
+    const number = (rawNumber ?? '').replace(/\D/g, '')
+    if (!number) continue
+    if (!byNumber.has(number)) byNumber.set(number, [])
+    byNumber.get(number)!.push(m)
+  }
+
+  const conversations = Array.from(byNumber.entries()).map(([number, msgs]) => {
+    const sorted = [...msgs].sort((a, b) => a.timestamp - b.timestamp)
+    const messages: Message[] = sorted.map((m) => ({
+      id: m.id,
+      text: m.text,
+      direction: m.tipo === 'recebida' ? 'received' : 'sent',
+      time: formatTime(m.timestamp),
+    }))
+    const lastMsg = sorted[sorted.length - 1]
+    const conv: Conversation = {
+      name: existingNames.get(number) || number,
+      number,
+      last: lastMsg.text,
+      time: formatTime(lastMsg.timestamp),
+      status: lastMsg.tipo === 'recebida' ? 'Recebida' : 'Enviada',
+      messages,
+    }
+    return { conv, lastTimestamp: lastMsg.timestamp }
+  })
+
+  return conversations.sort((a, b) => b.lastTimestamp - a.lastTimestamp).map((c) => c.conv)
 }
 
 export default function ConversasPage() {
@@ -65,10 +116,38 @@ function ConversasInner() {
     saveToStorage(conversations)
   }, [conversations])
 
+  // Carrega o histórico persistido no Firestore uma vez ao montar — sem
+  // isso, trocar de navegador/dispositivo (ou limpar o localStorage) perdia
+  // todo o histórico de conversas, mesmo as mensagens já estando salvas.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/messages/history')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { mensagens?: HistoryMessage[] } | null) => {
+        if (cancelled || !data?.mensagens?.length) return
+        setConversations((prev) => {
+          const existingNames = new Map(prev.map((c) => [c.number, c.name]))
+          const fromHistory = buildConversationsFromHistory(data.mensagens!, existingNames)
+          // Conversas locais sem nenhuma mensagem ainda (recém-iniciadas) não
+          // existem no histórico do Firestore — preserva essas.
+          const historyNumbers = new Set(fromHistory.map((c) => c.number))
+          const localOnly = prev.filter((c) => !historyNumbers.has(c.number) && c.messages.length === 0)
+          return [...fromHistory, ...localOnly]
+        })
+      })
+      .catch(() => {
+        // silencioso — mantém o que já tinha no localStorage/memória
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Abre conversa ao navegar via toast (?from=NUMERO)
   useEffect(() => {
     const from = searchParams.get('from')
     if (!from) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
     setConversations((prev) => {
       const idx = prev.findIndex((c) => c.number.replace(/\D/g, '') === from.replace(/\D/g, ''))
       if (idx !== -1) {

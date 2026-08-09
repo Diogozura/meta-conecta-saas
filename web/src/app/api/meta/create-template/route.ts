@@ -34,11 +34,24 @@ export async function POST(request: Request) {
     // Busca as credenciais do Firebase
     const credentials = await getMetaCredentials()
     
-    // Monta os componentes: nome do template deve ser snake_case, sem espaços
+    // Monta os componentes: nome do template deve ser snake_case, sem espaços.
+    // Remove acentos primeiro (NFD + strip diacríticos) em vez de simplesmente
+    // descartar as letras acentuadas — "Promoção" deve virar "promocao", não
+    // "promoo".
     const templateName = body.name
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '') // remove diacriticos (acentos) apos normalize('NFD')
       .toLowerCase()
+      .trim()
       .replace(/\s+/g, '_')
       .replace(/[^a-z0-9_]/g, '')
+
+    if (!templateName) {
+      return Response.json(
+        { error: 'Nome do template inválido — use letras, números ou espaços.' },
+        { status: 400 }
+      )
+    }
 
     const components: TemplateComponent[] = []
 

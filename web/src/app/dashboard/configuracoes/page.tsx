@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Save, Key, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react'
+import { Save, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface MetaCredentials {
@@ -33,10 +33,6 @@ export default function ConfiguracoesPage() {
   const [loadingData, setLoadingData] = useState(true)
   const [hasCredentials, setHasCredentials] = useState(false)
 
-  useEffect(() => {
-    loadCredentials()
-  }, [])
-
   async function loadCredentials() {
     try {
       const res = await fetch('/api/meta/credentials')
@@ -53,6 +49,11 @@ export default function ConfiguracoesPage() {
       setLoadingData(false)
     }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    loadCredentials()
+  }, [])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -81,9 +82,9 @@ export default function ConfiguracoesPage() {
 
       toast.success(data.message || '✅ Credenciais salvas com sucesso!')
       setHasCredentials(true)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erro completo:', error)
-      toast.error(error.message || 'Erro ao salvar credenciais')
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar credenciais')
     } finally {
       setLoading(false)
     }
@@ -91,17 +92,17 @@ export default function ConfiguracoesPage() {
 
   if (loadingData) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Configurações da Meta</h1>
-        <p className="text-gray-600">
+    <div className="max-w-4xl space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-gray-900">Configurações da Meta</h2>
+        <p className="text-sm text-gray-500">
           Configure as credenciais de acesso à API do WhatsApp Business
         </p>
       </div>
@@ -140,7 +141,7 @@ export default function ConfiguracoesPage() {
             required
             value={credentials.wabaId}
             onChange={(e) => setCredentials({ ...credentials, wabaId: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-400 focus:border-transparent"
             placeholder="Ex: 1283278710593625"
           />
           <p className="mt-1 text-xs text-gray-500">
@@ -158,7 +159,7 @@ export default function ConfiguracoesPage() {
             required
             value={credentials.phoneNumberId}
             onChange={(e) => setCredentials({ ...credentials, phoneNumberId: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-400 focus:border-transparent"
             placeholder="Ex: 1026009683939150"
           />
           <p className="mt-1 text-xs text-gray-500">
@@ -177,7 +178,7 @@ export default function ConfiguracoesPage() {
               required
               value={credentials.businessToken}
               onChange={(e) => setCredentials({ ...credentials, businessToken: e.target.value })}
-              className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+              className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-400 focus:border-transparent font-mono text-sm"
               placeholder="EAAerrWvlQ9YBR..."
             />
             <button
@@ -203,7 +204,7 @@ export default function ConfiguracoesPage() {
             required
             value={credentials.appId}
             onChange={(e) => setCredentials({ ...credentials, appId: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-400 focus:border-transparent"
             placeholder="Ex: 2159086164853718"
           />
           <p className="mt-1 text-xs text-gray-500">
@@ -222,7 +223,7 @@ export default function ConfiguracoesPage() {
               required
               value={credentials.appSecret}
               onChange={(e) => setCredentials({ ...credentials, appSecret: e.target.value })}
-              className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+              className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-400 focus:border-transparent font-mono text-sm"
               placeholder="b4f94227169acf3..."
             />
             <button
@@ -249,7 +250,7 @@ export default function ConfiguracoesPage() {
               required
               value={credentials.webhookVerifyToken}
               onChange={(e) => setCredentials({ ...credentials, webhookVerifyToken: e.target.value })}
-              className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+              className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-400 focus:border-transparent font-mono text-sm"
               placeholder="wls573lkDuo..."
             />
             <button
@@ -275,7 +276,7 @@ export default function ConfiguracoesPage() {
             type="text"
             value={credentials.embeddedSignupConfigId || ''}
             onChange={(e) => setCredentials({ ...credentials, embeddedSignupConfigId: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-400 focus:border-transparent"
             placeholder="Ex: 1003224562191203"
           />
           <p className="mt-1 text-xs text-gray-500">
@@ -288,7 +289,7 @@ export default function ConfiguracoesPage() {
           <button
             type="submit"
             disabled={loading}
-            className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
           >
             {loading ? (
               <>

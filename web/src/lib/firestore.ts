@@ -4,14 +4,15 @@
  */
 
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
+import { getApps } from 'firebase-admin/app'
 import { Conta, Usuario, MetaAccess, ContaVinculada, Cliente, Mensagem } from '@/types/database'
+import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
 // Firebase Admin já foi inicializado em lib/firebase-admin.ts
 function getDb() {
-  const { getApps } = require('firebase-admin/app')
   const apps = getApps()
-  
+
   if (!apps || apps.length === 0) {
     console.error('❌ Firebase Admin não inicializado! Verifique as variáveis de ambiente:')
     console.error('   - FIREBASE_PROJECT_ID')
@@ -33,11 +34,12 @@ function getDb() {
 
 // Converte campos Timestamp do Firestore Admin em Date antes de devolver ao front,
 // caso contrário `new Date(timestamp)` no cliente vira "Invalid Date".
-function convertTimestamps<T extends Record<string, any>>(data: T): T {
-  const result: Record<string, any> = { ...data }
+function convertTimestamps<T extends Record<string, unknown>>(data: T): T {
+  const result: Record<string, unknown> = { ...data }
   for (const key of ['dataCadastro', 'dataAtualizacao']) {
-    if (result[key] && typeof result[key].toDate === 'function') {
-      result[key] = result[key].toDate()
+    const value = result[key]
+    if (value && typeof value === 'object' && 'toDate' in value && typeof value.toDate === 'function') {
+      result[key] = value.toDate()
     }
   }
   return result as T
@@ -63,11 +65,12 @@ export async function criarConta(data: Omit<Conta, 'id' | 'dataCadastro' | 'data
     console.log('✅ Conta criada com ID:', docRef.id)
     
     return { id: docRef.id, ...data, dataCadastro: now.toDate(), dataAtualizacao: now.toDate() }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string; stack?: string }
     console.error('❌ Erro detalhado ao criar conta:', {
-      code: error.code,
-      message: error.message,
-      stack: error.stack
+      code: err.code,
+      message: err.message,
+      stack: err.stack
     })
     throw error
   }
@@ -78,6 +81,15 @@ export async function obterConta(contaId: string): Promise<Conta | null> {
   const docSnap = await db.collection('contas').doc(contaId).get()
   if (!docSnap.exists) return null
   return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Conta
+}
+
+/** Usado para evitar criar uma conta duplicada para quem já tem uma (ver api/meta/credentials/route.ts). */
+export async function obterContaPorEmail(email: string): Promise<Conta | null> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').where('email', '==', email).limit(1).get()
+  if (snapshot.empty) return null
+  const doc = snapshot.docs[0]
+  return { id: doc.id, ...convertTimestamps(doc.data()) } as Conta
 }
 
 export async function atualizarConta(contaId: string, data: Partial<Omit<Conta, 'id' | 'dataCadastro'>>): Promise<void> {
@@ -131,11 +143,32 @@ export async function atualizarUsuario(contaId: string, usuarioId: string, data:
 // ─────────────────────────────────────────
 // META ACCESS
 // ─────────────────────────────────────────
+//
+// businessToken e appSecret são segredos reais da Meta (token de acesso e
+// chave do app) — sempre criptografados antes de gravar, e descriptografados
+// só na leitura. decrypt() é compatível com registros antigos gravados em
+// texto puro (devolve o valor como está se não reconhecer o formato cifrado).
+
+function encryptMetaAccessSecrets<T extends { businessToken?: string; appSecret?: string }>(data: T): T {
+  return {
+    ...data,
+    ...(data.businessToken ? { businessToken: encrypt(data.businessToken) } : {}),
+    ...(data.appSecret ? { appSecret: encrypt(data.appSecret) } : {}),
+  }
+}
+
+function decryptMetaAccessSecrets(data: MetaAccess): MetaAccess {
+  return {
+    ...data,
+    businessToken: data.businessToken ? decrypt(data.businessToken) : data.businessToken,
+    appSecret: data.appSecret ? decrypt(data.appSecret) : data.appSecret,
+  }
+}
 
 export async function criarMetaAccess(contaId: string, data: Omit<MetaAccess, 'id' | 'dataAtualizacao'>): Promise<MetaAccess> {
   const db = getDb()
   const docRef = await db.collection('contas').doc(contaId).collection('metaAccess').add({
-    ...data,
+    ...encryptMetaAccessSecrets(data),
     dataAtualizacao: Timestamp.now(),
   })
   return { id: docRef.id, ...data, dataAtualizacao: new Date() }
@@ -146,7 +179,7 @@ export async function obterMetaAccess(contaId: string): Promise<MetaAccess | nul
   const snapshot = await db.collection('contas').doc(contaId).collection('metaAccess').limit(1).get()
   if (snapshot.empty) return null
   const doc = snapshot.docs[0]
-  return { id: doc.id, ...convertTimestamps(doc.data()) } as MetaAccess
+  return decryptMetaAccessSecrets({ id: doc.id, ...convertTimestamps(doc.data()) } as MetaAccess)
 }
 
 /**
@@ -154,41 +187,35 @@ export async function obterMetaAccess(contaId: string): Promise<MetaAccess | nul
  */
 export async function obterMetaAccessPorWabaId(wabaId: string): Promise<{ metaAccess: MetaAccess; contaId: string } | null> {
   const db = getDb()
-  
-  console.log('🔍 Buscando conta pelo WABA ID:', wabaId)
-  
-  // Buscar em todas as contas
+
+  // Busca em todas as contas — ver nota de escalabilidade no topo do arquivo
+  // do webhook (app/api/webhook/route.ts): varredura completa, aceitável no
+  // volume atual de contas, mas deve virar uma collection group query com
+  // índice dedicado se o número de tenants crescer.
   const contasSnapshot = await db.collection('contas').get()
-  
-  console.log('📊 Total de contas:', contasSnapshot.size)
-  
+
   for (const contaDoc of contasSnapshot.docs) {
     const metaSnapshot = await contaDoc.ref.collection('metaAccess')
       .where('wabaId', '==', wabaId)
       .limit(1)
       .get()
-    
-    console.log(`  Conta ${contaDoc.id}: ${metaSnapshot.size} metaAccess com WABA ${wabaId}`)
-    
+
     if (!metaSnapshot.empty) {
       const metaDoc = metaSnapshot.docs[0]
-      const metaData = metaDoc.data()
-      console.log('✅ Encontrado! WABA:', metaData.wabaId, 'Conta:', contaDoc.id)
       return {
-        metaAccess: { id: metaDoc.id, ...metaData } as MetaAccess,
+        metaAccess: decryptMetaAccessSecrets({ id: metaDoc.id, ...metaDoc.data() } as MetaAccess),
         contaId: contaDoc.id
       }
     }
   }
-  
-  console.log('❌ Nenhuma conta encontrada com WABA:', wabaId)
+
   return null
 }
 
 export async function atualizarMetaAccess(contaId: string, accessId: string, data: Partial<Omit<MetaAccess, 'id'>>): Promise<void> {
   const db = getDb()
   await db.collection('contas').doc(contaId).collection('metaAccess').doc(accessId).update({
-    ...data,
+    ...encryptMetaAccessSecrets(data),
     dataAtualizacao: Timestamp.now(),
   })
 }
@@ -287,10 +314,11 @@ export async function criarMensagem(data: Omit<Mensagem, 'dataCriacao'>): Promis
     console.log('✅ Mensagem salva com sucesso:', data.id)
     
     return { ...data, dataCriacao: now.toDate() }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string }
     console.error('❌ Erro ao salvar mensagem:', {
-      code: error.code,
-      message: error.message,
+      code: err.code,
+      message: err.message,
       id: data.id
     })
     throw error
@@ -340,10 +368,11 @@ export async function atualizarStatusMensagem(mensagemId: string, status: Mensag
     })
     
     console.log('✅ Status atualizado:', mensagemId)
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string }
     console.error('❌ Erro ao atualizar status:', {
-      code: error.code,
-      message: error.message,
+      code: err.code,
+      message: err.message,
       id: mensagemId
     })
     throw error

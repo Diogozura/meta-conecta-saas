@@ -1,21 +1,25 @@
 import Link from 'next/link'
-import { MessageSquare, Users, FileText, PhoneCall, TrendingUp, ArrowRight } from 'lucide-react'
+import { MessageSquare, Users, FileText, Plug, TrendingUp, ArrowRight, Building2 } from 'lucide-react'
+import { getSessionWithPlatformAdmin } from '@/lib/auth'
 
 const stats = [
   { label: 'Mensagens Enviadas', value: '0', change: '—', icon: MessageSquare, color: 'bg-green-50 text-green-600' },
   { label: 'Clientes Cadastrados', value: '0', change: '—', icon: Users, color: 'bg-blue-50 text-blue-600' },
   { label: 'Templates Ativos', value: '0', change: '—', icon: FileText, color: 'bg-purple-50 text-purple-600' },
-  { label: 'Números Conectados', value: '0', change: '—', icon: PhoneCall, color: 'bg-orange-50 text-orange-600' },
+  { label: 'Números Conectados', value: '0', change: '—', icon: Plug, color: 'bg-orange-50 text-orange-600' },
 ]
 
 const quickLinks = [
-  { href: '/dashboard/conversas', label: 'Ver Conversas', desc: 'Acesse o histórico de mensagens enviadas', icon: MessageSquare },
-  { href: '/dashboard/clientes', label: 'Cadastro de Clientes', desc: 'Adicione e gerencie seus contatos', icon: Users },
-  { href: '/dashboard/templates', label: 'Criar Template', desc: 'Monte mensagens reutilizáveis', icon: FileText },
-  { href: '/dashboard/numeros', label: 'Adicionar Número', desc: 'Conecte um número do WhatsApp Business', icon: PhoneCall },
+  { href: '/dashboard/conversas', label: 'Ver Conversas', desc: 'Acesse o histórico de mensagens enviadas', icon: MessageSquare, platformAdminOnly: false },
+  { href: '/dashboard/templates', label: 'Criar Template', desc: 'Monte mensagens reutilizáveis', icon: FileText, platformAdminOnly: false },
+  { href: '/dashboard/onboarding', label: 'Conectar WABA', desc: 'Conecte um número do WhatsApp Business', icon: Plug, platformAdminOnly: false },
+  { href: '/dashboard/clientes', label: 'Gerenciar Empresas', desc: 'Cadastre e administre as contas de clientes do SaaS', icon: Building2, platformAdminOnly: true },
 ]
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const { isPlatformAdmin } = await getSessionWithPlatformAdmin()
+  const visibleQuickLinks = quickLinks.filter((q) => !q.platformAdminOnly || isPlatformAdmin)
+
   return (
     <div className="space-y-6">
       {/* Stats */}
@@ -43,7 +47,7 @@ export default function DashboardPage() {
       <div>
         <h2 className="text-base font-semibold text-gray-800 mb-3">Acesso Rápido</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {quickLinks.map((q) => {
+          {visibleQuickLinks.map((q) => {
             const Icon = q.icon
             return (
               <Link
