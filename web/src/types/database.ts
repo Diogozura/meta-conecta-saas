@@ -110,6 +110,72 @@ export interface Mensagem {
 }
 
 // ─────────────────────────────────────────
+// Profissional (Subcoleção: contas/{contaId}/profissionais)
+// ─────────────────────────────────────────
+export interface Profissional {
+  id: string
+  contaId: string
+  nome: string
+  telefone?: string
+  ativo: boolean
+  google?: {
+    conectado: boolean
+    calendarId: string        // "primary" por padrão
+    refreshTokenEnc: string   // criptografado (mesmo padrão do MetaAccess)
+    email?: string
+  }
+  dataCadastro: Date
+  dataAtualizacao: Date
+}
+
+// ─────────────────────────────────────────
+// Servico (Subcoleção: contas/{contaId}/servicos)
+// ─────────────────────────────────────────
+export interface Servico {
+  id: string
+  contaId: string
+  nome: string
+  duracaoMinutos: number
+  profissionalIds?: string[]  // vazio/ausente = qualquer profissional atende
+  ativo: boolean
+  dataCadastro: Date
+  dataAtualizacao: Date
+}
+
+// ─────────────────────────────────────────
+// Disponibilidade (Subcoleção: contas/{contaId}/disponibilidades)
+// Bloco avulso de data/hora em que um profissional está disponível
+// ─────────────────────────────────────────
+export interface Disponibilidade {
+  id: string
+  contaId: string
+  profissionalId: string
+  inicio: Date
+  fim: Date
+  dataCadastro: Date
+}
+
+// ─────────────────────────────────────────
+// Agendamento (Subcoleção: contas/{contaId}/agendamentos)
+// ─────────────────────────────────────────
+export interface Agendamento {
+  id: string
+  contaId: string
+  profissionalId: string
+  servicoId: string
+  clienteNome: string
+  clienteTelefone: string
+  inicio: Date
+  fim: Date                    // calculado: inicio + servico.duracaoMinutos
+  status: 'confirmado' | 'cancelado' | 'concluido'
+  origem: 'manual' | 'agente_ia'
+  googleEventId?: string
+  observacoes?: string
+  dataCriacao: Date
+  dataAtualizacao: Date
+}
+
+// ─────────────────────────────────────────
 // Sessão (para controle de acesso no app)
 // ─────────────────────────────────────────
 export interface SessaoUsuario {

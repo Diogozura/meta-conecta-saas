@@ -3,9 +3,9 @@
  * Use em Server Components ou Server Actions apenas
  */
 
-import { getFirestore, Timestamp } from 'firebase-admin/firestore'
+import { getFirestore, Timestamp, Query } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, Usuario, MetaAccess, ContaVinculada, Cliente, Mensagem } from '@/types/database'
+import { Conta, Usuario, MetaAccess, ContaVinculada, Cliente, Mensagem, Profissional, Servico, Disponibilidade, Agendamento } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -36,7 +36,7 @@ function getDb() {
 // caso contrário `new Date(timestamp)` no cliente vira "Invalid Date".
 function convertTimestamps<T extends Record<string, unknown>>(data: T): T {
   const result: Record<string, unknown> = { ...data }
-  for (const key of ['dataCadastro', 'dataAtualizacao']) {
+  for (const key of ['dataCadastro', 'dataAtualizacao', 'dataCriacao', 'inicio', 'fim']) {
     const value = result[key]
     if (value && typeof value === 'object' && 'toDate' in value && typeof value.toDate === 'function') {
       result[key] = value.toDate()
@@ -284,6 +284,220 @@ export async function atualizarCliente(contaId: string, clienteId: string, data:
 export async function deletarCliente(contaId: string, clienteId: string): Promise<void> {
   const db = getDb()
   await db.collection('contas').doc(contaId).collection('clientes').doc(clienteId).delete()
+}
+
+// ─────────────────────────────────────────
+// PROFISSIONAIS
+// ─────────────────────────────────────────
+//
+// refreshTokenEnc (dentro de `google`) é o refresh token OAuth do Google
+// Calendar do profissional — segredo real, sempre criptografado antes de
+// gravar e descriptografado só na leitura, mesmo padrão do MetaAccess.
+
+function encryptProfissionalSecrets<T extends { google?: Profissional['google'] }>(data: T): T {
+  if (!data.google?.refreshTokenEnc) return data
+  return {
+    ...data,
+    google: { ...data.google, refreshTokenEnc: encrypt(data.google.refreshTokenEnc) },
+  }
+}
+
+function decryptProfissionalSecrets(data: Profissional): Profissional {
+  if (!data.google?.refreshTokenEnc) return data
+  return {
+    ...data,
+    google: { ...data.google, refreshTokenEnc: decrypt(data.google.refreshTokenEnc) },
+  }
+}
+
+export async function criarProfissional(contaId: string, data: Omit<Profissional, 'id' | 'dataCadastro' | 'dataAtualizacao'>): Promise<Profissional> {
+  const db = getDb()
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('profissionais').add({
+    ...encryptProfissionalSecrets(data),
+    dataCadastro: now,
+    dataAtualizacao: now,
+  })
+  return { id: docRef.id, ...data, dataCadastro: now.toDate(), dataAtualizacao: now.toDate() }
+}
+
+export async function obterProfissional(contaId: string, profissionalId: string): Promise<Profissional | null> {
+  const db = getDb()
+  try {
+    const docSnap = await db.collection('contas').doc(contaId).collection('profissionais').doc(profissionalId).get()
+    if (!docSnap.exists) return null
+    return decryptProfissionalSecrets({ id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Profissional)
+  } catch {
+    return null
+  }
+}
+
+export async function listarProfissionais(contaId: string): Promise<Profissional[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('profissionais').orderBy('dataCadastro', 'desc').get()
+  return snapshot.docs.map(doc => decryptProfissionalSecrets({ id: doc.id, ...convertTimestamps(doc.data()) } as Profissional))
+}
+
+export async function atualizarProfissional(contaId: string, profissionalId: string, data: Partial<Omit<Profissional, 'id' | 'dataCadastro'>>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('profissionais').doc(profissionalId).update({
+    ...encryptProfissionalSecrets(data),
+    dataAtualizacao: Timestamp.now(),
+  })
+}
+
+export async function deletarProfissional(contaId: string, profissionalId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('profissionais').doc(profissionalId).delete()
+}
+
+// ─────────────────────────────────────────
+// SERVICOS
+// ─────────────────────────────────────────
+
+export async function criarServico(contaId: string, data: Omit<Servico, 'id' | 'dataCadastro' | 'dataAtualizacao'>): Promise<Servico> {
+  const db = getDb()
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('servicos').add({
+    ...data,
+    dataCadastro: now,
+    dataAtualizacao: now,
+  })
+  return { id: docRef.id, ...data, dataCadastro: now.toDate(), dataAtualizacao: now.toDate() }
+}
+
+export async function obterServico(contaId: string, servicoId: string): Promise<Servico | null> {
+  const db = getDb()
+  try {
+    const docSnap = await db.collection('contas').doc(contaId).collection('servicos').doc(servicoId).get()
+    if (!docSnap.exists) return null
+    return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Servico
+  } catch {
+    return null
+  }
+}
+
+export async function listarServicos(contaId: string): Promise<Servico[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('servicos').orderBy('dataCadastro', 'desc').get()
+  return snapshot.docs.map(doc => ({ id: doc.id, ...convertTimestamps(doc.data()) } as Servico))
+}
+
+export async function atualizarServico(contaId: string, servicoId: string, data: Partial<Omit<Servico, 'id' | 'dataCadastro'>>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('servicos').doc(servicoId).update({
+    ...data,
+    dataAtualizacao: Timestamp.now(),
+  })
+}
+
+export async function deletarServico(contaId: string, servicoId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('servicos').doc(servicoId).delete()
+}
+
+// ─────────────────────────────────────────
+// DISPONIBILIDADES
+// ─────────────────────────────────────────
+
+export async function criarDisponibilidade(contaId: string, data: Omit<Disponibilidade, 'id' | 'dataCadastro'>): Promise<Disponibilidade> {
+  const db = getDb()
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('disponibilidades').add({
+    ...data,
+    inicio: Timestamp.fromDate(data.inicio),
+    fim: Timestamp.fromDate(data.fim),
+    dataCadastro: now,
+  })
+  return { id: docRef.id, ...data, dataCadastro: now.toDate() }
+}
+
+/** Lista blocos de disponibilidade de um profissional, opcionalmente filtrando por intervalo. */
+export async function listarDisponibilidades(contaId: string, profissionalId: string, de?: Date, ate?: Date): Promise<Disponibilidade[]> {
+  const db = getDb()
+  let query = db.collection('contas').doc(contaId).collection('disponibilidades')
+    .where('profissionalId', '==', profissionalId)
+    .orderBy('inicio', 'asc')
+
+  if (de) query = query.where('inicio', '>=', Timestamp.fromDate(de))
+  if (ate) query = query.where('inicio', '<=', Timestamp.fromDate(ate))
+
+  const snapshot = await query.get()
+  return snapshot.docs.map(doc => ({ id: doc.id, ...convertTimestamps(doc.data()) } as Disponibilidade))
+}
+
+export async function atualizarDisponibilidade(contaId: string, disponibilidadeId: string, data: { inicio: Date; fim: Date }): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('disponibilidades').doc(disponibilidadeId).update({
+    inicio: Timestamp.fromDate(data.inicio),
+    fim: Timestamp.fromDate(data.fim),
+  })
+}
+
+export async function obterDisponibilidade(contaId: string, disponibilidadeId: string): Promise<Disponibilidade | null> {
+  const db = getDb()
+  try {
+    const docSnap = await db.collection('contas').doc(contaId).collection('disponibilidades').doc(disponibilidadeId).get()
+    if (!docSnap.exists) return null
+    return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Disponibilidade
+  } catch {
+    return null
+  }
+}
+
+export async function deletarDisponibilidade(contaId: string, disponibilidadeId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('disponibilidades').doc(disponibilidadeId).delete()
+}
+
+// ─────────────────────────────────────────
+// AGENDAMENTOS
+// ─────────────────────────────────────────
+
+export async function criarAgendamento(contaId: string, data: Omit<Agendamento, 'id' | 'dataCriacao' | 'dataAtualizacao'>): Promise<Agendamento> {
+  const db = getDb()
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('agendamentos').add({
+    ...data,
+    inicio: Timestamp.fromDate(data.inicio),
+    fim: Timestamp.fromDate(data.fim),
+    dataCriacao: now,
+    dataAtualizacao: now,
+  })
+  return { id: docRef.id, ...data, dataCriacao: now.toDate(), dataAtualizacao: now.toDate() }
+}
+
+export async function obterAgendamento(contaId: string, agendamentoId: string): Promise<Agendamento | null> {
+  const db = getDb()
+  try {
+    const docSnap = await db.collection('contas').doc(contaId).collection('agendamentos').doc(agendamentoId).get()
+    if (!docSnap.exists) return null
+    return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Agendamento
+  } catch {
+    return null
+  }
+}
+
+/** Lista agendamentos de uma conta, com filtros opcionais por profissional, intervalo e status. */
+export async function listarAgendamentos(contaId: string, filtros: { profissionalId?: string; de?: Date; ate?: Date; status?: Agendamento['status'] } = {}): Promise<Agendamento[]> {
+  const db = getDb()
+  let query = db.collection('contas').doc(contaId).collection('agendamentos').orderBy('inicio', 'asc') as Query
+
+  if (filtros.profissionalId) query = query.where('profissionalId', '==', filtros.profissionalId)
+  if (filtros.status) query = query.where('status', '==', filtros.status)
+  if (filtros.de) query = query.where('inicio', '>=', Timestamp.fromDate(filtros.de))
+  if (filtros.ate) query = query.where('inicio', '<=', Timestamp.fromDate(filtros.ate))
+
+  const snapshot = await query.get()
+  return snapshot.docs.map(doc => ({ id: doc.id, ...convertTimestamps(doc.data()) } as Agendamento))
+}
+
+export async function atualizarAgendamento(contaId: string, agendamentoId: string, data: Partial<Omit<Agendamento, 'id' | 'dataCriacao'>>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('agendamentos').doc(agendamentoId).update({
+    ...data,
+    dataAtualizacao: Timestamp.now(),
+  })
 }
 
 // ─────────────────────────────────────────

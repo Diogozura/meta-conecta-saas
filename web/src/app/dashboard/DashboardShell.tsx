@@ -15,6 +15,7 @@ import {
   Plug,
   UserCog,
   Settings,
+  Calendar,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Toaster } from 'sonner'
@@ -23,6 +24,7 @@ import { RealtimeListeners } from '@/components/RealtimeListeners'
 const navItems = [
   { href: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard, platformAdminOnly: false },
   { href: '/dashboard/conversas', label: 'Conversas', icon: MessageSquare, platformAdminOnly: false },
+  { href: '/dashboard/agenda', label: 'Agenda', icon: Calendar, platformAdminOnly: false },
   { href: '/dashboard/clientes', label: 'Clientes', icon: Building2, platformAdminOnly: true },
   { href: '/dashboard/usuarios', label: 'Usuários', icon: UserCog, platformAdminOnly: false },
   { href: '/dashboard/templates', label: 'Templates', icon: FileText, platformAdminOnly: false },
