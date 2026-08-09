@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
         // Um atendente respondeu manualmente — pausa a IA nessa conversa pra
         // não haver resposta automática concorrendo com o humano.
-        await definirIaAtivaConversa(session.user.contaId, to, false, 'Atendente respondeu manualmente pelo painel')
+        await definirIaAtivaConversa(session.user.contaId, to, false, 'Atendente respondeu manualmente pelo painel', 'manual')
       } catch (persistError) {
         // Não falha o envio por causa disso — a mensagem já foi entregue à
         // Meta, só o registro de histórico que não pôde ser salvo.

@@ -8,7 +8,6 @@ import {
 } from '@/lib/firestore'
 import { calcularHorariosLivres, Intervalo } from '@/lib/agendaHelpers'
 import { createCalendarEvent, getFreeBusy } from '@/lib/googleCalendar'
-import { addAgendamentoEvent } from '@/lib/agendamentoStore'
 import { Agendamento } from '@/types/database'
 
 // Lógica de negócio da agenda compartilhada entre as rotas HTTP
@@ -140,14 +139,6 @@ export async function criarAgendamentoInterno(contaId: string, params: CriarAgen
       console.error('Erro ao criar evento no Google Calendar (agendamento já foi salvo):', error)
     }
   }
-
-  addAgendamentoEvent({
-    id: agendamento.id,
-    contaId,
-    clienteNome,
-    profissionalNome: profissional.nome,
-    inicio: inicio.getTime(),
-  })
 
   return agendamento
 }

@@ -514,6 +514,17 @@ export async function atualizarAgendamento(contaId: string, agendamentoId: strin
   })
 }
 
+/** Agendamentos criados depois de um instante — usado pelo polling em tempo real do painel. */
+export async function listarAgendamentosRecentes(contaId: string, sinceMs: number, limit = 20): Promise<Agendamento[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('agendamentos')
+    .where('dataCriacao', '>', Timestamp.fromMillis(sinceMs))
+    .orderBy('dataCriacao', 'asc')
+    .limit(limit)
+    .get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as Agendamento))
+}
+
 // ─────────────────────────────────────────
 // CONVERSAS
 // ─────────────────────────────────────────
@@ -536,18 +547,42 @@ export async function obterConversa(contaId: string, numero: string): Promise<Co
   }
 }
 
-export async function definirIaAtivaConversa(contaId: string, numero: string, iaAtiva: boolean, motivoTransferencia?: string): Promise<void> {
+export async function definirIaAtivaConversa(
+  contaId: string,
+  numero: string,
+  iaAtiva: boolean,
+  motivoTransferencia?: string,
+  origemTransferencia: 'ia' | 'manual' = 'manual',
+): Promise<void> {
   const db = getDb()
   await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
     {
       numero: sanitizarNumero(numero),
       iaAtiva,
       ...(iaAtiva
-        ? { motivoTransferencia: null, dataTransferencia: null }
-        : { motivoTransferencia: motivoTransferencia ?? null, dataTransferencia: Timestamp.now() }),
+        ? { motivoTransferencia: null, dataTransferencia: null, origemTransferencia: null }
+        : { motivoTransferencia: motivoTransferencia ?? null, dataTransferencia: Timestamp.now(), origemTransferencia }),
     },
     { merge: true },
   )
+}
+
+/**
+ * Conversas transferidas pra humano PELA IA depois de um instante — usado
+ * pelo polling em tempo real do painel. Filtra 'ia' em memória (não no
+ * Firestore) pra não precisar de índice composto: o range fica só em
+ * dataTransferencia, que já tem índice de campo único automático.
+ */
+export async function listarTransferenciasRecentes(contaId: string, sinceMs: number, limit = 20): Promise<Conversa[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('conversas')
+    .where('dataTransferencia', '>', Timestamp.fromMillis(sinceMs))
+    .orderBy('dataTransferencia', 'asc')
+    .limit(limit)
+    .get()
+  return snapshot.docs
+    .map((doc) => ({ numero: doc.id, ...convertTimestamps(doc.data()) } as Conversa))
+    .filter((c) => c.origemTransferencia === 'ia')
 }
 
 // ─────────────────────────────────────────
@@ -616,6 +651,19 @@ export async function listarMensagensPorNumero(contaId: string, numeroTelefone: 
     .get()
   
   return snapshot.docs.map(doc => ({ ...doc.data() } as Mensagem))
+}
+
+/**
+ * Mensagens recebidas depois de um instante — usado pelo polling em tempo
+ * real do painel. Reaproveita o mesmo índice de listarMensagens (contaId ==,
+ * orderBy timestamp) e filtra em memória, evitando precisar de um índice
+ * composto novo no Firestore.
+ */
+export async function listarMensagensRecebidasDesde(contaId: string, sinceMs: number, limit = 50): Promise<Mensagem[]> {
+  const recentes = await listarMensagens(contaId, limit)
+  return recentes
+    .filter((m) => m.tipo === 'recebida' && (m.dataCriacao as unknown as Timestamp).toMillis() > sinceMs)
+    .sort((a, b) => (a.dataCriacao as unknown as Timestamp).toMillis() - (b.dataCriacao as unknown as Timestamp).toMillis())
 }
 
 /**

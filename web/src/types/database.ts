@@ -44,6 +44,10 @@ export interface Conversa {
   iaAtiva: boolean
   motivoTransferencia?: string
   dataTransferencia?: Date
+  // Quem pausou a IA — 'ia' é a própria IA escalando pra humano (gera aviso
+  // no painel); 'manual' é um atendente respondendo direto (não gera aviso,
+  // já que ele mesmo acabou de responder).
+  origemTransferencia?: 'ia' | 'manual'
 }
 
 // ─────────────────────────────────────────

@@ -1,6 +1,5 @@
 import { createHmac } from 'crypto'
 import { after } from 'next/server'
-import { addMessage } from '@/lib/messageStore'
 import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem } from '@/lib/firestore'
 import { processarMensagemComIA } from '@/lib/aiAgent'
 import { Mensagem } from '@/types/database'
@@ -81,15 +80,7 @@ export async function POST(request: Request) {
           contaId,
         })
 
-        // Salva na memória (para polling rápido)
-        addMessage({
-          id: msg.id,
-          from: msg.from,
-          text: msg.text?.body ?? '(mídia)',
-          timestamp: parseInt(msg.timestamp),
-        })
-
-        // Salva no Firebase (persistência)
+        // Salva no Firebase (persistência — também é a fonte do polling do painel)
         if (contaId) {
           try {
             await criarMensagem({
