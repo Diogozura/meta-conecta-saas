@@ -69,5 +69,33 @@ export function RealtimeListeners() {
     return () => clearInterval(id)
   }, [pathname, router])
 
+  // Notifica a empresa quando a IA transfere uma conversa pra atendimento humano.
+  useEffect(() => {
+    let since = Date.now()
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/handoff/recentes?since=${since}`)
+        if (!res.ok) return
+        const { eventos, serverTime } = await res.json()
+        since = serverTime
+        for (const evt of eventos) {
+          toast.message('Atendimento humano necessário', {
+            description: `${evt.numero} — ${evt.motivo}`,
+            duration: 8000,
+            position: 'top-right',
+            action: {
+              label: 'Abrir',
+              onClick: () => router.push(`/dashboard/conversas?from=${evt.numero}`),
+            },
+          })
+        }
+      } catch {}
+    }
+
+    const id = setInterval(poll, 3000)
+    return () => clearInterval(id)
+  }, [router])
+
   return null
 }

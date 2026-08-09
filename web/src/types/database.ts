@@ -15,6 +15,35 @@ export interface Conta {
   dataCadastro: Date
   dataAtualizacao: Date
   status: 'ativo' | 'inativo' | 'suspenso'
+  ai?: ContaAiConfig
+}
+
+// Configuração do agente de IA que responde as mensagens do WhatsApp
+// automaticamente (Gemini, com function calling sobre a agenda). apiKey é
+// segredo real (chave da própria conta do cliente) — sempre criptografada
+// antes de gravar, mesmo padrão do businessToken/appSecret da Meta.
+export interface ContaAiConfig {
+  enabled: boolean
+  provider: 'gemini' | 'openai' | 'anthropic'
+  model: string
+  prompt: string
+  apiKey: string
+  /** Texto livre sobre o negócio (o que vende/atende, horários, endereço,
+   *  políticas, perguntas frequentes) — entra no prompt do agente pra ele
+   *  responder dúvidas gerais, não só sobre agenda. */
+  informacoesNegocio?: string
+}
+
+// ─────────────────────────────────────────
+// Conversa (Subcoleção: contas/{contaId}/conversas)
+// Estado de controle por número de telefone — principalmente se a IA está
+// respondendo automaticamente ou se um atendente humano assumiu.
+// ─────────────────────────────────────────
+export interface Conversa {
+  numero: string
+  iaAtiva: boolean
+  motivoTransferencia?: string
+  dataTransferencia?: Date
 }
 
 // ─────────────────────────────────────────

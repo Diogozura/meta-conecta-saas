@@ -5,7 +5,7 @@
 
 import { getFirestore, Timestamp, Query } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, Usuario, MetaAccess, ContaVinculada, Cliente, Mensagem, Profissional, Servico, Disponibilidade, Agendamento } from '@/types/database'
+import { Conta, ContaAiConfig, Usuario, MetaAccess, ContaVinculada, Cliente, Mensagem, Profissional, Servico, Disponibilidade, Agendamento, Conversa } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -48,6 +48,20 @@ function convertTimestamps<T extends Record<string, unknown>>(data: T): T {
 // ─────────────────────────────────────────
 // CONTAS
 // ─────────────────────────────────────────
+//
+// ai.apiKey é a chave da API do Gemini de cada cliente — segredo real,
+// sempre criptografado antes de gravar e descriptografado só na leitura,
+// mesmo padrão do businessToken/appSecret do MetaAccess.
+
+function encryptContaAiSecrets<T extends { ai?: Partial<ContaAiConfig> }>(data: T): T {
+  if (!data.ai?.apiKey) return data
+  return { ...data, ai: { ...data.ai, apiKey: encrypt(data.ai.apiKey) } }
+}
+
+function decryptContaAiSecrets(conta: Conta): Conta {
+  if (!conta.ai?.apiKey) return conta
+  return { ...conta, ai: { ...conta.ai, apiKey: decrypt(conta.ai.apiKey) } }
+}
 
 export async function criarConta(data: Omit<Conta, 'id' | 'dataCadastro' | 'dataAtualizacao'>): Promise<Conta> {
   const db = getDb()
@@ -80,7 +94,7 @@ export async function obterConta(contaId: string): Promise<Conta | null> {
   const db = getDb()
   const docSnap = await db.collection('contas').doc(contaId).get()
   if (!docSnap.exists) return null
-  return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Conta
+  return decryptContaAiSecrets({ id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Conta)
 }
 
 /** Usado para evitar criar uma conta duplicada para quem já tem uma (ver api/meta/credentials/route.ts). */
@@ -95,7 +109,7 @@ export async function obterContaPorEmail(email: string): Promise<Conta | null> {
 export async function atualizarConta(contaId: string, data: Partial<Omit<Conta, 'id' | 'dataCadastro'>>): Promise<void> {
   const db = getDb()
   await db.collection('contas').doc(contaId).update({
-    ...data,
+    ...encryptContaAiSecrets(data),
     dataAtualizacao: Timestamp.now(),
   })
 }
@@ -498,6 +512,42 @@ export async function atualizarAgendamento(contaId: string, agendamentoId: strin
     ...data,
     dataAtualizacao: Timestamp.now(),
   })
+}
+
+// ─────────────────────────────────────────
+// CONVERSAS
+// ─────────────────────────────────────────
+// Estado de controle por número de telefone — principalmente se a IA está
+// respondendo automaticamente ou se um atendente humano assumiu a conversa.
+// Doc ID é o número sanitizado (só dígitos), pra bater com o `from`/`to` das mensagens.
+
+function sanitizarNumero(numero: string): string {
+  return numero.replace(/\D/g, '')
+}
+
+export async function obterConversa(contaId: string, numero: string): Promise<Conversa | null> {
+  const db = getDb()
+  try {
+    const docSnap = await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).get()
+    if (!docSnap.exists) return null
+    return { numero: sanitizarNumero(numero), ...convertTimestamps(docSnap.data()!) } as Conversa
+  } catch {
+    return null
+  }
+}
+
+export async function definirIaAtivaConversa(contaId: string, numero: string, iaAtiva: boolean, motivoTransferencia?: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    {
+      numero: sanitizarNumero(numero),
+      iaAtiva,
+      ...(iaAtiva
+        ? { motivoTransferencia: null, dataTransferencia: null }
+        : { motivoTransferencia: motivoTransferencia ?? null, dataTransferencia: Timestamp.now() }),
+    },
+    { merge: true },
+  )
 }
 
 // ─────────────────────────────────────────

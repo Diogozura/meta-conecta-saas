@@ -1,6 +1,8 @@
 import { createHmac } from 'crypto'
+import { after } from 'next/server'
 import { addMessage } from '@/lib/messageStore'
 import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem } from '@/lib/firestore'
+import { processarMensagemComIA } from '@/lib/aiAgent'
 import { Mensagem } from '@/types/database'
 
 /* ─── GET: verificação do endpoint pelo Meta ─────────────────────────────── */
@@ -53,13 +55,12 @@ export async function POST(request: Request) {
 
   for (const entry of payload.entry ?? []) {
     // Buscar conta pelo WABA ID (vem no entry.id, não no metadata)
-    let contaId: string | undefined
     const wabaId = entry.id  // ✅ WABA ID correto
-    
+
     console.log('[Webhook] Buscando conta para WABA:', wabaId)
-    
+
     const result = await obterMetaAccessPorWabaId(wabaId)
-    contaId = result?.contaId
+    const contaId = result?.contaId
     
     if (!contaId) {
       console.warn('⚠️ WABA não encontrado:', wabaId)
@@ -99,6 +100,15 @@ export async function POST(request: Request) {
               timestamp: parseInt(msg.timestamp),
               tipo: 'recebida',
             })
+
+            // Aciona o agente de IA (se ligado pra essa conta) DEPOIS de
+            // responder 200 OK pro Meta — o Meta não pode esperar o Gemini
+            // terminar, ou trata o webhook como falho.
+            if (msg.text?.body) {
+              const contaIdParaIA = contaId
+              const from = msg.from
+              after(() => processarMensagemComIA(contaIdParaIA, from))
+            }
           } catch (error) {
             console.error('❌ Erro ao salvar mensagem no Firebase:', error)
           }

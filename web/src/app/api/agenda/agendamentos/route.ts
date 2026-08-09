@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { atualizarAgendamento, criarAgendamento, listarAgendamentos, obterProfissional, obterServico } from '@/lib/firestore'
-import { createCalendarEvent, getFreeBusy } from '@/lib/googleCalendar'
-import { addAgendamentoEvent } from '@/lib/agendamentoStore'
+import { listarAgendamentos } from '@/lib/firestore'
+import { criarAgendamentoInterno, AgendaServiceError } from '@/lib/agendaService'
 
 // GET /api/agenda/agendamentos?profissionalId=&de=&ate=&status=
 export async function GET(req: NextRequest) {
@@ -26,8 +25,8 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/agenda/agendamentos - Cria um agendamento e, se o profissional
-// tiver Google Calendar conectado, cria o evento correspondente.
+// POST /api/agenda/agendamentos - Cria um agendamento (mesma regra usada
+// pelo agente de IA, em lib/agendaService.ts).
 export async function POST(req: NextRequest) {
   try {
     const session = await auth()
@@ -47,80 +46,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Data/hora de início inválida' }, { status: 400 })
     }
 
-    const [profissional, servico] = await Promise.all([
-      obterProfissional(session.user.contaId, profissionalId),
-      obterServico(session.user.contaId, servicoId),
-    ])
-    if (!profissional) {
-      return NextResponse.json({ error: 'Profissional não encontrado' }, { status: 404 })
-    }
-    if (!servico) {
-      return NextResponse.json({ error: 'Serviço não encontrado' }, { status: 404 })
-    }
-
-    const fimDate = new Date(inicioDate.getTime() + servico.duracaoMinutos * 60 * 1000)
-
-    // Revalida que o slot ainda está livre (evita corrida entre dois clientes escolhendo o mesmo horário).
-    const conflitantes = await listarAgendamentos(session.user.contaId, { profissionalId, status: 'confirmado' })
-    const temConflito = conflitantes.some((a) => a.inicio < fimDate && a.fim > inicioDate)
-    if (temConflito) {
-      return NextResponse.json({ error: 'Esse horário acabou de ser reservado. Escolha outro.' }, { status: 409 })
-    }
-
-    if (profissional.google?.conectado) {
-      try {
-        const busyGoogle = await getFreeBusy(profissional.google.refreshTokenEnc, profissional.google.calendarId, inicioDate, fimDate)
-        const bateComGoogle = busyGoogle.some((b) => b.start < fimDate && b.end > inicioDate)
-        if (bateComGoogle) {
-          return NextResponse.json({ error: 'Esse horário está ocupado na agenda do profissional. Escolha outro.' }, { status: 409 })
-        }
-      } catch (error) {
-        console.error('Erro ao revalidar freebusy do Google antes de agendar, seguindo mesmo assim:', error)
-      }
-    }
-
-    const agendamento = await criarAgendamento(session.user.contaId, {
-      contaId: session.user.contaId,
+    const agendamento = await criarAgendamentoInterno(session.user.contaId, {
       profissionalId,
       servicoId,
       clienteNome,
       clienteTelefone,
       inicio: inicioDate,
-      fim: fimDate,
-      status: 'confirmado',
       origem: origem === 'agente_ia' ? 'agente_ia' : 'manual',
       observacoes,
     })
 
-    if (profissional.google?.conectado) {
-      try {
-        const googleEventId = await createCalendarEvent(profissional.google.refreshTokenEnc, profissional.google.calendarId, {
-          summary: `${servico.nome} — ${clienteNome}`,
-          description: `Cliente: ${clienteNome}\nWhatsApp: ${clienteTelefone}${observacoes ? `\nObs: ${observacoes}` : ''}`,
-          start: inicioDate,
-          end: fimDate,
-        })
-        await atualizarAgendamento(session.user.contaId, agendamento.id, { googleEventId })
-        agendamento.googleEventId = googleEventId
-      } catch (error) {
-        // Agendamento já está confirmado no sistema — a falta de sync com o
-        // Google não deve impedir a confirmação pro cliente.
-        console.error('Erro ao criar evento no Google Calendar (agendamento já foi salvo):', error)
-      }
-    }
-
-    // Notifica quem estiver com o painel aberto (qualquer tela), do mesmo
-    // jeito que novas mensagens do WhatsApp já são notificadas em tempo real.
-    addAgendamentoEvent({
-      id: agendamento.id,
-      contaId: session.user.contaId,
-      clienteNome,
-      profissionalNome: profissional.nome,
-      inicio: inicioDate.getTime(),
-    })
-
     return NextResponse.json({ agendamento }, { status: 201 })
   } catch (error) {
+    if (error instanceof AgendaServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error('Erro ao criar agendamento:', error)
     return NextResponse.json({ error: 'Erro ao criar agendamento' }, { status: 500 })
   }

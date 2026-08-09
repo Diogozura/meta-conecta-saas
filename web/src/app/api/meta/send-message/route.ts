@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import { sendTextMessage, getMetaCredentials } from '@/lib/meta'
 import { auth } from '@/lib/auth'
-import { criarMensagem } from '@/lib/firestore'
+import { criarMensagem, definirIaAtivaConversa } from '@/lib/firestore'
 
 async function requireAuth() {
   const store = await cookies()
@@ -52,6 +52,10 @@ export async function POST(request: Request) {
           tipo: 'enviada',
           status: 'enviada',
         })
+
+        // Um atendente respondeu manualmente — pausa a IA nessa conversa pra
+        // não haver resposta automática concorrendo com o humano.
+        await definirIaAtivaConversa(session.user.contaId, to, false, 'Atendente respondeu manualmente pelo painel')
       } catch (persistError) {
         // Não falha o envio por causa disso — a mensagem já foi entregue à
         // Meta, só o registro de histórico que não pôde ser salvo.
