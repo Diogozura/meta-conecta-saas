@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -163,6 +164,13 @@ export default function LoginPage() {
               </svg>
               Entrar com Google
             </button>
+
+            <p className="mt-6 text-center text-sm text-gray-500">
+              Não tem uma conta?{' '}
+              <Link href="/cadastro" className="font-medium text-green-700 hover:text-green-800">
+                Cadastre-se
+              </Link>
+            </p>
           </div>
         </div>
       </div>

@@ -5,6 +5,7 @@ import type { NextRequest } from 'next/server'
 const PUBLIC_ROUTES = [
   '/',
   '/login',
+  '/cadastro',
   '/politica-de-privacidade',
   '/termos-de-uso',
 ]
@@ -27,8 +28,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Redireciona para dashboard se já está autenticado e tenta acessar login
-  if (session && pathname === '/login') {
+  // Redireciona para dashboard se já está autenticado e tenta acessar login/cadastro
+  if (session && (pathname === '/login' || pathname === '/cadastro')) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
