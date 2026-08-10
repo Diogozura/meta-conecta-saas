@@ -12,8 +12,14 @@ nasce bloqueada e só libera após o primeiro pagamento ser confirmado.
 - **Modelo de cobrança**: assinatura recorrente automática.
 - **Métodos no checkout**: Google Pay + Pix + Cartão (Checkout do Mercado
   Pago oferece os três na mesma tela).
-- **Sem trial**: conta nasce `pendente_pagamento`, libera dashboard só depois
-  do primeiro pagamento aprovado.
+- **Trial sem cartão (atualizado)**: o cadastro pode ser concluído
+  escolhendo um método de pagamento (segue pra `/pagamento`) **ou pulando
+  essa etapa** — nesse caso a conta nasce com `assinatura.status: 'trial'` e
+  `trialEndsAt` 14 dias à frente, com acesso liberado ao dashboard até o
+  prazo vencer. Depois do trial expirar sem pagamento, a conta vira
+  `pendente_pagamento` e passa a valer o mesmo bloqueio de antes. (Decisão
+  anterior era "sem trial" — mudou a pedido do produto: o botão de pular no
+  `/cadastro` precisa dar acesso de verdade, não só adiar o cartão.)
 - **Ressalva**: a API de assinaturas do Mercado Pago (`preapproval`) cobra
   automaticamente todo mês via **cartão tokenizado**. Pix e Google Pay
   funcionam para o pagamento inicial; a recorrência subsequente depende do
@@ -39,7 +45,8 @@ Arquivo: `web/src/types/database.ts`
 - [ ] Adicionar campo `assinatura` em `Conta`:
   ```ts
   assinatura?: {
-    status: 'pendente_pagamento' | 'ativa' | 'atrasada' | 'cancelada'
+    status: 'trial' | 'pendente_pagamento' | 'ativa' | 'atrasada' | 'cancelada'
+    trialEndsAt?: Date
     mpPreapprovalId?: string
     mpPayerId?: string
     proximoVencimento?: Date
@@ -86,9 +93,9 @@ de UI — não pode fazer checagem no servidor).
       (mesmo componente cliente, sem mudanças de UI).
 - [ ] `web/src/app/dashboard/layout.tsx` vira Server Component: chama
       `auth()` (já existe em `web/src/lib/auth.ts`), busca a `Conta` via
-      `obterConta(contaId)`, e se `assinatura.status !== 'ativa'` faz
-      `redirect('/pagamento')`. Caso contrário renderiza
-      `<DashboardShell>{children}</DashboardShell>`.
+      `obterConta(contaId)`. Libera (`<DashboardShell>{children}</DashboardShell>`)
+      quando `assinatura.status === 'ativa'` **ou** (`status === 'trial'` e
+      `trialEndsAt` ainda não passou); nos demais casos, `redirect('/pagamento')`.
 - [ ] `middleware.ts` continua igual (só checa presença do cookie `session`,
       roda no Edge runtime) — a checagem de pagamento fica no layout porque
       precisa do Admin SDK/Firestore.
@@ -109,12 +116,17 @@ Não existe página de self-signup — contas são criadas via scripts de admin.
 
 Arquivo: `web/src/app/cadastro/page.tsx`
 
-- [ ] Adicionar `/cadastro` em `PUBLIC_ROUTES` no `middleware.ts`.
+- [ ] Adicionar `/cadastro` em `PUBLIC_ROUTES` no `middleware.ts`. (Já feito
+      — ver `web/src/middleware.ts`; o wizard visual em
+      `web/src/app/cadastro/` já existe, falta só a criação real da conta.)
 - [ ] Criar o usuário no Firebase Auth (client SDK).
-- [ ] Criar a `Conta` já com `assinatura.status: 'pendente_pagamento'` e o
-      `Usuario` como `PROPRIETARIO`.
-- [ ] Chamar `setSession` e redirecionar direto para `/pagamento` — nunca
-      para `/dashboard` sem pagar.
+- [ ] Criar a `Conta` com o `Usuario` como `PROPRIETARIO`, e
+      `assinatura.status` dependendo da escolha na última etapa do wizard
+      (pagamento): se o usuário escolheu um método,
+      `status: 'pendente_pagamento'`; se pulou, `status: 'trial'` com
+      `trialEndsAt: now + 14 dias`.
+- [ ] Chamar `setSession` e redirecionar: `pendente_pagamento` vai pra
+      `/pagamento`; `trial` vai direto pra `/dashboard`.
 
 ## Passo 7 — Renovação e tolerância
 
@@ -124,7 +136,9 @@ Arquivo: `web/src/app/cadastro/page.tsx`
 - [ ] Criar `web/src/app/api/cron/checar-assinaturas/route.ts` +
       configuração em `vercel.json` (Vercel Cron, execução diária): varre
       contas `atrasada` cujo prazo de tolerância já passou e marca
-      `cancelada`.
+      `cancelada`; varre também contas `trial` cujo `trialEndsAt` já passou
+      e marca `pendente_pagamento` (nunca `cancelada` — a conta nunca chegou
+      a assinar, só o teste acabou).
 
 ## Passo 8 — Segurança específica do pagamento
 
@@ -149,3 +163,7 @@ Arquivo: `web/src/app/cadastro/page.tsx`
       `proximoVencimento` já passou e conferir que ela é bloqueada.
 - [ ] Confirmar que `/cadastro` é acessível sem sessão e `/dashboard/*` não é
       acessível sem assinatura ativa.
+- [ ] Concluir o cadastro pulando a etapa de pagamento → conta `trial` →
+      `/dashboard` libera direto. Forçar `trialEndsAt` no passado numa conta
+      de teste e confirmar que o cron marca `pendente_pagamento` e o
+      `/dashboard/*` passa a redirecionar para `/pagamento`.

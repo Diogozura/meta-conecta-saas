@@ -17,6 +17,8 @@ export interface CadastroFormData {
   teamSize: string
   // Etapa 4 — Canais
   channels: string[]
+  // Etapa 5 — Pagamento
+  paymentMethod: string
 }
 
 export const initialCadastroFormData: CadastroFormData = {
@@ -34,4 +36,5 @@ export const initialCadastroFormData: CadastroFormData = {
   segmentOther: '',
   teamSize: '',
   channels: [],
+  paymentMethod: '',
 }

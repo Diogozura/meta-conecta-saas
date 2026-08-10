@@ -8,15 +8,17 @@ import StepAccount from './StepAccount'
 import StepCompany from './StepCompany'
 import StepProfile from './StepProfile'
 import StepChannels from './StepChannels'
+import StepPayment from './StepPayment'
 import { initialCadastroFormData, type CadastroFormData } from './types'
 
-type Step = 1 | 2 | 3 | 4
+type Step = 1 | 2 | 3 | 4 | 5
 
 const STEPS: { number: Step; label: string }[] = [
   { number: 1, label: 'Conta' },
   { number: 2, label: 'Empresa' },
   { number: 3, label: 'Perfil' },
   { number: 4, label: 'Canais' },
+  { number: 5, label: 'Pagamento' },
 ]
 
 const STEP_COPY: Record<Step, { title: string; subtitle: string }> = {
@@ -24,6 +26,7 @@ const STEP_COPY: Record<Step, { title: string; subtitle: string }> = {
   2: { title: 'Dados da empresa', subtitle: 'CNPJ e CEP preenchem o endereço automaticamente' },
   3: { title: 'Perfil da empresa', subtitle: 'Conte um pouco sobre o seu negócio' },
   4: { title: 'Conecte seus canais', subtitle: 'Selecione onde você quer atender seus clientes' },
+  5: { title: 'Forma de pagamento', subtitle: 'Escolha como prefere pagar — ou comece a usar agora e decida depois' },
 }
 
 export default function CadastroPage() {
@@ -40,6 +43,10 @@ export default function CadastroPage() {
       ...f,
       channels: f.channels.includes(key) ? f.channels.filter((c) => c !== key) : [...f.channels, key],
     }))
+  }
+
+  function selectPaymentMethod(key: string) {
+    updateField('paymentMethod', key)
   }
 
   function goBack() {
@@ -133,6 +140,15 @@ export default function CadastroPage() {
             <StepChannels
               channels={formData.channels}
               onToggleChannel={toggleChannel}
+              onBack={goBack}
+              onContinue={() => setStep(5)}
+              loading={loading}
+            />
+          )}
+          {step === 5 && (
+            <StepPayment
+              paymentMethod={formData.paymentMethod}
+              onSelectMethod={selectPaymentMethod}
               onBack={goBack}
               onSubmit={handleCreateAccount}
               loading={loading}

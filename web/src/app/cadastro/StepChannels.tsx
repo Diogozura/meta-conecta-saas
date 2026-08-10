@@ -1,4 +1,4 @@
-import { ArrowLeft, Camera, Check, Loader2, MessageCircle } from 'lucide-react'
+import { ArrowLeft, Camera, Check, MessageCircle } from 'lucide-react'
 
 const CHANNELS = [
   { key: 'whatsapp', label: 'WhatsApp', badgeClass: 'bg-[#25D366]', icon: MessageCircle },
@@ -10,11 +10,11 @@ interface StepChannelsProps {
   channels: string[]
   onToggleChannel: (key: string) => void
   onBack: () => void
-  onSubmit: () => void
+  onContinue: () => void
   loading: boolean
 }
 
-export default function StepChannels({ channels, onToggleChannel, onBack, onSubmit, loading }: StepChannelsProps) {
+export default function StepChannels({ channels, onToggleChannel, onBack, onContinue, loading }: StepChannelsProps) {
   return (
     <div>
       <button
@@ -27,7 +27,7 @@ export default function StepChannels({ channels, onToggleChannel, onBack, onSubm
         Voltar
       </button>
 
-      <form onSubmit={(e) => { e.preventDefault(); onSubmit() }} className="space-y-4">
+      <form onSubmit={(e) => { e.preventDefault(); onContinue() }} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {CHANNELS.map(({ key, label, badgeClass, icon: Icon }) => {
             const selected = channels.includes(key)
@@ -58,10 +58,9 @@ export default function StepChannels({ channels, onToggleChannel, onBack, onSubm
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-          Criar conta
+          Continuar
         </button>
       </form>
     </div>
