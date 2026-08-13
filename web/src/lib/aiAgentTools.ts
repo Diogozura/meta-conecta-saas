@@ -1,6 +1,5 @@
 import { listarServicos, listarProfissionais, definirIaAtivaConversa } from '@/lib/firestore'
 import { buscarHorariosLivres, criarAgendamentoInterno, AgendaServiceError } from '@/lib/agendaService'
-import { addHandoffEvent } from '@/lib/handoffStore'
 import { Profissional, Servico } from '@/types/database'
 
 // Ferramentas do agente em formato neutro (JSON Schema simples, só strings)
@@ -130,8 +129,7 @@ export async function executarFuncaoAgente(
 
       case 'transferir_para_humano': {
         const { motivo } = args as { motivo: string }
-        await definirIaAtivaConversa(contaId, telefoneCliente, false, motivo)
-        addHandoffEvent({ contaId, numero: telefoneCliente, motivo })
+        await definirIaAtivaConversa(contaId, telefoneCliente, false, motivo, 'ia')
         return { transferido: true }
       }
 

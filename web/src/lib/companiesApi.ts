@@ -5,7 +5,8 @@
  * viver no servidor.
  */
 import type {
-  AIConfigUpdateInput,
+  AIProviderConfigInput,
+  AIProviderConfigUpdateInput,
   CompanyCreateInput,
   CompanyCreateResponse,
   CompanyListResponse,
@@ -145,8 +146,20 @@ export function disconnectMeta(id: string): Promise<CompanyResponse> {
   return backendFetch(`/companies/${id}/meta/disconnect`, { method: 'POST' })
 }
 
-export function updateAiConfig(id: string, payload: AIConfigUpdateInput): Promise<CompanyResponse> {
-  return backendFetch(`/companies/${id}/ai`, { method: 'PUT', body: JSON.stringify(payload) })
+export function addAiConfig(id: string, payload: AIProviderConfigInput): Promise<CompanyResponse> {
+  return backendFetch(`/companies/${id}/ai`, { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export function updateAiConfig(
+  id: string,
+  aiConfigId: string,
+  payload: AIProviderConfigUpdateInput
+): Promise<CompanyResponse> {
+  return backendFetch(`/companies/${id}/ai/${aiConfigId}`, { method: 'PUT', body: JSON.stringify(payload) })
+}
+
+export function removeAiConfig(id: string, aiConfigId: string): Promise<CompanyResponse> {
+  return backendFetch(`/companies/${id}/ai/${aiConfigId}`, { method: 'DELETE' })
 }
 
 export function updatePlan(id: string, payload: PlanUpdateInput): Promise<CompanyResponse> {

@@ -93,8 +93,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { wabaId, phoneNumberId, businessToken, appId, appSecret, webhookVerifyToken, embeddedSignupConfigId } = body
 
-    // Validações básicas
-    if (!wabaId || !phoneNumberId || !businessToken || !appId || !appSecret || !webhookVerifyToken) {
+    // Validações básicas — webhookVerifyToken não é mais preenchido pela UI:
+    // o app usa um único webhook (META_WEBHOOK_VERIFY_TOKEN, env var global),
+    // compartilhado por todas as contas, então não faz sentido pedir um valor
+    // por conta aqui. Campo mantido no tipo só por compatibilidade com dados antigos.
+    if (!wabaId || !phoneNumberId || !businessToken || !appId || !appSecret) {
       return NextResponse.json({ error: 'Todos os campos são obrigatórios' }, { status: 400 })
     }
 

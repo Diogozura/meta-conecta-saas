@@ -1,18 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { getAgendamentoEventsSince } from '@/lib/agendamentoStore'
+import { listarAgendamentosRecentes, obterProfissional } from '@/lib/firestore'
 
 // GET /api/agenda/agendamentos/recentes?since=<ms> - Polling leve para notificar
 // a empresa em tempo real sobre novos agendamentos (usado por RealtimeListeners).
+// Lê direto do Firestore — antes usava um store em memória que não é confiável
+// em produção na Vercel (webhook e polling podem cair em instâncias diferentes).
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.contaId) {
     return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   }
+  const contaId = session.user.contaId
 
   const { searchParams } = new URL(req.url)
   const since = parseInt(searchParams.get('since') ?? '0')
 
-  const eventos = getAgendamentoEventsSince(session.user.contaId, since)
+  const agendamentos = await listarAgendamentosRecentes(contaId, since)
+  const eventos = await Promise.all(
+    agendamentos.map(async (a) => {
+      const profissional = await obterProfissional(contaId, a.profissionalId)
+      return {
+        id: a.id,
+        clienteNome: a.clienteNome,
+        profissionalNome: profissional?.nome ?? 'profissional',
+        inicio: a.inicio,
+      }
+    }),
+  )
+
   return NextResponse.json({ eventos, serverTime: Date.now() })
 }

@@ -114,6 +114,19 @@ export async function atualizarConta(contaId: string, data: Partial<Omit<Conta, 
   })
 }
 
+/**
+ * Registra (ou limpa, passando null) o erro da última tentativa do agente de
+ * IA — usa caminho de campo (ai.ultimoErro) em vez de reescrever o objeto
+ * `ai` inteiro, pra não apagar provider/apiKey/prompt já salvos.
+ */
+export async function registrarErroAgenteIA(contaId: string, erro: string | null): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).update({
+    'ai.ultimoErro': erro,
+    'ai.ultimoErroEm': erro ? new Date().toISOString() : null,
+  })
+}
+
 // ─────────────────────────────────────────
 // USUÁRIOS
 // ─────────────────────────────────────────
@@ -202,10 +215,27 @@ export async function obterMetaAccess(contaId: string): Promise<MetaAccess | nul
 export async function obterMetaAccessPorWabaId(wabaId: string): Promise<{ metaAccess: MetaAccess; contaId: string } | null> {
   const db = getDb()
 
-  // Busca em todas as contas — ver nota de escalabilidade no topo do arquivo
-  // do webhook (app/api/webhook/route.ts): varredura completa, aceitável no
-  // volume atual de contas, mas deve virar uma collection group query com
-  // índice dedicado se o número de tenants crescer.
+  // Caminho rápido: collection group query indexada por wabaId — evita
+  // varrer todas as contas a cada mensagem recebida. Precisa de um índice
+  // composto (Firestore cria sozinho na primeira falha, com um link direto
+  // no erro/log). Enquanto o índice não existir, cai no fallback abaixo, que
+  // sempre funciona (só é mais lento com muitas contas).
+  try {
+    const rapida = await db.collectionGroup('metaAccess').where('wabaId', '==', wabaId).limit(1).get()
+    if (!rapida.empty) {
+      const doc = rapida.docs[0]
+      const contaId = doc.ref.parent.parent?.id
+      if (contaId) {
+        return { metaAccess: decryptMetaAccessSecrets({ id: doc.id, ...doc.data() } as MetaAccess), contaId }
+      }
+    } else {
+      return null
+    }
+  } catch (error) {
+    console.warn('collectionGroup em metaAccess falhou (provavelmente falta criar o índice — veja o link no erro), usando fallback de varredura completa:', error)
+  }
+
+  // Fallback: varredura completa conta por conta.
   const contasSnapshot = await db.collection('contas').get()
 
   for (const contaDoc of contasSnapshot.docs) {
@@ -514,6 +544,17 @@ export async function atualizarAgendamento(contaId: string, agendamentoId: strin
   })
 }
 
+/** Agendamentos criados depois de um instante — usado pelo polling em tempo real do painel. */
+export async function listarAgendamentosRecentes(contaId: string, sinceMs: number, limit = 20): Promise<Agendamento[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('agendamentos')
+    .where('dataCriacao', '>', Timestamp.fromMillis(sinceMs))
+    .orderBy('dataCriacao', 'asc')
+    .limit(limit)
+    .get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as Agendamento))
+}
+
 // ─────────────────────────────────────────
 // CONVERSAS
 // ─────────────────────────────────────────
@@ -536,18 +577,42 @@ export async function obterConversa(contaId: string, numero: string): Promise<Co
   }
 }
 
-export async function definirIaAtivaConversa(contaId: string, numero: string, iaAtiva: boolean, motivoTransferencia?: string): Promise<void> {
+export async function definirIaAtivaConversa(
+  contaId: string,
+  numero: string,
+  iaAtiva: boolean,
+  motivoTransferencia?: string,
+  origemTransferencia: 'ia' | 'manual' = 'manual',
+): Promise<void> {
   const db = getDb()
   await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
     {
       numero: sanitizarNumero(numero),
       iaAtiva,
       ...(iaAtiva
-        ? { motivoTransferencia: null, dataTransferencia: null }
-        : { motivoTransferencia: motivoTransferencia ?? null, dataTransferencia: Timestamp.now() }),
+        ? { motivoTransferencia: null, dataTransferencia: null, origemTransferencia: null }
+        : { motivoTransferencia: motivoTransferencia ?? null, dataTransferencia: Timestamp.now(), origemTransferencia }),
     },
     { merge: true },
   )
+}
+
+/**
+ * Conversas transferidas pra humano PELA IA depois de um instante — usado
+ * pelo polling em tempo real do painel. Filtra 'ia' em memória (não no
+ * Firestore) pra não precisar de índice composto: o range fica só em
+ * dataTransferencia, que já tem índice de campo único automático.
+ */
+export async function listarTransferenciasRecentes(contaId: string, sinceMs: number, limit = 20): Promise<Conversa[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('conversas')
+    .where('dataTransferencia', '>', Timestamp.fromMillis(sinceMs))
+    .orderBy('dataTransferencia', 'asc')
+    .limit(limit)
+    .get()
+  return snapshot.docs
+    .map((doc) => ({ numero: doc.id, ...convertTimestamps(doc.data()) } as Conversa))
+    .filter((c) => c.origemTransferencia === 'ia')
 }
 
 // ─────────────────────────────────────────
@@ -560,14 +625,7 @@ export async function definirIaAtivaConversa(contaId: string, numero: string, ia
 export async function criarMensagem(data: Omit<Mensagem, 'dataCriacao'>): Promise<Mensagem> {
   const db = getDb()
   const now = Timestamp.now()
-  
-  console.log('📝 Salvando mensagem no Firebase:', {
-    id: data.id,
-    from: data.from,
-    text: data.text?.substring(0, 50),
-    contaId: data.contaId
-  })
-  
+
   try {
     // Usa o ID do WhatsApp como document ID para evitar duplicatas
     await db.collection('mensagens').doc(data.id).set({
@@ -616,6 +674,19 @@ export async function listarMensagensPorNumero(contaId: string, numeroTelefone: 
     .get()
   
   return snapshot.docs.map(doc => ({ ...doc.data() } as Mensagem))
+}
+
+/**
+ * Mensagens recebidas depois de um instante — usado pelo polling em tempo
+ * real do painel. Reaproveita o mesmo índice de listarMensagens (contaId ==,
+ * orderBy timestamp) e filtra em memória, evitando precisar de um índice
+ * composto novo no Firestore.
+ */
+export async function listarMensagensRecebidasDesde(contaId: string, sinceMs: number, limit = 50): Promise<Mensagem[]> {
+  const recentes = await listarMensagens(contaId, limit)
+  return recentes
+    .filter((m) => m.tipo === 'recebida' && (m.dataCriacao as unknown as Timestamp).toMillis() > sinceMs)
+    .sort((a, b) => (a.dataCriacao as unknown as Timestamp).toMillis() - (b.dataCriacao as unknown as Timestamp).toMillis())
 }
 
 /**

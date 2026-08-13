@@ -19,9 +19,11 @@ from app.database.firestore import get_firestore_client
 from app.models.company import CompanyStatus, MetaConnectionStatus
 from app.models.user import AccessLevel
 from app.repositories.company_repository import CompanyRepository
+from app.repositories.message_repository import MessageRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.company_schema import (
-    AIConfigUpdate,
+    AIProviderConfigCreate,
+    AIProviderConfigUpdate,
     CompanyCreate,
     CompanyCreateResponse,
     CompanyListItem,
@@ -34,6 +36,7 @@ from app.schemas.company_schema import (
     WhatsAppNumberCreate,
     WhatsAppNumberUpdate,
 )
+from app.schemas.message_schema import MessageResponse
 from app.schemas.user_schema import (
     UserCreate,
     UserCreateResponse,
@@ -42,6 +45,7 @@ from app.schemas.user_schema import (
     UserUpdate,
 )
 from app.services.company_service import CompanyService
+from app.services.message_service import MessageService
 from app.services.user_service import UserService
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -54,6 +58,10 @@ def _get_service() -> CompanyService:
 
 def _get_user_service() -> UserService:
     return UserService(UserRepository(get_firestore_client()))
+
+
+def _get_message_service() -> MessageService:
+    return MessageService(MessageRepository(get_firestore_client()))
 
 
 # --- criação ---------------------------------------------------------------
@@ -234,9 +242,29 @@ async def disconnect_meta(company_id: str, service: CompanyService = Depends(_ge
 # --- IA -------------------------------------------------------------------------
 
 
-@router.put("/{company_id}/ai", response_model=CompanyResponse, dependencies=[Depends(require_platform_admin)])
-async def update_ai_config(company_id: str, payload: AIConfigUpdate, service: CompanyService = Depends(_get_service)):
-    company = service.update_ai_config(company_id, payload)
+@router.post(
+    "/{company_id}/ai", response_model=CompanyResponse, dependencies=[Depends(require_platform_admin)], status_code=201
+)
+async def add_ai_config(company_id: str, payload: AIProviderConfigCreate, service: CompanyService = Depends(_get_service)):
+    company = service.add_ai_config(company_id, payload)
+    return CompanyResponse(**_to_response_dict(company))
+
+
+@router.put(
+    "/{company_id}/ai/{ai_config_id}", response_model=CompanyResponse, dependencies=[Depends(require_platform_admin)]
+)
+async def update_ai_config(
+    company_id: str, ai_config_id: str, payload: AIProviderConfigUpdate, service: CompanyService = Depends(_get_service)
+):
+    company = service.update_ai_config(company_id, ai_config_id, payload)
+    return CompanyResponse(**_to_response_dict(company))
+
+
+@router.delete(
+    "/{company_id}/ai/{ai_config_id}", response_model=CompanyResponse, dependencies=[Depends(require_platform_admin)]
+)
+async def remove_ai_config(company_id: str, ai_config_id: str, service: CompanyService = Depends(_get_service)):
+    company = service.remove_ai_config(company_id, ai_config_id)
     return CompanyResponse(**_to_response_dict(company))
 
 
@@ -312,12 +340,33 @@ async def delete_company_user(company_id: str, user_id: str, service: UserServic
     service.delete_user(company_id, user_id)
 
 
+# --- Mensagens de WhatsApp (verificação manual do pipeline de IA) -------------
+#
+# Sem tela de "Conversas" no CRM ainda — esta rota existe só pra conferir via
+# curl/Postman que o pipeline de app/services/message_orchestrator_service.py
+# está de fato recebendo e respondendo mensagem.
+
+
+@router.get(
+    "/{company_id}/messages", response_model=list[MessageResponse], dependencies=[Depends(require_platform_admin)]
+)
+async def list_company_messages(
+    company_id: str,
+    limit: int = Query(default=50, le=200),
+    cursor: str | None = Query(default=None),
+    service: MessageService = Depends(_get_message_service),
+):
+    messages = service.list_company_messages(company_id, limit=limit, cursor=cursor)
+    return [MessageResponse(**_to_message_response_dict(m)) for m in messages]
+
+
 # --- tradução Firestore (camelCase) -> schema (snake_case) --------------------
 
 
 def _to_response_dict(company: dict) -> dict:
     meta = company.get("metaConnection", {})
-    ai = company.get("ai", {})
+    ai_raw = company.get("ai", [])
+    ai_list = ai_raw if isinstance(ai_raw, list) else []  # defensivo: formato antigo era um objeto único
     plan = company.get("plan", {})
     usage = company.get("usage", {})
     return {
@@ -336,13 +385,23 @@ def _to_response_dict(company: dict) -> dict:
             "last_sync": meta.get("lastSync"),
         },
         "tags": company.get("tags", []),
-        "ai": {
-            "enabled": ai.get("enabled", False),
-            "assistant_id": ai.get("assistantId"),
-            "model": ai.get("model"),
-            "prompt": ai.get("prompt"),
-            "temperature": ai.get("temperature", 0.7),
-        },
+        "ai": [
+            {
+                "id": c["id"],
+                "label": c.get("label", ""),
+                "purpose": c.get("purpose", "mensagem"),
+                "provider": c.get("provider", "openai"),
+                "model": c.get("model", ""),
+                "assistant_id": c.get("assistantId"),
+                "prompt": c.get("prompt"),
+                "temperature": c.get("temperature", 0.7),
+                "enabled": c.get("enabled", False),
+                # Nunca lê "apiKey" aqui além desta flag — defesa em profundidade
+                # além do schema de resposta já não ter esse campo.
+                "has_api_key": bool(c.get("apiKey")),
+            }
+            for c in ai_list
+        ],
         "plan": {
             "name": plan.get("name"),
             "expires_at": plan.get("expiresAt"),
@@ -363,7 +422,6 @@ def _to_response_dict(company: dict) -> dict:
 def _to_list_item(company: dict) -> dict:
     client = company.get("client", {})
     plan = company.get("plan", {})
-    ai = company.get("ai", {})
     meta = company.get("metaConnection", {})
     return {
         "id": company["id"],
@@ -373,7 +431,7 @@ def _to_list_item(company: dict) -> dict:
         "sector": company["sector"],
         "plan_name": plan.get("name", ""),
         "whatsapp_count": len(company.get("whatsapp", [])),
-        "ai_enabled": ai.get("enabled", False),
+        "ai_enabled": company.get("aiEnabled", False),
         "meta_connection_status": meta.get("status", MetaConnectionStatus.INACTIVE.value),
         "status": company["status"],
         "created_at": company["createdAt"],
@@ -391,4 +449,19 @@ def _to_user_response_dict(user: dict) -> dict:
         "sector": user.get("sector"),
         "status": user["status"],
         "created_at": user["createdAt"],
+    }
+
+
+def _to_message_response_dict(message: dict) -> dict:
+    return {
+        "id": message["id"],
+        "company_id": message["companyId"],
+        "from_number": message.get("from"),
+        "to_number": message.get("to"),
+        "customer_phone": message.get("customerPhone", ""),
+        "contact_name": message.get("contactName"),
+        "text": message.get("text", ""),
+        "timestamp": message.get("timestamp", 0),
+        "direction": message["direction"],
+        "created_at": message["createdAt"],
     }

@@ -1,4 +1,4 @@
-import { obterConta, obterMetaAccess, listarMensagensPorNumero, criarMensagem, obterConversa } from '@/lib/firestore'
+import { obterConta, obterMetaAccess, listarMensagensPorNumero, criarMensagem, obterConversa, registrarErroAgenteIA } from '@/lib/firestore'
 import { sendTextMessage } from '@/lib/meta'
 import { runGeminiAgent } from '@/lib/aiProviderGemini'
 import { runOpenAIAgent } from '@/lib/aiProviderOpenAI'
@@ -70,8 +70,17 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
         status: 'enviada',
       })
     }
+
+    // Sucesso — limpa qualquer erro anterior pra não deixar aviso obsoleto no painel.
+    if (conta.ai.ultimoErro) {
+      await registrarErroAgenteIA(contaId, null).catch(() => {})
+    }
   } catch (error) {
     console.error('Erro ao processar mensagem com o agente de IA:', error)
+    const mensagemErro = error instanceof Error ? error.message : 'Erro desconhecido'
+    // Falha ao registrar o erro não pode gerar outro erro não tratado aqui —
+    // essa função já roda em segundo plano via after(), sem ninguém esperando.
+    await registrarErroAgenteIA(contaId, mensagemErro.slice(0, 500)).catch(() => {})
   }
 }
 

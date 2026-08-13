@@ -16,3 +16,16 @@ class CompanyStatus(StrEnum):
 class MetaConnectionStatus(StrEnum):
     INACTIVE = "inactive"
     CONNECTED = "connected"
+
+
+class AIProvider(StrEnum):
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    GEMINI = "gemini"
+
+
+class AIPurpose(StrEnum):
+    MENSAGEM = "mensagem"
+    IMAGEM = "imagem"
+    AUDIO = "audio"
+    OUTRO = "outro"

@@ -1,6 +1,5 @@
 import { createHmac } from 'crypto'
 import { after } from 'next/server'
-import { addMessage } from '@/lib/messageStore'
 import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem } from '@/lib/firestore'
 import { processarMensagemComIA } from '@/lib/aiAgent'
 import { Mensagem } from '@/types/database'
@@ -59,9 +58,18 @@ export async function POST(request: Request) {
 
     console.log('[Webhook] Buscando conta para WABA:', wabaId)
 
-    const result = await obterMetaAccessPorWabaId(wabaId)
-    const contaId = result?.contaId
-    
+    // Se essa busca falhar (ex: env var de criptografia ausente/errada em
+    // produção), não pode derrubar o webhook inteiro com 500 — a Meta trata
+    // isso como falha de entrega e, depois de falhas repetidas, desativa o
+    // webhook. Loga o erro e segue tratando como "conta não encontrada".
+    let contaId: string | undefined
+    try {
+      const result = await obterMetaAccessPorWabaId(wabaId)
+      contaId = result?.contaId
+    } catch (error) {
+      console.error('❌ Erro ao buscar conta pelo WABA (verifique env vars, ex: CREDENTIALS_ENCRYPTION_KEY):', error)
+    }
+
     if (!contaId) {
       console.warn('⚠️ WABA não encontrado:', wabaId)
     } else {
@@ -73,29 +81,26 @@ export async function POST(request: Request) {
 
       // Mensagens recebidas
       for (const msg of value.messages ?? []) {
-        console.log('[Webhook] Mensagem recebida:', {
-          from: msg.from,
-          type: msg.type,
-          text: msg.text?.body,
-          timestamp: msg.timestamp,
-          contaId,
-        })
+        // Sem conteúdo da mensagem nem telefone do cliente no log — só o
+        // necessário pra depurar entrega, o resto é dado sensível do cliente.
+        console.log('[Webhook] Mensagem recebida:', { type: msg.type, contaId })
 
-        // Salva na memória (para polling rápido)
-        addMessage({
-          id: msg.id,
-          from: msg.from,
-          text: msg.text?.body ?? '(mídia)',
-          timestamp: parseInt(msg.timestamp),
-        })
+        // Nome cadastrado pelo próprio contato no WhatsApp — vem junto no
+        // payload (value.contacts), casado pelo wa_id com o remetente da
+        // mensagem. Nem toda mensagem traz esse array (ex: alguns eventos de
+        // status), então fica opcional.
+        const nomeContato = value.contacts?.find((c) => c.wa_id === msg.from)?.profile?.name
 
-        // Salva no Firebase (persistência)
+        // Salva no Firebase (persistência — também é a fonte do polling do painel)
         if (contaId) {
           try {
             await criarMensagem({
               id: msg.id,
               contaId,
               from: msg.from,
+              // Spread condicional: o Admin SDK do Firestore rejeita
+              // "undefined" como valor de campo (viraria erro no .set()).
+              ...(nomeContato ? { nomeContato } : {}),
               text: msg.text?.body ?? '(mídia)',
               timestamp: parseInt(msg.timestamp),
               tipo: 'recebida',
@@ -113,17 +118,28 @@ export async function POST(request: Request) {
             console.error('❌ Erro ao salvar mensagem no Firebase:', error)
           }
         } else {
-          console.error('❌ Não foi possível salvar - contaId não encontrado para WABA:', wabaId)
+          console.error('❌ Não foi possível salvar - contaId não encontrado para WABA (sistema legado):', wabaId)
+          // Pode ser uma empresa do CRM novo (backend/app) — repassa pra lá.
+          // Não bloqueia nem atrasa o "OK" pro Meta: roda depois da resposta,
+          // e qualquer erro é só logado (ver encaminharParaBackendNovo).
+          if (msg.text?.body) {
+            after(() =>
+              encaminharParaBackendNovo({
+                wabaId,
+                from: msg.from,
+                messageId: msg.id,
+                text: msg.text!.body,
+                timestamp: parseInt(msg.timestamp),
+                contactName: nomeContato,
+              })
+            )
+          }
         }
       }
 
       // Status de mensagens enviadas
       for (const status of value.statuses ?? []) {
-        console.log('[Webhook] Status:', {
-          id: status.id,
-          status: status.status,
-          recipient_id: status.recipient_id,
-        })
+        console.log('[Webhook] Status:', { id: status.id, status: status.status })
         
         // Atualiza status no Firebase
         try {
@@ -136,6 +152,47 @@ export async function POST(request: Request) {
   }
 
   return new Response('OK', { status: 200 })
+}
+
+/**
+ * Encaminha uma mensagem recebida pro backend novo (backend/app, FastAPI) —
+ * usado quando o WABA não é de nenhuma conta do sistema legado, ou seja, é
+ * provavelmente uma empresa cadastrada no CRM novo (aba "Meta" + aba "IA").
+ * Mesmo par de segredo já usado pelas rotas de /api/empresas
+ * (BACKEND_ADMIN_KEY <-> PLATFORM_ADMIN_API_KEY do backend) — nenhuma
+ * variável de ambiente nova.
+ */
+async function encaminharParaBackendNovo(params: {
+  wabaId: string
+  from: string
+  messageId: string
+  text: string
+  timestamp: number
+  contactName?: string
+}): Promise<void> {
+  const baseUrl = process.env.BACKEND_API_URL
+  const adminKey = process.env.BACKEND_ADMIN_KEY
+  if (!baseUrl || !adminKey) return
+
+  try {
+    const res = await fetch(`${baseUrl}/whatsapp/inbound-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Platform-Admin-Key': adminKey },
+      body: JSON.stringify({
+        waba_id: params.wabaId,
+        from: params.from,
+        message_id: params.messageId,
+        text: params.text,
+        timestamp: params.timestamp,
+        contact_name: params.contactName,
+      }),
+    })
+    if (!res.ok && res.status !== 404) {
+      console.error('❌ Backend novo recusou a mensagem encaminhada:', res.status, await res.text())
+    }
+  } catch (error) {
+    console.error('❌ Erro ao encaminhar mensagem pro backend novo:', error)
+  }
 }
 
 /* ─── Tipos ──────────────────────────────────────────────────────────────── */

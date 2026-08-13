@@ -23,10 +23,6 @@ export default function AddCompanyModal({ isOpen, onClose, onCreated }: AddCompa
   const [whatsapp, setWhatsapp] = useState<WhatsAppNumberInput[]>([{ ...emptyWhatsApp }])
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState('')
-  const [aiEnabled, setAiEnabled] = useState(false)
-  const [aiModel, setAiModel] = useState('')
-  const [aiPrompt, setAiPrompt] = useState('')
-  const [aiTemperature, setAiTemperature] = useState(0.7)
   const [planName, setPlanName] = useState('')
   const [planExpiresAt, setPlanExpiresAt] = useState('')
   const [planMessagesLimit, setPlanMessagesLimit] = useState('')
@@ -42,10 +38,6 @@ export default function AddCompanyModal({ isOpen, onClose, onCreated }: AddCompa
     setWhatsapp([{ ...emptyWhatsApp }])
     setTags([])
     setTagInput('')
-    setAiEnabled(false)
-    setAiModel('')
-    setAiPrompt('')
-    setAiTemperature(0.7)
     setPlanName('')
     setPlanExpiresAt('')
     setPlanMessagesLimit('')
@@ -82,13 +74,6 @@ export default function AddCompanyModal({ isOpen, onClose, onCreated }: AddCompa
         sector,
         whatsapp,
         tags,
-        ai: {
-          enabled: aiEnabled,
-          assistant_id: null,
-          model: aiModel || null,
-          prompt: aiPrompt || null,
-          temperature: aiTemperature,
-        },
         plan: {
           name: planName,
           expires_at: planExpiresAt ? new Date(planExpiresAt).toISOString() : null,
@@ -278,44 +263,6 @@ export default function AddCompanyModal({ isOpen, onClose, onCreated }: AddCompa
             />
           </div>
 
-          {/* IA */}
-          <div className="border border-gray-200 rounded-lg p-3 space-y-3">
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-              <input type="checkbox" checked={aiEnabled} onChange={(e) => setAiEnabled(e.target.checked)} />
-              Ativar IA no cadastro
-            </label>
-            {aiEnabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input
-                  type="text"
-                  value={aiModel}
-                  onChange={(e) => setAiModel(e.target.value)}
-                  placeholder="Modelo (ex: gpt-5.5)"
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                />
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-gray-500 shrink-0">Temperature</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    value={aiTemperature}
-                    onChange={(e) => setAiTemperature(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                  />
-                </div>
-                <textarea
-                  value={aiPrompt}
-                  onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="Prompt do agente"
-                  rows={3}
-                  className="sm:col-span-2 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
-                />
-              </div>
-            )}
-          </div>
-
           {/* Plano */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
@@ -352,6 +299,10 @@ export default function AddCompanyModal({ isOpen, onClose, onCreated }: AddCompa
               />
             </div>
           </div>
+
+          <p className="text-xs text-gray-400 -mt-2">
+            As configurações de IA (mensagens, imagem, áudio) ficam disponíveis na aba &quot;IA&quot; depois de criar a empresa.
+          </p>
 
           {/* Ações */}
           <div className="flex gap-2 pt-2">
