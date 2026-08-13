@@ -114,6 +114,19 @@ export async function atualizarConta(contaId: string, data: Partial<Omit<Conta, 
   })
 }
 
+/**
+ * Registra (ou limpa, passando null) o erro da última tentativa do agente de
+ * IA — usa caminho de campo (ai.ultimoErro) em vez de reescrever o objeto
+ * `ai` inteiro, pra não apagar provider/apiKey/prompt já salvos.
+ */
+export async function registrarErroAgenteIA(contaId: string, erro: string | null): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).update({
+    'ai.ultimoErro': erro,
+    'ai.ultimoErroEm': erro ? new Date().toISOString() : null,
+  })
+}
+
 // ─────────────────────────────────────────
 // USUÁRIOS
 // ─────────────────────────────────────────
@@ -202,10 +215,27 @@ export async function obterMetaAccess(contaId: string): Promise<MetaAccess | nul
 export async function obterMetaAccessPorWabaId(wabaId: string): Promise<{ metaAccess: MetaAccess; contaId: string } | null> {
   const db = getDb()
 
-  // Busca em todas as contas — ver nota de escalabilidade no topo do arquivo
-  // do webhook (app/api/webhook/route.ts): varredura completa, aceitável no
-  // volume atual de contas, mas deve virar uma collection group query com
-  // índice dedicado se o número de tenants crescer.
+  // Caminho rápido: collection group query indexada por wabaId — evita
+  // varrer todas as contas a cada mensagem recebida. Precisa de um índice
+  // composto (Firestore cria sozinho na primeira falha, com um link direto
+  // no erro/log). Enquanto o índice não existir, cai no fallback abaixo, que
+  // sempre funciona (só é mais lento com muitas contas).
+  try {
+    const rapida = await db.collectionGroup('metaAccess').where('wabaId', '==', wabaId).limit(1).get()
+    if (!rapida.empty) {
+      const doc = rapida.docs[0]
+      const contaId = doc.ref.parent.parent?.id
+      if (contaId) {
+        return { metaAccess: decryptMetaAccessSecrets({ id: doc.id, ...doc.data() } as MetaAccess), contaId }
+      }
+    } else {
+      return null
+    }
+  } catch (error) {
+    console.warn('collectionGroup em metaAccess falhou (provavelmente falta criar o índice — veja o link no erro), usando fallback de varredura completa:', error)
+  }
+
+  // Fallback: varredura completa conta por conta.
   const contasSnapshot = await db.collection('contas').get()
 
   for (const contaDoc of contasSnapshot.docs) {
@@ -595,14 +625,7 @@ export async function listarTransferenciasRecentes(contaId: string, sinceMs: num
 export async function criarMensagem(data: Omit<Mensagem, 'dataCriacao'>): Promise<Mensagem> {
   const db = getDb()
   const now = Timestamp.now()
-  
-  console.log('📝 Salvando mensagem no Firebase:', {
-    id: data.id,
-    from: data.from,
-    text: data.text?.substring(0, 50),
-    contaId: data.contaId
-  })
-  
+
   try {
     // Usa o ID do WhatsApp como document ID para evitar duplicatas
     await db.collection('mensagens').doc(data.id).set({

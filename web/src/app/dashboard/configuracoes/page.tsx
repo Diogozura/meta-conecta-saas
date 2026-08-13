@@ -11,7 +11,6 @@ interface MetaCredentials {
   businessToken: string
   appId: string
   appSecret: string
-  webhookVerifyToken: string
   embeddedSignupConfigId?: string
 }
 
@@ -22,6 +21,8 @@ interface AiConfig {
   prompt: string
   apiKey: string
   informacoesNegocio: string
+  ultimoErro?: string
+  ultimoErroEm?: string
 }
 
 export default function ConfiguracoesPage() {
@@ -31,13 +32,11 @@ export default function ConfiguracoesPage() {
     businessToken: '',
     appId: '',
     appSecret: '',
-    webhookVerifyToken: '',
     embeddedSignupConfigId: '',
   })
   const [showTokens, setShowTokens] = useState({
     businessToken: false,
     appSecret: false,
-    webhookVerifyToken: false,
   })
   const [loading, setLoading] = useState(false)
   const [loadingData, setLoadingData] = useState(true)
@@ -285,33 +284,6 @@ export default function ConfiguracoesPage() {
           </p>
         </div>
 
-        {/* Webhook Verify Token */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Webhook Verify Token
-          </label>
-          <div className="relative">
-            <input
-              type={showTokens.webhookVerifyToken ? 'text' : 'password'}
-              required
-              value={credentials.webhookVerifyToken}
-              onChange={(e) => setCredentials({ ...credentials, webhookVerifyToken: e.target.value })}
-              className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-400 focus:border-transparent font-mono text-sm"
-              placeholder="wls573lkDuo..."
-            />
-            <button
-              type="button"
-              onClick={() => setShowTokens({ ...showTokens, webhookVerifyToken: !showTokens.webhookVerifyToken })}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              {showTokens.webhookVerifyToken ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-            </button>
-          </div>
-          <p className="mt-1 text-xs text-gray-500">
-            Token usado para verificar webhooks (mesmo definido no App Dashboard)
-          </p>
-        </div>
-
         {/* Embedded Signup Config ID */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -361,6 +333,22 @@ export default function ConfiguracoesPage() {
         <p className="text-sm text-gray-500 mb-6">
           Quando ligado, a IA escolhida responde automaticamente as mensagens recebidas no WhatsApp — tira dúvidas sobre o negócio, consulta horários e cria agendamentos sozinha, e transfere pra um atendente humano quando não conseguir resolver.
         </p>
+
+        {aiConfig.enabled && aiConfig.ultimoErro && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm">
+              <p className="font-medium text-red-900">O agente está ativo, mas a última tentativa de responder falhou</p>
+              <p className="text-red-700 mt-0.5">{aiConfig.ultimoErro}</p>
+              {aiConfig.ultimoErroEm && (
+                <p className="text-red-500 text-xs mt-1">
+                  {new Date(aiConfig.ultimoErroEm).toLocaleString('pt-BR')}
+                </p>
+              )}
+              <p className="text-red-700 mt-1">Verifique a chave de API do provedor abaixo — clientes podem não estar recebendo resposta.</p>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSaveAi} className="space-y-5">
           <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
