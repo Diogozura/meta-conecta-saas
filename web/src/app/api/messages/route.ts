@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   const since = parseInt(searchParams.get('since') ?? '0')
 
   const mensagens = await listarMensagensRecebidasDesde(session.user.contaId, since)
-  const messages = mensagens.map((m) => ({ id: m.id, from: m.from, text: m.text, timestamp: m.timestamp }))
+  const messages = mensagens.map((m) => ({ id: m.id, from: m.from, nomeContato: m.nomeContato, text: m.text, timestamp: m.timestamp }))
 
   return Response.json({ messages, serverTime: Date.now() })
 }

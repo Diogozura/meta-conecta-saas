@@ -32,6 +32,12 @@ export interface ContaAiConfig {
    *  políticas, perguntas frequentes) — entra no prompt do agente pra ele
    *  responder dúvidas gerais, não só sobre agenda. */
   informacoesNegocio?: string
+  /** Erro da última tentativa de responder (ex: cota da API estourada) —
+   *  permite avisar no painel que a IA está ativa mas não está respondendo,
+   *  em vez de falhar em silêncio só no log do servidor. Limpo a cada
+   *  resposta bem-sucedida ou ao salvar essa configuração novamente. */
+  ultimoErro?: string
+  ultimoErroEm?: string
 }
 
 // ─────────────────────────────────────────
@@ -84,7 +90,10 @@ export interface MetaAccess {
   businessToken: string             // Business Access Token (do Embedded Signup)
   appId: string                     // Meta App ID
   appSecret: string                 // Meta App Secret
-  webhookVerifyToken: string        // Token para verificar webhooks
+  // Não usado pelo webhook (que valida contra a env var global
+  // META_WEBHOOK_VERIFY_TOKEN, compartilhada por todas as contas) — campo
+  // legado, mantido só pra não quebrar leitura de documentos antigos.
+  webhookVerifyToken?: string
   embeddedSignupConfigId?: string   // Config ID do Embedded Signup (opcional)
   dataAtualizacao: Date
 }
@@ -135,6 +144,7 @@ export interface Mensagem {
   clienteId?: string            // ID do cliente (se identificado)
   from: string                  // Número de telefone de origem (5511999999999)
   to?: string                   // Número de telefone de destino (para mensagens enviadas)
+  nomeContato?: string          // Nome cadastrado pelo contato no WhatsApp (vem no payload do webhook)
   text: string                  // Conteúdo da mensagem
   timestamp: number             // Unix timestamp em segundos (do Meta)
   tipo: 'recebida' | 'enviada'  // Direção da mensagem

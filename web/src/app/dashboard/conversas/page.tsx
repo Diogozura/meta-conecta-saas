@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck } from 'lucide-react'
+import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck, Bot } from 'lucide-react'
 
 type Message = {
   id: string
@@ -26,6 +26,7 @@ type HistoryMessage = {
   id: string
   from: string
   to?: string
+  nomeContato?: string
   text: string
   timestamp: number // unix seconds
   tipo: 'recebida' | 'enviada'
@@ -76,8 +77,12 @@ function buildConversationsFromHistory(mensagens: HistoryMessage[], existingName
       time: formatTime(m.timestamp),
     }))
     const lastMsg = sorted[sorted.length - 1]
+    // Nome que a pessoa cadastrou no próprio WhatsApp (vem no webhook) é a
+    // fonte mais confiável — prioriza sobre nome digitado manualmente no
+    // painel e sobre o número puro.
+    const nomeWhatsapp = [...sorted].reverse().find((m) => m.nomeContato)?.nomeContato
     const conv: Conversation = {
-      name: existingNames.get(number) || number,
+      name: nomeWhatsapp || existingNames.get(number) || number,
       number,
       last: lastMsg.text,
       time: formatTime(lastMsg.timestamp),
@@ -204,16 +209,16 @@ function ConversasInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só precisa reagir à troca de conversa, não a todo objeto novo
   }, [currentConv?.number])
 
-  async function handleReativarIA() {
+  async function handleToggleIA(novoEstado: boolean) {
     if (!currentConv) return
     try {
       const res = await fetch(`/api/conversas/${currentConv.number}/ia`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ iaAtiva: true }),
+        body: JSON.stringify({ iaAtiva: novoEstado }),
       })
-      if (!res.ok) throw new Error('Erro ao reativar a IA')
-      setIaStatus({ iaAtiva: true, motivoTransferencia: null })
+      if (!res.ok) throw new Error('Erro ao atualizar a IA')
+      setIaStatus({ iaAtiva: novoEstado, motivoTransferencia: novoEstado ? null : 'Desativada manualmente pelo painel' })
     } catch {
       // silencioso — o usuário pode tentar de novo
     }
@@ -228,7 +233,7 @@ function ConversasInner() {
         const res = await fetch(`/api/messages?since=${since}`)
         if (!res.ok) return
         const { messages, serverTime } = await res.json() as {
-          messages: { id: string; from: string; text: string; timestamp: number }[]
+          messages: { id: string; from: string; nomeContato?: string; text: string; timestamp: number }[]
           serverTime: number
         }
         since = serverTime
@@ -254,13 +259,22 @@ function ConversasInner() {
               if (next[idx].messages.some((m) => m.id === data.id)) continue
               next = next.map((c, i) =>
                 i === idx
-                  ? { ...c, messages: [...c.messages, incomingMsg], last: incomingMsg.text, time: incomingTime, status: 'Recebida' as const }
+                  ? {
+                      ...c,
+                      // Atualiza pro nome real do WhatsApp assim que ele chega
+                      // (conversa pode ter sido criada só com o número antes disso).
+                      name: data.nomeContato || c.name,
+                      messages: [...c.messages, incomingMsg],
+                      last: incomingMsg.text,
+                      time: incomingTime,
+                      status: 'Recebida' as const,
+                    }
                   : c
               )
             } else {
               next = [
                 {
-                  name: data.from,
+                  name: data.nomeContato || data.from,
                   number: data.from,
                   last: incomingMsg.text,
                   time: incomingTime,
@@ -442,6 +456,21 @@ function ConversasInner() {
                 <p className="text-sm font-semibold text-gray-900">{currentConv.name}</p>
                 <p className="text-xs text-gray-500">{currentConv.number}</p>
               </div>
+
+              {iaStatus && (
+                <button
+                  onClick={() => handleToggleIA(!iaStatus.iaAtiva)}
+                  title={iaStatus.iaAtiva ? 'Desativar a IA nessa conversa' : 'Reativar a IA nessa conversa'}
+                  className={`ml-auto shrink-0 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
+                    iaStatus.iaAtiva
+                      ? 'text-green-700 bg-green-100 hover:bg-green-200'
+                      : 'text-gray-600 bg-gray-200 hover:bg-gray-300'
+                  }`}
+                >
+                  <Bot className="w-3.5 h-3.5" />
+                  {iaStatus.iaAtiva ? 'IA ativa' : 'IA desativada'}
+                </button>
+              )}
             </div>
 
             {iaStatus && !iaStatus.iaAtiva && (
@@ -453,7 +482,7 @@ function ConversasInner() {
                   </span>
                 </div>
                 <button
-                  onClick={handleReativarIA}
+                  onClick={() => handleToggleIA(true)}
                   className="shrink-0 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-full transition-colors"
                 >
                   Reativar IA

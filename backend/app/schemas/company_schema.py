@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.models.company import CompanyStatus, MetaConnectionStatus
+from app.models.company import AIPurpose, AIProvider, CompanyStatus, MetaConnectionStatus
 from app.utils.validators import is_valid_cnpj, is_valid_whatsapp_number, normalize_cnpj
 
 
@@ -71,14 +71,23 @@ class MetaConnectionConnect(BaseModel):
 
 
 # --- IA ---------------------------------------------------------------------
+#
+# Uma empresa pode ter várias configurações de IA, cada uma com seu próprio
+# provedor e chave de API — ex: uma config OpenAI para responder mensagens de
+# texto e uma config Gemini só para gerar imagens. Mesmo padrão de "array
+# embutido com id" já usado para `whatsapp` (ver WhatsAppNumber acima).
 
 
-class AIConfig(BaseModel):
-    enabled: bool = False
+class AIProviderConfigCreate(BaseModel):
+    label: str = Field(min_length=1, description="Nome de exibição, ex: 'Atendimento por texto'.")
+    purpose: AIPurpose
+    provider: AIProvider
+    model: str = Field(min_length=1)
+    api_key: str = Field(min_length=1)
     assistant_id: str | None = None
-    model: str | None = None
     prompt: str | None = None
     temperature: float = 0.7
+    enabled: bool = True
 
     @field_validator("temperature")
     @classmethod
@@ -88,12 +97,16 @@ class AIConfig(BaseModel):
         return value
 
 
-class AIConfigUpdate(BaseModel):
-    enabled: bool | None = None
+class AIProviderConfigUpdate(BaseModel):
+    label: str | None = Field(default=None, min_length=1)
+    purpose: AIPurpose | None = None
+    provider: AIProvider | None = None
+    model: str | None = Field(default=None, min_length=1)
+    api_key: str | None = Field(default=None, min_length=1, description="Se enviado, substitui a chave salva.")
     assistant_id: str | None = None
-    model: str | None = None
     prompt: str | None = None
     temperature: float | None = None
+    enabled: bool | None = None
 
     @field_validator("temperature")
     @classmethod
@@ -101,6 +114,21 @@ class AIConfigUpdate(BaseModel):
         if value is not None and not 0.0 <= value <= 1.0:
             raise ValueError("temperature deve estar entre 0.0 e 1.0.")
         return value
+
+
+class AIProviderConfig(BaseModel):
+    """Vista de resposta — NUNCA inclui api_key, só a flag `has_api_key`."""
+
+    id: str
+    label: str
+    purpose: AIPurpose
+    provider: AIProvider
+    model: str
+    assistant_id: str | None = None
+    prompt: str | None = None
+    temperature: float = 0.7
+    enabled: bool = True
+    has_api_key: bool = False
 
 
 # --- Plano / Uso --------------------------------------------------------
@@ -136,7 +164,7 @@ class CompanyCreate(BaseModel):
     sector: str = Field(min_length=1)
     whatsapp: list[WhatsAppNumberCreate] = Field(min_length=1)
     tags: list[str] = []
-    ai: AIConfig = AIConfig()
+    ai: list[AIProviderConfigCreate] = []
     plan: PlanInfo
 
     @field_validator("cnpj")
@@ -173,7 +201,7 @@ class CompanyResponse(BaseModel):
     whatsapp: list[WhatsAppNumber]
     meta_connection: MetaConnectionInfo
     tags: list[str]
-    ai: AIConfig
+    ai: list[AIProviderConfig]
     plan: PlanInfo
     usage: UsageInfo
     status: CompanyStatus

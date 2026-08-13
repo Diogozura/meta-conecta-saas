@@ -17,7 +17,8 @@ from app.models.user import AccessLevel, UserStatus
 from app.repositories.company_repository import CompanyRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.company_schema import (
-    AIConfigUpdate,
+    AIProviderConfigCreate,
+    AIProviderConfigUpdate,
     CompanyCreate,
     CompanyUpdate,
     MetaConnectionConnect,
@@ -48,6 +49,7 @@ class CompanyService:
             {"id": str(uuid4()), "number": w.number, "label": w.label, "active": w.active}
             for w in payload.whatsapp
         ]
+        ai_entries = [self._build_ai_entry(a) for a in payload.ai]
 
         company = self.company_repository.create(
             {
@@ -63,13 +65,8 @@ class CompanyService:
                     "lastSync": None,
                 },
                 "tags": payload.tags,
-                "ai": {
-                    "enabled": payload.ai.enabled,
-                    "assistantId": payload.ai.assistant_id,
-                    "model": payload.ai.model,
-                    "prompt": payload.ai.prompt,
-                    "temperature": payload.ai.temperature,
-                },
+                "ai": ai_entries,
+                "aiEnabled": any(e["enabled"] for e in ai_entries),
                 "plan": {
                     "name": payload.plan.name,
                     "expiresAt": payload.plan.expires_at,
@@ -169,7 +166,7 @@ class CompanyService:
         if meta_status is not None:
             extra_filters.append(("metaConnection.status", "==", meta_status))
         if ai_enabled is not None:
-            extra_filters.append(("ai.enabled", "==", ai_enabled))
+            extra_filters.append(("aiEnabled", "==", ai_enabled))
         if plan_name is not None:
             extra_filters.append(("plan.name", "==", plan_name))
 
@@ -246,14 +243,42 @@ class CompanyService:
 
     # --- IA -------------------------------------------------------------------
 
-    def update_ai_config(self, company_id: str, payload: AIConfigUpdate) -> dict:
+    @staticmethod
+    def _build_ai_entry(payload: AIProviderConfigCreate) -> dict:
+        return {
+            "id": str(uuid4()),
+            "label": payload.label,
+            "purpose": payload.purpose.value,
+            "provider": payload.provider.value,
+            "model": payload.model,
+            "apiKey": encrypt_value(payload.api_key),
+            "assistantId": payload.assistant_id,
+            "prompt": payload.prompt,
+            "temperature": payload.temperature,
+            "enabled": payload.enabled,
+        }
+
+    def add_ai_config(self, company_id: str, payload: AIProviderConfigCreate) -> dict:
+        entry = self._build_ai_entry(payload)
+        return self.company_repository.add_ai_config(company_id, entry)
+
+    def update_ai_config(self, company_id: str, ai_config_id: str, payload: AIProviderConfigUpdate) -> dict:
         # exclude_unset: ver comentário em update_company — sem isso, limpar
         # o prompt/modelo/assistant_id (enviando null) era silenciosamente
         # ignorado e o valor antigo continuava salvo.
         changes = payload.model_dump(exclude_unset=True)
-        field_map = {"assistant_id": "assistantId"}
-        data = {f"ai.{field_map.get(field, field)}": value for field, value in changes.items()}
-        return self.company_repository.update(company_id, data)
+        field_map = {"assistant_id": "assistantId", "api_key": "apiKey"}
+        data: dict = {}
+        for field, value in changes.items():
+            if field == "api_key":
+                value = encrypt_value(value)
+            elif hasattr(value, "value"):  # enums (purpose/provider)
+                value = value.value
+            data[field_map.get(field, field)] = value
+        return self.company_repository.update_ai_config(company_id, ai_config_id, data)
+
+    def remove_ai_config(self, company_id: str, ai_config_id: str) -> dict:
+        return self.company_repository.remove_ai_config(company_id, ai_config_id)
 
     # --- Plano ------------------------------------------------------------------
 

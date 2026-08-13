@@ -63,3 +63,17 @@ class DecryptionError(AppError):
 class UnsupportedProviderError(AppError):
     status_code = 422
     default_message = "Provedor de IA não suportado."
+
+
+class MetaSendError(AppError):
+    """Falha ao chamar a WhatsApp Cloud API (Graph API) pra enviar mensagem."""
+
+    status_code = 502
+    default_message = "Falha ao enviar mensagem via WhatsApp Cloud API."
+
+
+class AIProviderError(AppError):
+    """Falha ao chamar a API do provedor de IA (OpenAI/Anthropic/Gemini)."""
+
+    status_code = 502
+    default_message = "Falha ao gerar resposta com o provedor de IA."

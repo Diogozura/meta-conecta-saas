@@ -68,6 +68,12 @@ class CompanyRepository:
         results = list(query.stream())
         return self._to_dict(results[0]) if results else None
 
+    def find_by_waba_id(self, waba_id: str) -> dict[str, Any] | None:
+        """Usado pelo pipeline de WhatsApp pra descobrir a empresa dona de um evento recebido."""
+        query = self._collection().where("metaConnection.businessAccountId", "==", waba_id).limit(1)
+        results = list(query.stream())
+        return self._to_dict(results[0]) if results else None
+
     def get_by_id(self, company_id: str) -> dict[str, Any] | None:
         snapshot = self._collection().document(company_id).get()
         if not snapshot.exists:
@@ -187,3 +193,37 @@ class CompanyRepository:
         if len(remaining) == len(numbers):
             raise NotFoundError(f"Número de WhatsApp '{whatsapp_id}' não encontrado nesta empresa.")
         return self.update(company_id, {"whatsapp": remaining})
+
+    # --- configurações de IA (array embutido) ---------------------------------
+    #
+    # `aiEnabled` é um espelho flat de "algum item de `ai` está enabled=True",
+    # mantido só para permitir o filtro `ai_enabled` em list_companies (Firestore
+    # não filtra por igualdade dentro de um array de objetos).
+
+    @staticmethod
+    def _ai_list(company: dict[str, Any]) -> list[dict[str, Any]]:
+        """Defensivo contra o formato antigo (objeto único, não lista)."""
+        raw = company.get("ai", [])
+        return raw if isinstance(raw, list) else []
+
+    def add_ai_config(self, company_id: str, entry: dict[str, Any]) -> dict[str, Any]:
+        company = self.get_by_id_or_raise(company_id)
+        configs = [*self._ai_list(company), entry]
+        return self.update(company_id, {"ai": configs, "aiEnabled": any(c.get("enabled") for c in configs)})
+
+    def update_ai_config(self, company_id: str, ai_config_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+        company = self.get_by_id_or_raise(company_id)
+        configs = self._ai_list(company)
+        index = next((i for i, c in enumerate(configs) if c.get("id") == ai_config_id), None)
+        if index is None:
+            raise NotFoundError(f"Configuração de IA '{ai_config_id}' não encontrada nesta empresa.")
+        configs[index] = {**configs[index], **changes}
+        return self.update(company_id, {"ai": configs, "aiEnabled": any(c.get("enabled") for c in configs)})
+
+    def remove_ai_config(self, company_id: str, ai_config_id: str) -> dict[str, Any]:
+        company = self.get_by_id_or_raise(company_id)
+        configs = self._ai_list(company)
+        remaining = [c for c in configs if c.get("id") != ai_config_id]
+        if len(remaining) == len(configs):
+            raise NotFoundError(f"Configuração de IA '{ai_config_id}' não encontrada nesta empresa.")
+        return self.update(company_id, {"ai": remaining, "aiEnabled": any(c.get("enabled") for c in remaining)})

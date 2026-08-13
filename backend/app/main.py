@@ -75,14 +75,14 @@ async def health_check() -> dict:
 
 
 # --- Registro de routers -------------------------------------------------
-from app.api.routers import auth_router, companies_router, users_router  # noqa: E402
+from app.api.routers import auth_router, companies_router, users_router, whatsapp_router  # noqa: E402
 
 app.include_router(auth_router.router, prefix=settings.API_V1_PREFIX)
 app.include_router(companies_router.router, prefix=settings.API_V1_PREFIX)
 app.include_router(users_router.router, prefix=settings.API_V1_PREFIX)
+app.include_router(whatsapp_router.router, prefix=settings.API_V1_PREFIX)
 
 # Serão adicionados progressivamente nas próximas etapas do desenvolvimento:
 #
-# from app.api.routers import whatsapp_router, conversations_router
-# app.include_router(whatsapp_router.router, prefix=settings.API_V1_PREFIX)
+# from app.api.routers import conversations_router
 # ...

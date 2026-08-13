@@ -44,20 +44,44 @@ export interface MetaConnectionConnectInput {
   access_token: string
 }
 
-export interface AIConfig {
-  enabled: boolean
+export type AIProvider = 'openai' | 'anthropic' | 'gemini'
+export type AIPurpose = 'mensagem' | 'imagem' | 'audio' | 'outro'
+
+export interface AIProviderConfig {
+  id: string
+  label: string
+  purpose: AIPurpose
+  provider: AIProvider
+  model: string
   assistant_id: string | null
-  model: string | null
   prompt: string | null
   temperature: number
+  enabled: boolean
+  has_api_key: boolean
 }
 
-export interface AIConfigUpdateInput {
-  enabled?: boolean
-  assistant_id?: string
-  model?: string
-  prompt?: string
+export interface AIProviderConfigInput {
+  label: string
+  purpose: AIPurpose
+  provider: AIProvider
+  model: string
+  api_key: string
+  assistant_id?: string | null
+  prompt?: string | null
   temperature?: number
+  enabled?: boolean
+}
+
+export interface AIProviderConfigUpdateInput {
+  label?: string
+  purpose?: AIPurpose
+  provider?: AIProvider
+  model?: string
+  api_key?: string
+  assistant_id?: string | null
+  prompt?: string | null
+  temperature?: number
+  enabled?: boolean
 }
 
 export interface PlanInfo {
@@ -89,7 +113,7 @@ export interface CompanyResponse {
   whatsapp: WhatsAppNumber[]
   meta_connection: MetaConnectionInfo
   tags: string[]
-  ai: AIConfig
+  ai: AIProviderConfig[]
   plan: PlanInfo
   usage: UsageInfo
   status: CompanyStatus
@@ -124,7 +148,7 @@ export interface CompanyCreateInput {
   sector: string
   whatsapp: WhatsAppNumberInput[]
   tags: string[]
-  ai: AIConfig
+  ai?: AIProviderConfigInput[]
   plan: PlanInfo
 }
 
