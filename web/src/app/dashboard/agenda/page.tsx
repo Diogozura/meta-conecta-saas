@@ -76,9 +76,9 @@ function endOfDayISO(dateStr: string) {
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url)
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error ?? 'Erro ao carregar dados')
-  return data
+  const data = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(data?.error ?? `Erro ao carregar dados (${res.status})`)
+  return data as T
 }
 
 export default function AgendaPage() {
