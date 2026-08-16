@@ -292,7 +292,12 @@ function ConversasInner() {
       }
     }
 
-    const id = setInterval(poll, 3000)
+    // Pausa o polling quando a aba está em segundo plano — evita gastar
+    // cota do Firestore com um chat que ninguém está olhando.
+    const id = setInterval(() => {
+      if (document.hidden) return
+      void poll()
+    }, 5000)
     return () => clearInterval(id)
   }, [])
 
