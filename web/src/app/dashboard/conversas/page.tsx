@@ -104,7 +104,11 @@ export default function ConversasPage() {
 }
 
 function ConversasInner() {
-  const [conversations, setConversations] = useState<Conversation[]>(() => loadFromStorage())
+  // Começa vazio (igual no servidor e no cliente, na primeira renderização)
+  // e só lê o localStorage depois de montado — ler direto no useState
+  // divergia entre servidor (sem localStorage) e cliente (com dados
+  // salvos), causando erro de hydration.
+  const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [message, setMessage] = useState('')
   const [sendStatus, setSendStatus] = useState<'idle' | 'loading' | 'error'>('idle')
@@ -115,6 +119,11 @@ function ConversasInner() {
   const [newName, setNewName] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const searchParams = useSearchParams()
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    setConversations(loadFromStorage())
+  }, [])
 
   // Persiste conversas no localStorage sempre que mudarem
   useEffect(() => {
