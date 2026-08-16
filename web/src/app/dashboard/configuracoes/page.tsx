@@ -42,7 +42,7 @@ export default function ConfiguracoesPage() {
   const [loadingData, setLoadingData] = useState(true)
   const [hasCredentials, setHasCredentials] = useState(false)
 
-  const [aiConfig, setAiConfig] = useState<AiConfig>({ enabled: false, provider: 'gemini', model: 'gemini-2.0-flash', prompt: '', apiKey: '', informacoesNegocio: '' })
+  const [aiConfig, setAiConfig] = useState<AiConfig>({ enabled: false, provider: 'gemini', model: 'gemini-2.5-flash', prompt: '', apiKey: '', informacoesNegocio: '' })
   const [aiLoading, setAiLoading] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
 

@@ -29,7 +29,7 @@ Clique em **Add New** e adicione cada uma das variáveis abaixo:
 
 ```
 Name: FIREBASE_PROJECT_ID
-Value: zybot-data
+Value: <seu-project-id>
 ```
 
 ✅ **Environments:** Marque todas (Production, Preview, Development)
@@ -40,7 +40,7 @@ Value: zybot-data
 
 ```
 Name: FIREBASE_CLIENT_EMAIL
-Value: firebase-adminsdk-fbsvc@zybot-data.iam.gserviceaccount.com
+Value: <client-email-da-service-account>
 ```
 
 ✅ **Environments:** Marque todas (Production, Preview, Development)
@@ -53,10 +53,10 @@ Value: firebase-adminsdk-fbsvc@zybot-data.iam.gserviceaccount.com
 Name: FIREBASE_PRIVATE_KEY
 ```
 
-**Value:** Copie o conteúdo abaixo **EXATAMENTE** como está (COM as aspas duplas e os `\n` literais):
+**Value:** Copie o conteúdo do seu `.env.local` **EXATAMENTE** como está (COM as aspas duplas e os `\n` literais):
 
 ```
-"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDEx2FQctFhwZAH\nm+Bp2jGThH23rjKpkm3mO45kVfKsFiFZ981nJhWuz1/irSTCJ+LlMn2PPH7vJHYr\no30enD5F9CL4CC1KRihqcNE+DNn6FeshBjJaWvyMDUC7V1Lz41QG6AXC2ZIbt7cr\nnuTsZ4pN8NWFg2Tph2lSos5Q0y1JD871RxP4aPzsTAYTpUAS8aflOitvqoHt153s\nlHvJRikYN/op7HPI+OK3YnqnUwk6sHoQwKP4t3Yg9XIyvtdZmt4DoWrDl/GDFqOF\n1lAI0aCaSIPZ+tN/lS5IJjf6cV7Y8SJAhCYEyiU6JUeuxh6HIc6pyRrmHtwaeQ0B\nxXpVHN3/AgMBAAECggEAP5lHKQarCKLUR7lICz4zpr98GGkrQ6Ypce+OwnwK3jaa\n2eae0vc6q9CnZ25Zgoz8puIuNaSyS91negwxjLqn39kbkjmmVaqeNmS3JAxoSQ1b\nfMVxccWVeThxUvtSurOe/UpxTjwenmm+wFDvIT8HstAjWq8QZu/WiRhIgVP3f3SU\n9E5OEW+qgrLNJNN4y2bFHzrXmHspxAvI+Ov+ym/TCsfKz1oLXeqHI4gzvZINHvIq\n7VzXKeu3p2DB9Vsxbx8wBpswfyk36AZ9EWyMklbcbgblXgCE/ENtrNewaqYiKPry\n3PHGlMUhv6VNcBypcEO4d/Nf1FetH99vsYpdZdsk7QKBgQDhI4Di8w0Hk0HgtZCu\nwh1VflJoTAzgmHmKTvEqXYRgNGi8MrKR+NAMn7PySZC2N7AG8WZ6bkLOhrgPYue6\nxZ5YQjXyoStOARAVuYpyAAUtid9fPfU971RvM6/6IixW+3NERhYCb/ZhpeeKhdJC\nlKOJm3CtJu7LWHzc8fiG6u3qEwKBgQDfwK5xqPuiKtx5jRZnO9da7bzEs0qMRWOf\ntuLT14tzyPAzFJ1xrfUVU2ms4wvUQOvFpTtZQNdXmRMWPt3dPMvhaZBd3HxsFy+8\nYnhCYsxIdlWPE5Dk1Q9F5Wy7mIJenHk/AAMlrwuVQYxKfSYLtkp10KRkWOpxwOWJ\nqWUh96r55QKBgQCCt11m551iD5LJSEH35Yaok85+9eDoKj8vGYSWh3OLdAJ3eqwJ\nasBJBBSzkRjvY0fV0CUi4o/xX3DQpilLXOAB+HdgJ0mAYceYBYEnjXF0Lj++Cbgx\nPJr2cbkz7tF1s0sKkfLHeYBA09WqrOYWeDy3ccOrFRbCg98DXY5hr1dxdwKBgFBW\nk4v125vHffAay193qgRY9f0+Ttb8lx+if+EGNGj3Td9ZWIqXpjbpAzlzMC0evkjx\n4dRTJr6qFKNZIToteRrPV2mMIBSDYr1mMb3MUYL3EhNUOCMhqOE01gypXq3vyszn\nCTo/lo4ZwfCA7OcppaSVrGDnWA5N71y1OL2wenBNAoGAK4jGCBN2CX7tGKg5UgGp\n6hMnqq9VO+mrX6p45//9lhmEgD25tzcbIVw3DKzfQ7v731xxZX3fu9hH7TeDOg/V\nEq0Gcgtl+mclk/8TbBUYYaH1/f4kHQsJ2Pb7INn0T0bzcHktNWr9WzcF/pu0qBxL\naT9LMWVaiYcwiwas4gARQ+0=\n-----END PRIVATE KEY-----\n"
+"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 ```
 
 ⚠️ **IMPORTANTE:** 

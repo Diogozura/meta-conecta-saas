@@ -22,7 +22,7 @@ export interface AgentRunParams {
 export type AgentProvider = 'gemini' | 'openai' | 'anthropic'
 
 export const AGENT_PROVIDERS: { value: AgentProvider; label: string; modeloExemplo: string; ondeConseguirChave: string }[] = [
-  { value: 'gemini', label: 'Google Gemini', modeloExemplo: 'gemini-2.0-flash', ondeConseguirChave: 'aistudio.google.com → Get API key' },
+  { value: 'gemini', label: 'Google Gemini', modeloExemplo: 'gemini-2.5-flash', ondeConseguirChave: 'aistudio.google.com → Get API key' },
   { value: 'openai', label: 'OpenAI (ChatGPT)', modeloExemplo: 'gpt-4o-mini', ondeConseguirChave: 'platform.openai.com/api-keys' },
   { value: 'anthropic', label: 'Anthropic (Claude)', modeloExemplo: 'claude-opus-5', ondeConseguirChave: 'console.anthropic.com/settings/keys' },
 ]

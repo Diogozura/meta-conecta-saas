@@ -34,12 +34,34 @@ def init_firebase() -> firebase_admin.App:
 
     settings = get_settings()
 
-    if settings.GOOGLE_APPLICATION_CREDENTIALS:
+    if settings.FIREBASE_CLIENT_EMAIL and settings.FIREBASE_PRIVATE_KEY:
+        # Chave privada como variável de ambiente (Vercel etc.) — remove
+        # aspas envolventes e converte "\n" literal em quebra de linha real,
+        # do mesmo jeito que web/src/lib/firebase-admin.ts faz.
+        private_key = settings.FIREBASE_PRIVATE_KEY.strip()
+        if private_key.startswith('"') and private_key.endswith('"'):
+            private_key = private_key[1:-1]
+        private_key = private_key.replace("\\n", "\n")
+
+        cred = credentials.Certificate(
+            {
+                "type": "service_account",
+                "project_id": settings.FIREBASE_PROJECT_ID,
+                "client_email": settings.FIREBASE_CLIENT_EMAIL,
+                "private_key": private_key,
+                "token_uri": "https://oauth2.googleapis.com/token",
+            }
+        )
+        _firebase_app = firebase_admin.initialize_app(
+            cred, options={"projectId": settings.FIREBASE_PROJECT_ID}
+        )
+        logger.info("Firebase Admin SDK inicializado com credenciais via variáveis de ambiente.")
+    elif settings.GOOGLE_APPLICATION_CREDENTIALS:
         cred = credentials.Certificate(settings.GOOGLE_APPLICATION_CREDENTIALS)
         _firebase_app = firebase_admin.initialize_app(
             cred, options={"projectId": settings.FIREBASE_PROJECT_ID}
         )
-        logger.info("Firebase Admin SDK inicializado com service account JSON.")
+        logger.info("Firebase Admin SDK inicializado com service account JSON (arquivo local).")
     else:
         _firebase_app = firebase_admin.initialize_app(
             options={"projectId": settings.FIREBASE_PROJECT_ID}

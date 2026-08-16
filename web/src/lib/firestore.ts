@@ -168,6 +168,36 @@ export async function atualizarUsuario(contaId: string, usuarioId: string, data:
 }
 
 // ─────────────────────────────────────────
+// ÍNDICE uid -> contaId/usuarioId
+// ─────────────────────────────────────────
+//
+// `auth()` (lib/auth.ts) precisa resolver o contaId do usuário logado a
+// partir do uid da sessão Firebase. Sem um índice, isso exigia escanear a
+// coleção inteira de "contas" e, para cada uma, consultar a subcoleção
+// "usuarios" por e-mail — um custo O(n) de leituras a cada requisição
+// autenticada, que estourou a cota gratuita do Firestore em produção.
+// Este índice guarda o atalho uid -> {contaId, usuarioId}, populado sob
+// demanda (lazy) na primeira vez que o scan legado resolve um usuário.
+
+export interface IndiceUsuario {
+  contaId: string
+  usuarioId: string
+  email: string
+}
+
+export async function obterIndiceUsuarioPorUid(uid: string): Promise<IndiceUsuario | null> {
+  const db = getDb()
+  const docSnap = await db.collection('usuarioContaIndex').doc(uid).get()
+  if (!docSnap.exists) return null
+  return docSnap.data() as IndiceUsuario
+}
+
+export async function salvarIndiceUsuarioPorUid(uid: string, entry: IndiceUsuario): Promise<void> {
+  const db = getDb()
+  await db.collection('usuarioContaIndex').doc(uid).set(entry)
+}
+
+// ─────────────────────────────────────────
 // META ACCESS
 // ─────────────────────────────────────────
 //
@@ -680,9 +710,13 @@ export async function listarMensagensPorNumero(contaId: string, numeroTelefone: 
  * Mensagens recebidas depois de um instante — usado pelo polling em tempo
  * real do painel. Reaproveita o mesmo índice de listarMensagens (contaId ==,
  * orderBy timestamp) e filtra em memória, evitando precisar de um índice
- * composto novo no Firestore.
+ * composto novo no Firestore. `limit` baixo de propósito: essa função lê
+ * até `limit` mensagens do Firestore EM TODO poll, mesmo quando não há
+ * nada novo (o filtro por `since` é em memória, não na query) — um limit
+ * alto aqui multiplicado pela cadência do polling foi o que estourou a
+ * cota gratuita do Firestore em produção.
  */
-export async function listarMensagensRecebidasDesde(contaId: string, sinceMs: number, limit = 50): Promise<Mensagem[]> {
+export async function listarMensagensRecebidasDesde(contaId: string, sinceMs: number, limit = 15): Promise<Mensagem[]> {
   const recentes = await listarMensagens(contaId, limit)
   return recentes
     .filter((m) => m.tipo === 'recebida' && (m.dataCriacao as unknown as Timestamp).toMillis() > sinceMs)

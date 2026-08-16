@@ -4,6 +4,7 @@ import { adminAuth, adminDb } from './firebase-admin'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
+import { obterIndiceUsuarioPorUid, salvarIndiceUsuarioPorUid, obterUsuario, atualizarUsuario } from './firestore'
 
 const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 7 * 1000 // 7 dias em ms
 const SESSION_MAX_AGE_S = SESSION_MAX_AGE_MS / 1000  // 7 dias em segundos
@@ -80,11 +81,36 @@ export async function auth() {
   if (!session) return null
 
   try {
+    // Caminho rápido: já resolvemos esse uid antes, 1 leitura + 1 leitura
+    // do usuário (em vez de escanear todas as "contas"). Se o índice
+    // apontar pra um usuário que não existe mais (removido/movido), cai
+    // pro scan completo abaixo e re-heala o índice.
+    const indice = await obterIndiceUsuarioPorUid(session.uid)
+    if (indice) {
+      const usuario = await obterUsuario(indice.contaId, indice.usuarioId)
+      if (usuario) {
+        if (usuario.status === 'convite_pendente') {
+          await atualizarUsuario(indice.contaId, indice.usuarioId, { status: 'ativo' })
+          usuario.status = 'ativo'
+        }
+        return {
+          user: {
+            uid: session.uid,
+            email: session.email || '',
+            name: usuario.nome || '',
+            contaId: indice.contaId,
+            usuarioId: indice.usuarioId,
+            nivel: usuario.nivel,
+          }
+        }
+      }
+    }
+
     const { getApps } = await import('firebase-admin/app')
     const db = getFirestore(getApps()[0], 'zybot-data')
-    
-    // Buscar usuário em todas as contas (subcoleção usuarios)
-    // Nota: Em produção, seria melhor armazenar a relação uid -> contaId em uma coleção separada
+
+    // Buscar usuário em todas as contas (subcoleção usuarios) — só chega
+    // aqui no "cache miss" (primeira vez desse uid, ou índice desatualizado).
     let contasSnapshot
     try {
       contasSnapshot = await db.collection('contas').get()
@@ -102,13 +128,13 @@ export async function auth() {
         }
       }
     }
-    
+
     for (const contaDoc of contasSnapshot.docs) {
       const usuariosSnapshot = await contaDoc.ref.collection('usuarios')
         .where('email', '==', session.email)
         .limit(1)
         .get()
-      
+
       if (!usuariosSnapshot.empty) {
         const usuarioDoc = usuariosSnapshot.docs[0]
         const usuarioData = usuarioDoc.data()
@@ -118,6 +144,13 @@ export async function auth() {
           await usuarioDoc.ref.update({ status: 'ativo', dataAtualizacao: Timestamp.now() })
           usuarioData.status = 'ativo'
         }
+
+        // Popula o índice pra próxima chamada não precisar escanear tudo de novo.
+        salvarIndiceUsuarioPorUid(session.uid, {
+          contaId: contaDoc.id,
+          usuarioId: usuarioDoc.id,
+          email: session.email || '',
+        }).catch((err) => console.error('Erro ao salvar índice uid->conta:', err))
 
         return {
           user: {
@@ -131,7 +164,7 @@ export async function auth() {
         }
       }
     }
-    
+
     // Se não encontrou o usuário em nenhuma conta, retorna dados básicos
     return {
       user: {
