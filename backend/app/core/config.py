@@ -24,9 +24,14 @@ class Settings(BaseSettings):
 
     # --- Firebase / Firestore ---
     FIREBASE_PROJECT_ID: str
-    # Caminho para o JSON de credenciais do service account.
-    # Em produção (Cloud Run/GKE), pode usar Application Default Credentials
-    # e deixar este campo vazio.
+    # Credencial do service account via variáveis de ambiente (Vercel e
+    # qualquer ambiente sem filesystem persistente) — mesmos nomes usados
+    # em web/.env.example, dá pra copiar os mesmos valores.
+    FIREBASE_CLIENT_EMAIL: str | None = None
+    FIREBASE_PRIVATE_KEY: str | None = None
+    # Alternativa para dev local: caminho para o JSON de credenciais do
+    # service account. Se nenhuma credencial acima for informada, cai para
+    # Application Default Credentials (só funciona em GCP).
     GOOGLE_APPLICATION_CREDENTIALS: str | None = None
     # O projeto usa um banco Firestore NOMEADO (não o "(default)") — o
     # mesmo banco já usado pelo app web/ (ver web/src/lib/firebase-admin.ts,
