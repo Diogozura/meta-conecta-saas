@@ -168,6 +168,36 @@ export async function atualizarUsuario(contaId: string, usuarioId: string, data:
 }
 
 // ─────────────────────────────────────────
+// ÍNDICE uid -> contaId/usuarioId
+// ─────────────────────────────────────────
+//
+// `auth()` (lib/auth.ts) precisa resolver o contaId do usuário logado a
+// partir do uid da sessão Firebase. Sem um índice, isso exigia escanear a
+// coleção inteira de "contas" e, para cada uma, consultar a subcoleção
+// "usuarios" por e-mail — um custo O(n) de leituras a cada requisição
+// autenticada, que estourou a cota gratuita do Firestore em produção.
+// Este índice guarda o atalho uid -> {contaId, usuarioId}, populado sob
+// demanda (lazy) na primeira vez que o scan legado resolve um usuário.
+
+export interface IndiceUsuario {
+  contaId: string
+  usuarioId: string
+  email: string
+}
+
+export async function obterIndiceUsuarioPorUid(uid: string): Promise<IndiceUsuario | null> {
+  const db = getDb()
+  const docSnap = await db.collection('usuarioContaIndex').doc(uid).get()
+  if (!docSnap.exists) return null
+  return docSnap.data() as IndiceUsuario
+}
+
+export async function salvarIndiceUsuarioPorUid(uid: string, entry: IndiceUsuario): Promise<void> {
+  const db = getDb()
+  await db.collection('usuarioContaIndex').doc(uid).set(entry)
+}
+
+// ─────────────────────────────────────────
 // META ACCESS
 // ─────────────────────────────────────────
 //
