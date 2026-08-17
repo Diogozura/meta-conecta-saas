@@ -11,6 +11,21 @@ type Message = {
   text: string
   direction: 'sent' | 'received'
   time: string
+  // Preenchido quando a Meta rejeitou o envio (ex: janela de 24h expirada) —
+  // deixa claro pro atendente que aquela mensagem NÃO chegou no WhatsApp.
+  failReason?: string
+}
+
+// Código que a Graph API retorna quando a janela de 24h de atendimento já
+// expirou (ou nunca existiu) e a conversa só pode ser reaberta com um
+// template aprovado.
+const META_REENGAGEMENT_ERROR_CODE = 131047
+
+function friendlySendError(code?: number): string {
+  if (code === META_REENGAGEMENT_ERROR_CODE) {
+    return 'Mensagem não enviada — envie um template aprovado para reiniciar essa conversa.'
+  }
+  return 'Mensagem não enviada. Tente novamente.'
 }
 
 type Conversation = {
@@ -158,8 +173,7 @@ function ConversasInner() {
   // acabaria apontando pra conversa errada depois de um reorder.
   const [selectedNumber, setSelectedNumber] = useState<string | null>(null)
   const [message, setMessage] = useState('')
-  const [sendStatus, setSendStatus] = useState<'idle' | 'loading' | 'error'>('idle')
-  const [sendError, setSendError] = useState('')
+  const [sendStatus, setSendStatus] = useState<'idle' | 'loading'>('idle')
   const [search, setSearch] = useState('')
   const [showNewForm, setShowNewForm] = useState(false)
   const [newNumber, setNewNumber] = useState('')
@@ -389,7 +403,6 @@ function ConversasInner() {
     )
     setMessage('')
     setSendStatus('loading')
-    setSendError('')
 
     try {
       const res = await fetch('/api/meta/send-message', {
@@ -397,12 +410,31 @@ function ConversasInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to: conv.number.replace(/\D/g, ''), message: msgText }),
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Erro ao enviar')
+      const json: { error?: string; code?: number } = await res.json()
+      if (!res.ok) {
+        // A Meta recusou o envio (ex: janela de 24h expirada) — marca essa
+        // mensagem específica como não entregue em vez de só mostrar um
+        // aviso genérico que some da tela.
+        const failReason = friendlySendError(json.code)
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.number === selectedNumber
+              ? { ...c, messages: c.messages.map((m) => (m.id === newMsg.id ? { ...m, failReason } : m)) }
+              : c
+          )
+        )
+      }
       setSendStatus('idle')
-    } catch (err) {
-      setSendStatus('error')
-      setSendError(err instanceof Error ? err.message : 'Erro desconhecido')
+    } catch {
+      const failReason = friendlySendError()
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.number === selectedNumber
+            ? { ...c, messages: c.messages.map((m) => (m.id === newMsg.id ? { ...m, failReason } : m)) }
+            : c
+        )
+      )
+      setSendStatus('idle')
     }
   }
 
@@ -523,7 +555,7 @@ function ConversasInner() {
             return (
               <div
                 key={c.number}
-                onClick={() => { setSelectedNumber(c.number); setSendError('') }}
+                onClick={() => setSelectedNumber(c.number)}
                 className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${
                   selectedNumber === c.number ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'
                 }`}
@@ -611,13 +643,21 @@ function ConversasInner() {
                 <div key={msg.id} className={`flex ${msg.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm shadow-sm ${
-                      msg.direction === 'sent'
+                      msg.failReason
+                        ? 'bg-red-50 text-red-800 border border-red-200 rounded-br-sm'
+                        : msg.direction === 'sent'
                         ? 'bg-brand-600 text-white rounded-br-sm'
                         : 'bg-white text-ink-800 rounded-bl-sm'
                     }`}
                   >
                     <p className="leading-snug">{msg.text}</p>
-                    <p className={`text-[10px] mt-1 text-right ${msg.direction === 'sent' ? 'text-brand-200' : 'text-ink-400'}`}>
+                    {msg.failReason && (
+                      <p className="flex items-center gap-1 text-[11px] mt-1 font-medium text-red-700">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        {msg.failReason}
+                      </p>
+                    )}
+                    <p className={`text-[10px] mt-1 text-right ${msg.failReason ? 'text-red-400' : msg.direction === 'sent' ? 'text-brand-200' : 'text-ink-400'}`}>
                       {msg.time}
                     </p>
                   </div>
@@ -625,14 +665,6 @@ function ConversasInner() {
               ))}
               <div ref={messagesEndRef} />
             </div>
-
-            {/* Error */}
-            {sendError && (
-              <div className="mx-3 mb-1 flex items-center gap-2 text-xs p-2 rounded-lg bg-red-50 text-red-700 border border-red-100">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                {sendError}
-              </div>
-            )}
 
             {/* Input bar */}
             <div data-tour="conversas-input" className="p-3 border-t border-ink-100 bg-white">

@@ -74,6 +74,18 @@ export async function subscribeToWebhooks(wabaId: string, accessToken: string) {
   return res.json()
 }
 
+/** Erro retornado pela Graph API — preserva o `code` do erro (ex: 131047
+ * quando a janela de 24h de atendimento expirou) pra quem chamou decidir
+ * como tratar cada caso. */
+export class MetaApiError extends Error {
+  code?: number
+  constructor(message: string, code?: number) {
+    super(message)
+    this.name = 'MetaApiError'
+    this.code = code
+  }
+}
+
 /** Envia uma mensagem de texto simples via Cloud API. */
 export async function sendTextMessage(
   phoneNumberId: string,
@@ -97,7 +109,7 @@ export async function sendTextMessage(
   })
   if (!res.ok) {
     const err = await res.json()
-    throw new Error(err?.error?.message ?? 'Falha ao enviar mensagem')
+    throw new MetaApiError(err?.error?.message ?? 'Falha ao enviar mensagem', err?.error?.code)
   }
   return res.json()
 }

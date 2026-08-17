@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers'
-import { sendTextMessage, getMetaCredentials } from '@/lib/meta'
+import { sendTextMessage, getMetaCredentials, MetaApiError } from '@/lib/meta'
 import { auth } from '@/lib/auth'
 import { criarMensagem, definirIaAtivaConversa } from '@/lib/firestore'
 
@@ -66,6 +66,7 @@ export async function POST(request: Request) {
     return Response.json(result)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido'
-    return Response.json({ error: message }, { status: 502 })
+    const code = err instanceof MetaApiError ? err.code : undefined
+    return Response.json({ error: message, code }, { status: 502 })
   }
 }
