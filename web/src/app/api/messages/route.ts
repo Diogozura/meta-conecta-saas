@@ -1,5 +1,5 @@
 import { auth } from '@/lib/auth'
-import { listarMensagensRecebidasDesde } from '@/lib/firestore'
+import { listarMensagensRecebidasDesde, listarFalhasDesde } from '@/lib/firestore'
 import { FirestoreQuotaExceededError } from '@/lib/firestoreErrors'
 import { quotaErrorResponse } from '@/lib/apiRouteHelpers'
 
@@ -24,8 +24,14 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const since = parseInt(searchParams.get('since') ?? '0')
 
-  const mensagens = await listarMensagensRecebidasDesde(session.user.contaId, since)
+  const [mensagens, falhas] = await Promise.all([
+    listarMensagensRecebidasDesde(session.user.contaId, since),
+    listarFalhasDesde(session.user.contaId, since),
+  ])
   const messages = mensagens.map((m) => ({ id: m.id, from: m.from, nomeContato: m.nomeContato, text: m.text, timestamp: m.timestamp }))
+  // Mensagens ENVIADAS que a Meta aceitou na hora (200 OK) mas depois
+  // rejeitou de fato (ex: janela de 24h) — reportado assíncrono, via webhook.
+  const failures = falhas.map((m) => ({ id: m.id, erro: m.erro }))
 
-  return Response.json({ messages, serverTime: Date.now() })
+  return Response.json({ messages, failures, serverTime: Date.now() })
 }

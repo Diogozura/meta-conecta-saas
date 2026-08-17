@@ -2,7 +2,6 @@ import { createHmac } from 'crypto'
 import { after } from 'next/server'
 import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem } from '@/lib/firestore'
 import { processarMensagemComIA } from '@/lib/aiAgent'
-import { Mensagem } from '@/types/database'
 
 /* ─── GET: verificação do endpoint pelo Meta ─────────────────────────────── */
 export async function GET(request: Request) {
@@ -143,10 +142,17 @@ export async function POST(request: Request) {
       // Status de mensagens enviadas
       for (const status of value.statuses ?? []) {
         console.log('[Webhook] Status:', { id: status.id, status: status.status })
-        
+
+        // Quando falha (ex: janela de 24h expirada), a Meta manda o motivo
+        // aqui — não na resposta síncrona do envio.
+        const primeiroErro = status.errors?.[0]
+        const erro = status.status === 'failed' && primeiroErro
+          ? { codigo: primeiroErro.code, mensagem: primeiroErro.title ?? primeiroErro.message ?? 'Falha ao entregar a mensagem' }
+          : undefined
+
         // Atualiza status no Firebase
         try {
-          await atualizarStatusMensagem(status.id, status.status as Mensagem['status'])
+          await atualizarStatusMensagem(status.id, status.status, erro)
         } catch (error) {
           console.error('❌ Erro ao atualizar status no Firebase:', error)
         }
@@ -220,6 +226,7 @@ interface WebhookPayload {
           status: string
           timestamp: string
           recipient_id: string
+          errors?: Array<{ code: number; title?: string; message?: string }>
         }>
       }
       field: string

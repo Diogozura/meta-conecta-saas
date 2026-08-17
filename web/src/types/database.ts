@@ -149,6 +149,10 @@ export interface Mensagem {
   timestamp: number             // Unix timestamp em segundos (do Meta)
   tipo: 'recebida' | 'enviada'  // Direção da mensagem
   status?: 'enviada' | 'entregue' | 'lida' | 'falhou'  // Status (para mensagens enviadas)
+  // Motivo da falha, quando status === 'falhou' — vem do webhook de status
+  // da Meta (ex: código 131047 = janela de 24h expirada, precisa de template).
+  erro?: { codigo?: number; mensagem: string }
+  statusAtualizadoEm?: Date     // Quando `status` mudou pela última vez (webhook de status)
   dataCriacao: Date             // Data de criação no Firebase
 }
 

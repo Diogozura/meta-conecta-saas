@@ -732,18 +732,59 @@ export async function listarMensagensRecebidasDesde(contaId: string, sinceMs: nu
 }
 
 /**
- * Atualiza status de uma mensagem enviada
+ * Mensagens ENVIADAS cujo status mudou pra "falhou" desde um instante —
+ * usado pelo mesmo polling do painel pra avisar quando uma mensagem que
+ * pareceu enviada (a Meta respondeu 200 OK na hora) na verdade não foi
+ * entregue. A Meta só reporta esse tipo de falha depois, de forma
+ * assíncrona, via webhook de status — nunca na resposta síncrona do envio.
+ * Reaproveita `listarMensagens` (mesmo índice) igual a
+ * listarMensagensRecebidasDesde, pelo mesmo motivo: evitar índice composto novo.
  */
-export async function atualizarStatusMensagem(mensagemId: string, status: Mensagem['status']): Promise<void> {
+export async function listarFalhasDesde(contaId: string, sinceMs: number, limit = 15): Promise<Mensagem[]> {
+  const recentes = await listarMensagens(contaId, limit)
+  return recentes.filter((m) => {
+    if (m.tipo !== 'enviada' || m.status !== 'falhou' || !m.statusAtualizadoEm) return false
+    return (m.statusAtualizadoEm as unknown as Timestamp).toMillis() > sinceMs
+  })
+}
+
+// A Meta manda o status em inglês ('sent'/'delivered'/'read'/'failed') no
+// webhook — o schema do Firestore usa os valores em português. Sem esse
+// mapa, o `as Mensagem['status']` só fazia o TypeScript aceitar o cast, mas
+// o Firestore acabava salvando 'failed' num campo que nada consultava como
+// 'falhou', então nenhuma falha real de entrega era detectada.
+const META_STATUS_MAP: Record<string, Mensagem['status']> = {
+  sent: 'enviada',
+  delivered: 'entregue',
+  read: 'lida',
+  failed: 'falhou',
+}
+
+/**
+ * Atualiza status de uma mensagem enviada (chamado a partir do webhook de
+ * status da Meta). `metaStatus` vem em inglês, direto do payload da Meta.
+ */
+export async function atualizarStatusMensagem(
+  mensagemId: string,
+  metaStatus: string,
+  erro?: { codigo?: number; mensagem: string },
+): Promise<void> {
   const db = getDb()
-  
-  console.log('📝 Atualizando status da mensagem:', { mensagemId, status })
-  
+  const status = META_STATUS_MAP[metaStatus]
+  if (!status) {
+    console.warn('⚠️ Status desconhecido recebido da Meta, ignorando:', metaStatus)
+    return
+  }
+
+  console.log('📝 Atualizando status da mensagem:', { mensagemId, status, erro })
+
   try {
     await db.collection('mensagens').doc(mensagemId).update({
       status,
+      statusAtualizadoEm: Timestamp.now(),
+      ...(erro ? { erro } : {}),
     })
-    
+
     console.log('✅ Status atualizado:', mensagemId)
   } catch (error: unknown) {
     const err = error as { code?: string; message?: string }

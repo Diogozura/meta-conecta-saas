@@ -307,13 +307,14 @@ function ConversasInner() {
       try {
         const res = await fetch(`/api/messages?since=${since}`)
         if (!res.ok) return
-        const { messages, serverTime } = await res.json() as {
+        const { messages, failures, serverTime } = await res.json() as {
           messages: { id: string; from: string; nomeContato?: string; text: string; timestamp: number }[]
+          failures: { id: string; erro?: { codigo?: number; mensagem: string } }[]
           serverTime: number
         }
         since = serverTime
 
-        if (messages.length === 0) return
+        if (messages.length === 0 && failures.length === 0) return
 
         setConversations((prev) => {
           let next = [...prev]
@@ -360,6 +361,20 @@ function ConversasInner() {
               ]
             }
           }
+
+          // Mensagens que a Meta aceitou na hora (200 OK), mas rejeitou de
+          // fato depois — reportado assíncrono, via webhook de status. Acha
+          // a mensagem pelo ID real da Meta (trocado no lugar do ID
+          // otimista assim que o envio respondeu com sucesso) e marca em
+          // vermelho, senão o atendente nunca fica sabendo que não chegou.
+          for (const fail of failures) {
+            const failReason = friendlySendError(fail.erro?.codigo)
+            next = next.map((c) => ({
+              ...c,
+              messages: c.messages.map((m) => (m.id === fail.id ? { ...m, failReason } : m)),
+            }))
+          }
+
           return sortConvs(next)
         })
       } catch {
@@ -410,11 +425,11 @@ function ConversasInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to: conv.number.replace(/\D/g, ''), message: msgText }),
       })
-      const json: { error?: string; code?: number } = await res.json()
+      const json: { error?: string; code?: number; messages?: { id: string }[] } = await res.json()
       if (!res.ok) {
-        // A Meta recusou o envio (ex: janela de 24h expirada) — marca essa
-        // mensagem específica como não entregue em vez de só mostrar um
-        // aviso genérico que some da tela.
+        // A Meta recusou o envio na hora (ex: número nunca contatou o
+        // negócio) — marca essa mensagem específica como não entregue em
+        // vez de só mostrar um aviso genérico que some da tela.
         const failReason = friendlySendError(json.code)
         setConversations((prev) =>
           prev.map((c) =>
@@ -423,6 +438,22 @@ function ConversasInner() {
               : c
           )
         )
+      } else {
+        // A Meta pode aceitar o envio na hora (200 OK) e só reportar uma
+        // falha de verdade depois, de forma assíncrona (webhook de status —
+        // ex: janela de 24h). Troca o ID otimista local pelo ID real da
+        // Meta, senão o polling não consegue casar essa mensagem com o
+        // aviso de falha quando ele chegar.
+        const realId = json.messages?.[0]?.id
+        if (realId && realId !== newMsg.id) {
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.number === selectedNumber
+                ? { ...c, messages: c.messages.map((m) => (m.id === newMsg.id ? { ...m, id: realId } : m)) }
+                : c
+            )
+          )
+        }
       }
       setSendStatus('idle')
     } catch {
