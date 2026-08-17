@@ -3,7 +3,7 @@
  * Use em Server Components ou Server Actions apenas
  */
 
-import { getFirestore, Timestamp, Query } from 'firebase-admin/firestore'
+import { getFirestore, Timestamp, Query, Filter } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
 import { Conta, ContaAiConfig, Usuario, MetaAccess, ContaVinculada, Cliente, Mensagem, Profissional, Servico, Disponibilidade, Agendamento, Conversa } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
@@ -696,13 +696,21 @@ export async function listarMensagens(contaId: string, limit = 100): Promise<Men
  */
 export async function listarMensagensPorNumero(contaId: string, numeroTelefone: string, limit = 100): Promise<Mensagem[]> {
   const db = getDb()
+  // Mensagens recebidas gravam `from` = número do cliente; mensagens
+  // enviadas pelo bot gravam `from` = phoneNumberId do negócio e
+  // `to` = número do cliente. Filtrar só por `from` deixava de fora todas
+  // as respostas do próprio bot — o histórico da conversa (usado pela IA)
+  // ficava sempre incompleto, só com o lado do cliente.
   const snapshot = await db.collection('mensagens')
     .where('contaId', '==', contaId)
-    .where('from', '==', numeroTelefone)
+    .where(Filter.or(
+      Filter.where('from', '==', numeroTelefone),
+      Filter.where('to', '==', numeroTelefone)
+    ))
     .orderBy('timestamp', 'desc')
     .limit(limit)
     .get()
-  
+
   return snapshot.docs.map(doc => ({ ...doc.data() } as Mensagem))
 }
 

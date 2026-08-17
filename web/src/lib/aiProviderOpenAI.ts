@@ -31,7 +31,7 @@ export async function runOpenAIAgent(params: AgentRunParams): Promise<string> {
   ]
 
   for (let i = 0; i < MAX_ITERACOES_AGENTE; i++) {
-    const completion = await client.chat.completions.create({ model: params.model, messages, tools })
+    const completion = await client.chat.completions.create({ model: params.model, messages, tools, max_completion_tokens: 2048 })
     const mensagem = completion.choices[0].message
     messages.push(mensagem)
 

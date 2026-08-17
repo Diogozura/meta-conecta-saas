@@ -60,8 +60,8 @@ async function setupWithDefaultDB() {
         displayName: 'Administrador',
         emailVerified: true,
       })
-    } catch (error: any) {
-      if (error.code === 'auth/email-already-exists') {
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'auth/email-already-exists') {
         userRecord = await auth.getUserByEmail(emailAdmin)
         console.log('⚠️  Email já existe')
       } else {
@@ -109,10 +109,11 @@ async function setupWithDefaultDB() {
     console.log(`   Senha: ${senhaAdmin}`)
     console.log('\n⚠️  IMPORTANTE: Mude a senha após o primeiro login!\n')
     
-  } catch (error: any) {
-    console.error('\n❌ Erro:', error.message)
-    
-    if (error.message.includes('NOT_FOUND')) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('\n❌ Erro:', message)
+
+    if (message.includes('NOT_FOUND')) {
       console.error('\n💡 O Firestore pode precisar ser inicializado manualmente.')
       console.error('   Vá no Firebase Console e crie UMA coleção manualmente:')
       console.error('   1. Clique em "+ Iniciar coleção"')

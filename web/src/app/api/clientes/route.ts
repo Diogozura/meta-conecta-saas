@@ -3,7 +3,7 @@ import { criarCliente, listarClientes } from '@/lib/firestore'
 import { auth } from '@/lib/auth'
 
 // GET /api/clientes - Listar clientes
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const session = await auth()
     if (!session?.user?.contaId) {

@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      # firebase-admin.ts só inicializa o app se FIREBASE_PROJECT_ID existir;
+      # sem isso, o fallback getFirestore() (sem app) lança na hora do import,
+      # e auth.ts (importado por quase toda rota) puxa esse módulo já na
+      # coleta de dados do build. Geramos uma chave RSA descartável aqui só
+      # pra passar pela inicialização — nenhuma chamada real ao Firestore
+      # acontece durante o build.
+      - name: Set dummy Firebase credentials (build-time only)
+        run: |
+          {
+            echo "FIREBASE_PROJECT_ID=dummy-ci-project"
+            echo "FIREBASE_CLIENT_EMAIL=dummy@dummy-ci-project.iam.gserviceaccount.com"
+            echo "FIREBASE_PRIVATE_KEY<<EOF"
+            node -e "console.log(require('crypto').generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'}}).privateKey)"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - run: npm run build

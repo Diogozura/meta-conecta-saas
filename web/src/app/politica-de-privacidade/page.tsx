@@ -12,7 +12,7 @@ export default function PoliticaDePrivacidade() {
         <section className="rounded-3xl border border-slate-200 bg-white p-10 shadow-sm">
           <h1 className="text-4xl font-semibold tracking-tight">Aviso de Privacidade</h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-700">
-            A Scale Estratégia Digital criou este Aviso de Privacidade (o “Aviso") para explicar como trata dados
+            A Scale Estratégia Digital criou este Aviso de Privacidade (o “Aviso”) para explicar como trata dados
             pessoais quando você utiliza nossa plataforma de comunicação via WhatsApp Business API, acessa nosso
             sistema ou entra em contato conosco.
           </p>

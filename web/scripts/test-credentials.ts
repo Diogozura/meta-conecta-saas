@@ -23,7 +23,7 @@ if (!getApps().length) {
     .replace(/^"|"$/g, '') // Remove aspas do início/fim
     .replace(/\\n/g, '\n') // Converte \n literal para quebra de linha real
 
-  const app = initializeApp({
+  initializeApp({
     credential: cert({
       projectId: process.env.FIREBASE_PROJECT_ID!,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
@@ -64,8 +64,8 @@ async function main() {
       const collections = await db.listCollections()
       console.log('✅ Acesso ao Firestore OK!')
       console.log('   Coleções encontradas:', collections.map(c => c.id).join(', '))
-    } catch (error: any) {
-      console.error('❌ Erro ao listar coleções:', error.message)
+    } catch (error) {
+      console.error('❌ Erro ao listar coleções:', error instanceof Error ? error.message : error)
       console.log('\n🔴 PROBLEMA: Firebase Admin não consegue acessar o Firestore')
       console.log('\n📝 Possíveis soluções:')
       console.log('1. Verifique as REGRAS DE SEGURANÇA no Firebase Console')
@@ -118,9 +118,10 @@ async function main() {
       })
       contaId = contaRef.id
       console.log('✅ Conta criada:', contaId)
-    } catch (error: any) {
-      console.error('❌ Erro ao criar conta:', error.message)
-      console.log('\n⚠️ Detalhes do erro:', error.code, error.details)
+    } catch (error) {
+      const err = error as { message?: string; code?: string; details?: unknown }
+      console.error('❌ Erro ao criar conta:', err.message)
+      console.log('\n⚠️ Detalhes do erro:', err.code, err.details)
       console.log('\n📝 Verifique:')
       console.log('1. As regras de segurança permitem escrita')
       console.log('2. O Firebase Admin SDK está configurado corretamente')
@@ -172,9 +173,9 @@ async function main() {
     console.log(`   Senha: ${password}`)
     console.log('\n🚀 Acesse: http://localhost:3000/login')
 
-  } catch (error: any) {
-    console.error('\n❌ ERRO:', error.message)
-    console.error('Stack:', error.stack)
+  } catch (error) {
+    console.error('\n❌ ERRO:', error instanceof Error ? error.message : error)
+    console.error('Stack:', error instanceof Error ? error.stack : undefined)
     process.exit(1)
   }
 }

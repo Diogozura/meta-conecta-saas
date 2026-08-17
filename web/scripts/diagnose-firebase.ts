@@ -35,8 +35,8 @@ async function diagnose() {
       })
     }
     console.log('   ✅ Firebase inicializado com sucesso')
-  } catch (error: any) {
-    console.log('   ❌ Erro ao inicializar:', error.message)
+  } catch (error) {
+    console.log('   ❌ Erro ao inicializar:', error instanceof Error ? error.message : error)
     process.exit(1)
   }
   console.log('')
@@ -47,8 +47,8 @@ async function diagnose() {
     const auth = getAuth()
     const users = await auth.listUsers(1) // Listar 1 usuário
     console.log(`   ✅ Auth funcionando (${users.users.length} usuário(s) encontrado(s))`)
-  } catch (error: any) {
-    console.log('   ❌ Erro no Auth:', error.message)
+  } catch (error) {
+    console.log('   ❌ Erro no Auth:', error instanceof Error ? error.message : error)
   }
   console.log('')
 
@@ -67,8 +67,8 @@ async function diagnose() {
     // Deletar documento de teste
     await testRef.delete()
     console.log('   ✅ Documento de teste removido')
-  } catch (error: any) {
-    console.log('   ❌ Erro no Firestore:', error.message)
+  } catch (error) {
+    console.log('   ❌ Erro no Firestore:', error instanceof Error ? error.message : error)
     console.log('   💡 Solução: Ative o Firestore no Firebase Console')
     console.log('   🌐 Acesse: https://console.firebase.google.com/project/' + process.env.FIREBASE_PROJECT_ID + '/firestore')
     console.log('   📌 Clique em "Criar banco de dados" e escolha o modo de produção ou teste')

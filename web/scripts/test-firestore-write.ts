@@ -25,7 +25,7 @@ async function testeEscrita() {
   console.log('\n🧪 Testando escrita no Firestore...\n')
   
   const db = getFirestore()
-  console.log('Database ID:', (db as any)._settings.projectId)
+  console.log('Database ID:', (db as unknown as { _settings: { projectId: string } })._settings.projectId)
   
   try {
     // Tentar criar documento de teste
@@ -53,8 +53,8 @@ async function testeEscrita() {
     console.log('Agora você pode rodar: npm run setup-admin-quick')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
-  } catch (error: any) {
-    console.error('❌ Erro ao escrever:', error.message)
+  } catch (error) {
+    console.error('❌ Erro ao escrever:', error instanceof Error ? error.message : error)
     console.error('\n💡 Possíveis soluções:')
     console.error('1. Verifique as regras do Firestore (aba Segurança)')
     console.error('2. Certifique-se que a Service Account tem permissões')

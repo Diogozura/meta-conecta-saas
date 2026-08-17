@@ -3,7 +3,7 @@ import { FERRAMENTAS_AGENTE, executarFuncaoAgente } from '@/lib/aiAgentTools'
 import { AgentRunParams, MAX_ITERACOES_AGENTE } from '@/lib/aiAgentTypes'
 
 function paraFerramentasAnthropic(): Anthropic.Tool[] {
-  return FERRAMENTAS_AGENTE.map((t) => ({
+  const tools = FERRAMENTAS_AGENTE.map((t): Anthropic.Tool => ({
     name: t.name,
     description: t.description,
     input_schema: {
@@ -12,6 +12,17 @@ function paraFerramentasAnthropic(): Anthropic.Tool[] {
       required: t.params.filter((p) => p.required).map((p) => p.name),
     },
   }))
+
+  // Marca a última ferramenta como ponto de corte do cache: a Anthropic
+  // cacheia tudo que vem antes desse marcador (tools + system), então as
+  // iterações 2+ do loop de function-calling (mesma mensagem) e mensagens
+  // seguintes da mesma conta (dentro do TTL) reaproveitam o prompt fixo
+  // em vez de pagar preço cheio de novo.
+  if (tools.length > 0) {
+    tools[tools.length - 1] = { ...tools[tools.length - 1], cache_control: { type: 'ephemeral' } }
+  }
+
+  return tools
 }
 
 export async function runAnthropicAgent(params: AgentRunParams): Promise<string> {
@@ -27,7 +38,7 @@ export async function runAnthropicAgent(params: AgentRunParams): Promise<string>
     const response = await client.messages.create({
       model: params.model,
       max_tokens: 2048,
-      system: params.systemPrompt,
+      system: [{ type: 'text', text: params.systemPrompt, cache_control: { type: 'ephemeral' } }],
       tools,
       messages,
     })

@@ -77,8 +77,8 @@ async function quickSetup() {
       displayName: 'Administrador',
       emailVerified: true,
     })
-  } catch (error: any) {
-    if (error.code === 'auth/email-already-exists') {
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'auth/email-already-exists') {
       userRecord = await auth.getUserByEmail(emailAdmin)
       console.log('⚠️  Email já existe, usando usuário existente')
     } else {

@@ -34,11 +34,14 @@ export async function POST(request: Request) {
   const signature = request.headers.get('x-hub-signature-256') ?? ''
   const appSecret = process.env.META_APP_SECRET ?? ''
 
-  if (appSecret) {
-    const expected = 'sha256=' + createHmac('sha256', appSecret).update(rawBody).digest('hex')
-    if (signature !== expected) {
-      return new Response('Unauthorized', { status: 401 })
-    }
+  if (!appSecret) {
+    console.error('❌ META_APP_SECRET não configurado — recusando webhook (fail-closed).')
+    return new Response('Server Misconfigured', { status: 500 })
+  }
+
+  const expected = 'sha256=' + createHmac('sha256', appSecret).update(rawBody).digest('hex')
+  if (signature !== expected) {
+    return new Response('Unauthorized', { status: 401 })
   }
 
   let payload: WebhookPayload

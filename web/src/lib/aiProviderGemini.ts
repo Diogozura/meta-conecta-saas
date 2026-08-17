@@ -23,6 +23,7 @@ export async function runGeminiAgent(params: AgentRunParams): Promise<string> {
     config: {
       systemInstruction: params.systemPrompt,
       tools: [{ functionDeclarations: paraFerramentasGemini() }],
+      maxOutputTokens: 2048,
     },
     history,
   })

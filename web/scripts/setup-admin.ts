@@ -77,8 +77,8 @@ async function setupSuperAdmin(config: SetupConfig) {
       emailVerified: true, // SuperAdmin já vem verificado
     })
     console.log(`✅ Usuário criado no Auth: ${userRecord.uid}\n`)
-  } catch (error: any) {
-    if (error.code === 'auth/email-already-exists') {
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'auth/email-already-exists') {
       console.log('⚠️  Email já existe no Auth, buscando usuário...')
       userRecord = await auth.getUserByEmail(config.emailAdmin)
       console.log(`✅ Usuário encontrado: ${userRecord.uid}\n`)
