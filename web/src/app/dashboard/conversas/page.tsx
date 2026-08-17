@@ -18,6 +18,11 @@ type Conversation = {
   number: string
   last: string
   time: string
+  // Unix seconds da última mensagem (enviada ou recebida) — usado só pra
+  // ordenar a lista da mais recente pra mais antiga. Conversas antigas
+  // salvas no localStorage antes desse campo existir ficam com 0 (vão pro
+  // fim da lista até receberem mensagem nova).
+  lastTimestamp: number
   status: 'Recebida' | 'Enviada'
   messages: Message[]
 }
@@ -51,6 +56,26 @@ function saveToStorage(convs: Conversation[]) {
 
 function formatTime(unixSeconds: number) {
   return new Date(unixSeconds * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+// Data + hora da última mensagem, exibida na lista de conversas — só a hora
+// (formato antigo) não deixava claro se a conversa era de hoje ou de dias
+// atrás.
+function formatListTimestamp(unixSeconds: number) {
+  const date = new Date(unixSeconds * 1000)
+  const datePart = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+  const timePart = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  return `${datePart} ${timePart}`
+}
+
+function nowUnix() {
+  return Math.floor(Date.now() / 1000)
+}
+
+// Mantém a lista sempre ordenada da conversa mais recente pra mais antiga,
+// com base no timestamp real da última mensagem — não na ordem de chegada.
+function sortConvs(list: Conversation[]): Conversation[] {
+  return [...list].sort((a, b) => (b.lastTimestamp ?? 0) - (a.lastTimestamp ?? 0))
 }
 
 /**
@@ -87,14 +112,15 @@ function buildConversationsFromHistory(mensagens: HistoryMessage[], existingName
       name: nomeWhatsapp || existingNames.get(number) || number,
       number,
       last: lastMsg.text,
-      time: formatTime(lastMsg.timestamp),
+      time: formatListTimestamp(lastMsg.timestamp),
+      lastTimestamp: lastMsg.timestamp,
       status: lastMsg.tipo === 'recebida' ? 'Recebida' : 'Enviada',
       messages,
     }
-    return { conv, lastTimestamp: lastMsg.timestamp }
+    return conv
   })
 
-  return conversations.sort((a, b) => b.lastTimestamp - a.lastTimestamp).map((c) => c.conv)
+  return sortConvs(conversations)
 }
 
 function ConversationRowSkeleton() {
@@ -127,7 +153,10 @@ function ConversasInner() {
   // salvos), causando erro de hydration.
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loadingConversas, setLoadingConversas] = useState(true)
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  // Seleção por número (não por índice) — a lista é reordenada a cada
+  // mensagem nova (item mais recente sobe pro topo), então um índice fixo
+  // acabaria apontando pra conversa errada depois de um reorder.
+  const [selectedNumber, setSelectedNumber] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [sendStatus, setSendStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [sendError, setSendError] = useState('')
@@ -164,7 +193,7 @@ function ConversasInner() {
           // existem no histórico do Firestore — preserva essas.
           const historyNumbers = new Set(fromHistory.map((c) => c.number))
           const localOnly = prev.filter((c) => !historyNumbers.has(c.number) && c.messages.length === 0)
-          return [...fromHistory, ...localOnly]
+          return sortConvs([...fromHistory, ...localOnly])
         })
       })
       .catch(() => {
@@ -184,22 +213,24 @@ function ConversasInner() {
     if (!from) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
     setConversations((prev) => {
-      const idx = prev.findIndex((c) => c.number.replace(/\D/g, '') === from.replace(/\D/g, ''))
-      if (idx !== -1) {
-        setSelectedIdx(idx)
+      const existing = prev.find((c) => c.number.replace(/\D/g, '') === from.replace(/\D/g, ''))
+      if (existing) {
+        setSelectedNumber(existing.number)
         return prev
       }
       // Cria conversa nova para o número caso não exista
+      const ts = nowUnix()
       const newConv: Conversation = {
         name: from,
         number: from,
         last: '',
-        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        time: formatListTimestamp(ts),
+        lastTimestamp: ts,
         status: 'Recebida',
         messages: [],
       }
-      setSelectedIdx(0)
-      return [newConv, ...prev]
+      setSelectedNumber(newConv.number)
+      return sortConvs([newConv, ...prev])
     })
   }, [searchParams])
 
@@ -209,7 +240,7 @@ function ConversasInner() {
       c.number.includes(search.replace(/\D/g, ''))
   )
 
-  const currentConv = selectedIdx !== null ? conversations[selectedIdx] : null
+  const currentConv = selectedNumber !== null ? conversations.find((c) => c.number === selectedNumber) ?? null : null
 
   // Scroll automático ao chegar nova mensagem
   useEffect(() => {
@@ -273,13 +304,11 @@ function ConversasInner() {
         setConversations((prev) => {
           let next = [...prev]
           for (const data of messages) {
-            const incomingTime = new Date(data.timestamp * 1000)
-              .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
             const incomingMsg: Message = {
               id: data.id,
               text: data.text,
               direction: 'received',
-              time: incomingTime,
+              time: formatTime(data.timestamp),
             }
             const idx = next.findIndex(
               (c) => c.number.replace(/\D/g, '') === data.from.replace(/\D/g, '')
@@ -296,7 +325,8 @@ function ConversasInner() {
                       name: data.nomeContato || c.name,
                       messages: [...c.messages, incomingMsg],
                       last: incomingMsg.text,
-                      time: incomingTime,
+                      time: formatListTimestamp(data.timestamp),
+                      lastTimestamp: data.timestamp,
                       status: 'Recebida' as const,
                     }
                   : c
@@ -307,7 +337,8 @@ function ConversasInner() {
                   name: data.nomeContato || data.from,
                   number: data.from,
                   last: incomingMsg.text,
-                  time: incomingTime,
+                  time: formatListTimestamp(data.timestamp),
+                  lastTimestamp: data.timestamp,
                   status: 'Recebida' as const,
                   messages: [incomingMsg],
                 },
@@ -315,7 +346,7 @@ function ConversasInner() {
               ]
             }
           }
-          return next
+          return sortConvs(next)
         })
       } catch {
         // silencioso — tenta no próximo ciclo
@@ -331,29 +362,29 @@ function ConversasInner() {
     return () => clearInterval(id)
   }, [])
 
-  function now() {
-    return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-  }
-
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
-    if (!message.trim() || selectedIdx === null) return
+    if (!message.trim() || selectedNumber === null) return
 
-    const conv = conversations[selectedIdx]
+    const conv = conversations.find((c) => c.number === selectedNumber)
+    if (!conv) return
+    const ts = nowUnix()
     const newMsg: Message = {
       id: Date.now().toString(),
       text: message.trim(),
       direction: 'sent',
-      time: now(),
+      time: formatTime(ts),
     }
     const msgText = message.trim()
 
     // Optimistic update
     setConversations((prev) =>
-      prev.map((c, i) =>
-        i === selectedIdx
-          ? { ...c, messages: [...c.messages, newMsg], last: msgText, time: newMsg.time, status: 'Enviada' }
-          : c
+      sortConvs(
+        prev.map((c) =>
+          c.number === selectedNumber
+            ? { ...c, messages: [...c.messages, newMsg], last: msgText, time: formatListTimestamp(ts), lastTimestamp: ts, status: 'Enviada' }
+            : c
+        )
       )
     )
     setMessage('')
@@ -379,16 +410,18 @@ function ConversasInner() {
     e.preventDefault()
     if (!newNumber.trim()) return
     const name = newName.trim() || newNumber.trim()
+    const ts = nowUnix()
     const newConv: Conversation = {
       name,
       number: newNumber.replace(/\D/g, ''),
       last: '',
-      time: now(),
+      time: formatListTimestamp(ts),
+      lastTimestamp: ts,
       status: 'Enviada',
       messages: [],
     }
-    setConversations((prev) => [newConv, ...prev])
-    setSelectedIdx(0)
+    setConversations((prev) => sortConvs([newConv, ...prev]))
+    setSelectedNumber(newConv.number)
     setShowNewForm(false)
     setNewNumber('')
     setNewName('')
@@ -427,7 +460,7 @@ function ConversasInner() {
       <div
         data-tour="conversas-list"
         className={`w-full lg:w-72 flex-col bg-white rounded-xl border border-ink-200 overflow-hidden shrink-0 ${
-          selectedIdx !== null ? 'hidden lg:flex' : 'flex'
+          selectedNumber !== null ? 'hidden lg:flex' : 'flex'
         }`}
       >
         <div className="p-3 border-b border-ink-100 space-y-2">
@@ -487,13 +520,12 @@ function ConversasInner() {
             </>
           )}
           {(!loadingConversas || conversations.length > 0) && filtered.map((c) => {
-            const idx = conversations.indexOf(c)
             return (
               <div
-                key={idx}
-                onClick={() => { setSelectedIdx(idx); setSendError('') }}
+                key={c.number}
+                onClick={() => { setSelectedNumber(c.number); setSendError('') }}
                 className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${
-                  selectedIdx === idx ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'
+                  selectedNumber === c.number ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'
                 }`}
               >
                 <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
@@ -522,7 +554,7 @@ function ConversasInner() {
             {/* Chat header */}
             <div className="px-4 py-3 border-b border-ink-100 flex items-center gap-3 bg-ink-50">
               <button
-                onClick={() => setSelectedIdx(null)}
+                onClick={() => setSelectedNumber(null)}
                 className="lg:hidden -ml-1 p-1.5 rounded-lg text-ink-500 hover:bg-ink-100 transition-colors shrink-0"
                 aria-label="Voltar para a lista"
               >
