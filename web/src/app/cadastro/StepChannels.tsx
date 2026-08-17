@@ -21,7 +21,7 @@ export default function StepChannels({ channels, onToggleChannel, onBack, onCont
         type="button"
         onClick={onBack}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-700 mb-4 disabled:opacity-50"
       >
         <ArrowLeft className="w-4 h-4" />
         Voltar
@@ -38,18 +38,18 @@ export default function StepChannels({ channels, onToggleChannel, onBack, onCont
                 disabled={loading}
                 onClick={() => onToggleChannel(key)}
                 className={`relative flex flex-col items-center gap-2 rounded-xl border p-4 transition-colors disabled:opacity-50 ${
-                  selected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:bg-gray-50'
+                  selected ? 'border-brand-500 bg-brand-50' : 'border-ink-200 bg-white hover:bg-ink-50'
                 }`}
               >
                 {selected && (
-                  <span className="absolute top-2 right-2 w-4 h-4 bg-green-600 rounded-full flex items-center justify-center">
+                  <span className="absolute top-2 right-2 w-4 h-4 bg-brand-600 rounded-full flex items-center justify-center">
                     <Check className="w-2.5 h-2.5 text-white" />
                   </span>
                 )}
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${badgeClass}`}>
                   {Icon ? <Icon className="w-5 h-5 text-white" /> : <span className="text-white text-lg font-bold">f</span>}
                 </div>
-                <span className="text-sm font-medium text-gray-700">{label}</span>
+                <span className="text-sm font-medium text-ink-700">{label}</span>
               </button>
             )
           })}
@@ -58,7 +58,7 @@ export default function StepChannels({ channels, onToggleChannel, onBack, onCont
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Continuar
         </button>

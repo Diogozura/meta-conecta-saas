@@ -4,33 +4,45 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logout } from '@/lib/auth'
 import {
-  MessageSquare,
   Building2,
-  FileText,
   LayoutDashboard,
   LogOut,
   ChevronRight,
   Menu,
   X,
-  Plug,
-  UserCog,
   Settings,
   Calendar,
+  HelpCircle,
+  RotateCcw,
+  Sparkles,
+  ShieldCheck,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Toaster } from 'sonner'
 import { RealtimeListeners } from '@/components/RealtimeListeners'
+import { Logo } from '@/components/Logo'
+import { WhatsAppGlyph, InstagramGlyph, FacebookGlyph } from '@/components/BrandIcons'
+import { TourProvider, useTour } from '@/lib/tour/TourContext'
+import { getGlobalTourSteps, getPageTourSteps } from '@/lib/tour/steps'
 
-const navItems = [
-  { href: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard, platformAdminOnly: false },
-  { href: '/dashboard/conversas', label: 'Conversas', icon: MessageSquare, platformAdminOnly: false },
-  { href: '/dashboard/agenda', label: 'Agenda', icon: Calendar, platformAdminOnly: false },
-  { href: '/dashboard/clientes', label: 'Clientes', icon: Building2, platformAdminOnly: true },
-  { href: '/dashboard/usuarios', label: 'Usuários', icon: UserCog, platformAdminOnly: false },
-  { href: '/dashboard/templates', label: 'Templates', icon: FileText, platformAdminOnly: false },
-  { href: '/dashboard/onboarding', label: 'Conectar WABA', icon: Plug, platformAdminOnly: false },
-  { href: '/dashboard/configuracoes', label: 'Configurações', icon: Settings, platformAdminOnly: false },
+type NavItem = {
+  href: string
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  tour?: string
+}
+
+const mainNavItems: NavItem[] = [
+  { href: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard, tour: 'nav-visao-geral' },
+  { href: '/dashboard/agenda', label: 'Agenda', icon: Calendar, tour: 'nav-agenda' },
 ]
+
+const manageNavItems: (NavItem & { platformAdminOnly: boolean })[] = [
+  { href: '/dashboard/clientes', label: 'Clientes', icon: Building2, platformAdminOnly: true, tour: 'nav-clientes' },
+  { href: '/dashboard/configuracoes', label: 'Configurações', icon: Settings, platformAdminOnly: false, tour: 'nav-configuracoes' },
+]
+
+const TOUR_SEEN_KEY = 'zybot_tour_seen_global'
 
 export default function DashboardShell({
   isPlatformAdmin,
@@ -39,16 +51,59 @@ export default function DashboardShell({
   isPlatformAdmin: boolean
   children: React.ReactNode
 }) {
+  return (
+    <TourProvider>
+      <DashboardShellInner isPlatformAdmin={isPlatformAdmin}>{children}</DashboardShellInner>
+    </TourProvider>
+  )
+}
+
+function DashboardShellInner({
+  isPlatformAdmin,
+  children,
+}: {
+  isPlatformAdmin: boolean
+  children: React.ReactNode
+}) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const helpRef = useRef<HTMLDivElement>(null)
+  const { start } = useTour()
 
   // "Clientes" (Empresas) é uma tela de admin de plataforma — vê/gerencia
   // TODAS as empresas. Usuários comuns de uma empresa (mesmo Administrador
   // daquela empresa) nunca veem esse item no menu.
-  const visibleNavItems = navItems.filter((item) => !item.platformAdminOnly || isPlatformAdmin)
+  const visibleManageItems = manageNavItems.filter((item) => !item.platformAdminOnly || isPlatformAdmin)
+  const allLabeledItems: { href: string; label: string }[] = [
+    ...mainNavItems,
+    { href: '/dashboard/conversas', label: 'Conversas' },
+    ...visibleManageItems,
+  ]
+
+  useEffect(() => {
+    const seen = window.localStorage.getItem(TOUR_SEEN_KEY)
+    if (!seen) {
+      const timer = setTimeout(() => {
+        start(getGlobalTourSteps(isPlatformAdmin))
+        window.localStorage.setItem(TOUR_SEEN_KEY, '1')
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [isPlatformAdmin, start])
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (helpRef.current && !helpRef.current.contains(e.target as Node)) setHelpOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
+  const pageTourSteps = getPageTourSteps(pathname)
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-ink-50 overflow-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -59,50 +114,48 @@ export default function DashboardShell({
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-ink-200 flex flex-col transition-transform duration-300 lg:static lg:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-100">
-          <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-            <MessageSquare className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-lg font-bold text-gray-900">Meta Conecta</span>
+        <div className="flex items-center gap-3 px-6 py-5 border-b border-ink-100">
+          <Logo markClassName="w-8 h-8" textClassName="text-lg font-bold text-ink-900" />
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {visibleNavItems.map((item) => {
-            const Icon = item.icon
-            const active = pathname === item.href
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group ${
-                  active
-                    ? 'bg-green-50 text-green-700'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                }`}
-              >
-                <Icon className={`w-5 h-5 ${active ? 'text-green-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
-                <span className="flex-1">{item.label}</span>
-                {active && <ChevronRight className="w-4 h-4 text-green-500" />}
-              </Link>
-            )
-          })}
+        <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto scrollbar-thin">
+          <NavSection>
+            {mainNavItems.map((item) => (
+              <NavLink key={item.href} item={item} active={pathname === item.href} onNavigate={() => setSidebarOpen(false)} />
+            ))}
+          </NavSection>
+
+          <NavSection label="Canais de atendimento">
+            <NavLink
+              item={{ href: '/dashboard/conversas', label: 'WhatsApp', icon: WhatsAppGlyph, tour: 'nav-conversas' }}
+              active={pathname.startsWith('/dashboard/conversas')}
+              onNavigate={() => setSidebarOpen(false)}
+            />
+            <ComingSoonRow icon={InstagramGlyph} label="Instagram" />
+            <ComingSoonRow icon={FacebookGlyph} label="Facebook" />
+          </NavSection>
+
+          <NavSection label="Administração">
+            {visibleManageItems.map((item) => (
+              <NavLink key={item.href} item={item} active={pathname === item.href} onNavigate={() => setSidebarOpen(false)} />
+            ))}
+          </NavSection>
         </nav>
 
         {/* Logout */}
-        <div className="px-3 py-4 border-t border-gray-100">
+        <div className="px-3 py-4 border-t border-ink-100">
           <form action={logout}>
             <button
               type="submit"
-              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
+              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-ink-600 hover:bg-red-50 hover:text-red-600 transition-colors"
             >
-              <LogOut className="w-5 h-5 text-gray-400" />
+              <LogOut className="w-5 h-5 text-ink-400" />
               Sair
             </button>
           </form>
@@ -112,21 +165,62 @@ export default function DashboardShell({
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
-        <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-4 shrink-0">
+        <header className="bg-white border-b border-ink-200 px-4 py-3 flex items-center gap-4 shrink-0">
           <button
-            className="lg:hidden p-2 rounded-md text-gray-500 hover:bg-gray-100"
+            className="lg:hidden p-2 rounded-md text-ink-500 hover:bg-ink-100"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
           <div className="flex-1">
-            <h1 className="text-sm font-semibold text-gray-800">
-              {visibleNavItems.find((n) => n.href === pathname)?.label ?? 'Dashboard'}
+            <h1 className="text-sm font-semibold text-ink-800">
+              {allLabeledItems.find((n) => n.href === pathname)?.label ?? 'Dashboard'}
             </h1>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-xs font-bold text-green-700">U</span>
+          <div className="flex items-center gap-2 relative" ref={helpRef}>
+            <button
+              data-tour="topbar-help"
+              onClick={() => setHelpOpen((v) => !v)}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-ink-500 hover:bg-ink-100 hover:text-brand-700 transition-colors"
+              aria-label="Ajuda e tour guiado"
+            >
+              <HelpCircle className="w-5 h-5" />
+            </button>
+            {helpOpen && (
+              <div className="absolute right-0 top-11 w-64 bg-white rounded-xl border border-ink-200 shadow-lg py-1.5 animate-fade-in z-40">
+                <button
+                  onClick={() => {
+                    setHelpOpen(false)
+                    if (pageTourSteps.length > 0) start(pageTourSteps)
+                  }}
+                  disabled={pageTourSteps.length === 0}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-ink-700 hover:bg-ink-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Sparkles className="w-4 h-4 text-accent-600" />
+                  Tour desta página
+                </button>
+                <button
+                  onClick={() => {
+                    setHelpOpen(false)
+                    start(getGlobalTourSteps(isPlatformAdmin))
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-ink-700 hover:bg-ink-50 transition-colors"
+                >
+                  <RotateCcw className="w-4 h-4 text-brand-600" />
+                  Tour completo do sistema
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-2 pl-2 border-l border-ink-100 ml-1">
+              {isPlatformAdmin && (
+                <span className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full bg-accent-50 text-accent-700 text-[11px] font-semibold">
+                  <ShieldCheck className="w-3 h-3" />
+                  Admin master
+                </span>
+              )}
+              <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center">
+                <span className="text-xs font-bold text-brand-700">U</span>
+              </div>
             </div>
           </div>
         </header>
@@ -140,6 +234,47 @@ export default function DashboardShell({
       {/* Alertas bonitinhos e Listeners de Webhooks em tempo real */}
       <Toaster richColors />
       <RealtimeListeners />
+    </div>
+  )
+}
+
+function NavSection({ label, children }: { label?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      {label && (
+        <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-400">{label}</p>
+      )}
+      {children}
+    </div>
+  )
+}
+
+function NavLink({ item, active, onNavigate }: { item: NavItem; active: boolean; onNavigate: () => void }) {
+  const Icon = item.icon
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      data-tour={item.tour}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group ${
+        active ? 'bg-brand-50 text-brand-700' : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+      }`}
+    >
+      <Icon className={`w-5 h-5 ${active ? 'text-brand-600' : 'text-ink-400 group-hover:text-ink-600'}`} />
+      <span className="flex-1">{item.label}</span>
+      {active && <ChevronRight className="w-4 h-4 text-brand-500" />}
+    </Link>
+  )
+}
+
+function ComingSoonRow({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-ink-400 cursor-not-allowed select-none">
+      <Icon className="w-5 h-5 text-ink-300" />
+      <span className="flex-1">{label}</span>
+      <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-ink-100 text-ink-400">
+        Em breve
+      </span>
     </div>
   )
 }

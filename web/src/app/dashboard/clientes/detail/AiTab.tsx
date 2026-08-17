@@ -172,9 +172,9 @@ export default function AiTab({ company, disabled, onUpdated }: TabProps) {
   return (
     <div className="space-y-4">
       {company.ai.length === 0 && !addingOpen && (
-        <div className="text-center py-6 px-4 border border-dashed border-gray-300 rounded-lg">
-          <p className="text-sm text-gray-600">Nenhuma IA configurada ainda.</p>
-          <p className="text-xs text-gray-400 mt-1">
+        <div className="text-center py-6 px-4 border border-dashed border-ink-300 rounded-lg">
+          <p className="text-sm text-ink-600">Nenhuma IA configurada ainda.</p>
+          <p className="text-xs text-ink-400 mt-1">
             Adicione uma API para responder mensagens, gerar imagens ou transcrever áudio automaticamente.
           </p>
         </div>
@@ -184,7 +184,7 @@ export default function AiTab({ company, disabled, onUpdated }: TabProps) {
         {company.ai.map((item) => {
           const Icon = purposeIcons[item.purpose]
           return (
-            <div key={item.id} className="border border-gray-200 rounded-lg p-3">
+            <div key={item.id} className="border border-ink-200 rounded-lg p-3">
               {editingId === item.id ? (
                 <div className="space-y-3">
                   <AiConfigFields
@@ -196,14 +196,14 @@ export default function AiTab({ company, disabled, onUpdated }: TabProps) {
                     <button
                       disabled={busy}
                       onClick={() => saveEdit(item.id)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
                     >
                       <Check className="w-3.5 h-3.5" />
                       Salvar
                     </button>
                     <button
                       onClick={cancelEdit}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 border border-ink-300 text-xs font-medium rounded-lg text-ink-700 hover:bg-ink-50 transition-colors"
                     >
                       <X className="w-3.5 h-3.5" />
                       Cancelar
@@ -212,7 +212,7 @@ export default function AiTab({ company, disabled, onUpdated }: TabProps) {
                 </div>
               ) : confirmingRemoveId === item.id ? (
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-gray-600">Remover &quot;{item.label}&quot;?</p>
+                  <p className="text-xs text-ink-600">Remover &quot;{item.label}&quot;?</p>
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       disabled={busy}
@@ -223,7 +223,7 @@ export default function AiTab({ company, disabled, onUpdated }: TabProps) {
                     </button>
                     <button
                       onClick={() => setConfirmingRemoveId(null)}
-                      className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                      className="px-3 py-1.5 text-xs font-medium border border-ink-300 rounded-lg text-ink-700 hover:bg-ink-50 transition-colors"
                     >
                       Cancelar
                     </button>
@@ -236,8 +236,8 @@ export default function AiTab({ company, disabled, onUpdated }: TabProps) {
                       <Icon className="w-4 h-4 text-purple-600" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{item.label}</p>
-                      <p className="text-xs text-gray-500 truncate">
+                      <p className="text-sm font-medium text-ink-900 truncate">{item.label}</p>
+                      <p className="text-xs text-ink-500 truncate">
                         {purposeLabels[item.purpose]} · {providerLabels[item.provider]} · {item.model}
                       </p>
                     </div>
@@ -245,7 +245,7 @@ export default function AiTab({ company, disabled, onUpdated }: TabProps) {
                   <div className="flex items-center gap-1 shrink-0">
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        item.enabled ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
+                        item.enabled ? 'bg-brand-50 text-brand-700' : 'bg-ink-100 text-ink-500'
                       }`}
                     >
                       {item.enabled ? 'Ativa' : 'Inativa'}
@@ -254,13 +254,13 @@ export default function AiTab({ company, disabled, onUpdated }: TabProps) {
                       <>
                         <button
                           onClick={() => startEdit(item)}
-                          className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                          className="p-1.5 rounded-md text-ink-400 hover:text-ink-600 hover:bg-ink-100 transition-colors"
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => setConfirmingRemoveId(item.id)}
-                          className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          className="p-1.5 rounded-md text-ink-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -276,14 +276,14 @@ export default function AiTab({ company, disabled, onUpdated }: TabProps) {
 
       {!disabled &&
         (addingOpen ? (
-          <form onSubmit={handleAdd} className="border-t border-gray-200 pt-4 space-y-3">
-            <p className="text-sm font-medium text-gray-700">Nova configuração de IA</p>
+          <form onSubmit={handleAdd} className="border-t border-ink-200 pt-4 space-y-3">
+            <p className="text-sm font-medium text-ink-700">Nova configuração de IA</p>
             <AiConfigFields value={addForm} onChange={setAddForm} apiKeyPlaceholder="sk-..." apiKeyRequired />
             <div className="flex gap-2">
               <button
                 type="submit"
                 disabled={saving}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 {saving ? 'Adicionando...' : 'Adicionar'}
@@ -294,7 +294,7 @@ export default function AiTab({ company, disabled, onUpdated }: TabProps) {
                   setAddingOpen(false)
                   setAddForm(emptyForm)
                 }}
-                className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 border border-ink-300 text-sm font-medium rounded-lg text-ink-700 hover:bg-ink-50 transition-colors"
               >
                 Cancelar
               </button>
@@ -303,7 +303,7 @@ export default function AiTab({ company, disabled, onUpdated }: TabProps) {
         ) : (
           <button
             onClick={() => setAddingOpen(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Adicionar API de IA
@@ -329,23 +329,23 @@ function AiConfigFields({
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Nome (para você identificar)</label>
+        <label className="block text-xs font-medium text-ink-600 mb-1">Nome (para você identificar)</label>
         <input
           type="text"
           required
           value={value.label}
           onChange={(e) => set({ label: e.target.value })}
           placeholder="Ex: Atendimento por texto"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+          className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Finalidade</label>
+          <label className="block text-xs font-medium text-ink-600 mb-1">Finalidade</label>
           <select
             value={value.purpose}
             onChange={(e) => set({ purpose: e.target.value as AIPurpose })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           >
             {Object.entries(purposeLabels).map(([v, label]) => (
               <option key={v} value={v}>
@@ -355,11 +355,11 @@ function AiConfigFields({
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Provedor</label>
+          <label className="block text-xs font-medium text-ink-600 mb-1">Provedor</label>
           <select
             value={value.provider}
             onChange={(e) => set({ provider: e.target.value as AIProvider })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           >
             {Object.entries(providerLabels).map(([v, label]) => (
               <option key={v} value={v}>
@@ -370,18 +370,18 @@ function AiConfigFields({
         </div>
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Modelo</label>
+        <label className="block text-xs font-medium text-ink-600 mb-1">Modelo</label>
         <input
           type="text"
           required
           value={value.model}
           onChange={(e) => set({ model: e.target.value })}
           placeholder="Ex: gpt-5.5"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+          className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
         />
       </div>
       <div>
-        <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
+        <label className="flex items-center gap-1.5 text-xs font-medium text-ink-600 mb-1">
           <KeyRound className="w-3.5 h-3.5" />
           Chave da API (API key)
         </label>
@@ -391,32 +391,32 @@ function AiConfigFields({
           value={value.apiKey}
           onChange={(e) => set({ apiKey: e.target.value })}
           placeholder={apiKeyPlaceholder}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+          className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
         />
-        <p className="text-[11px] text-gray-400 mt-1">Guardada de forma criptografada. Nunca é exibida novamente.</p>
+        <p className="text-[11px] text-ink-400 mt-1">Guardada de forma criptografada. Nunca é exibida novamente.</p>
       </div>
       {value.provider === 'openai' && (
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Assistant ID (opcional)</label>
+          <label className="block text-xs font-medium text-ink-600 mb-1">Assistant ID (opcional)</label>
           <input
             type="text"
             value={value.assistantId}
             onChange={(e) => set({ assistantId: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
         </div>
       )}
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Prompt do agente</label>
+        <label className="block text-xs font-medium text-ink-600 mb-1">Prompt do agente</label>
         <textarea
           value={value.prompt}
           onChange={(e) => set({ prompt: e.target.value })}
           rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
+          className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
         />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Temperature ({value.temperature.toFixed(1)})</label>
+        <label className="block text-xs font-medium text-ink-600 mb-1">Temperature ({value.temperature.toFixed(1)})</label>
         <input
           type="range"
           min={0}
@@ -427,7 +427,7 @@ function AiConfigFields({
           className="w-full"
         />
       </div>
-      <label className="flex items-center gap-2 text-xs font-medium text-gray-600">
+      <label className="flex items-center gap-2 text-xs font-medium text-ink-600">
         <input type="checkbox" checked={value.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
         Ativa
       </label>

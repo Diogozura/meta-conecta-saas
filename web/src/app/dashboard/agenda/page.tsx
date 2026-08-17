@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useState, Suspense, useCallback } from 'react'
+import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { Calendar, Loader2, Plus, Trash2, Link2, CheckCircle2, X, Pencil, Check } from 'lucide-react'
+import { Calendar, Plus, Trash2, Link2, CheckCircle2, X, Pencil, Check } from 'lucide-react'
+import { AgendaCalendar, toDateKey, type DayMark } from '@/components/agenda/AgendaCalendar'
+import { Skeleton } from '@/components/Skeleton'
 
 type Profissional = {
   id: string
@@ -137,19 +139,19 @@ function AgendaInner() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Calendar className="w-5 h-5 text-green-600" />
-        <h1 className="text-lg font-bold text-gray-900">Agenda</h1>
+        <Calendar className="w-5 h-5 text-brand-600" />
+        <h1 className="text-lg font-bold text-ink-900">Agenda</h1>
       </div>
 
-      <div className="border-b border-gray-200 flex gap-1">
+      <div data-tour="agenda-tabs" className="border-b border-ink-200 flex gap-1">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.key
-                ? 'border-green-600 text-green-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                ? 'border-brand-600 text-brand-700'
+                : 'border-transparent text-ink-500 hover:text-ink-700'
             }`}
           >
             {tab.label}
@@ -158,9 +160,7 @@ function AgendaInner() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-gray-400">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando...
-        </div>
+        <AgendaListSkeleton />
       ) : (
         <>
           {activeTab === 'profissionais' && (
@@ -173,6 +173,37 @@ function AgendaInner() {
           {activeTab === 'agendamentos' && <AgendamentosTab profissionais={profissionais} servicos={servicos} />}
         </>
       )}
+    </div>
+  )
+}
+
+function AgendaListSkeleton() {
+  return (
+    <div className="space-y-3">
+      <Skeleton className="h-8 w-40 rounded-lg" />
+      <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="px-4 py-3 flex items-center justify-between">
+            <div className="space-y-1.5">
+              <Skeleton className="h-4 w-36" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+            <Skeleton className="h-4 w-4" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ListRowSkeleton() {
+  return (
+    <div className="px-4 py-3 flex items-center justify-between">
+      <div className="space-y-1.5">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-3 w-28" />
+      </div>
+      <Skeleton className="h-5 w-16 rounded-full" />
     </div>
   )
 }
@@ -258,61 +289,61 @@ function ProfissionaisTab({ profissionais, onChanged }: { profissionais: Profiss
     <div className="space-y-3">
       <button
         onClick={() => setShowForm((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors"
       >
         {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
         Novo profissional
       </button>
 
       {showForm && (
-        <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2 bg-white p-3 rounded-xl border border-gray-200">
+        <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2 bg-white p-3 rounded-xl border border-ink-200">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
-            <input value={nome} onChange={(e) => setNome(e.target.value)} required className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+            <label className="block text-xs font-medium text-ink-600 mb-1">Nome</label>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} required className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Telefone (opcional)</label>
-            <input value={telefone} onChange={(e) => setTelefone(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+            <label className="block text-xs font-medium text-ink-600 mb-1">Telefone (opcional)</label>
+            <input value={telefone} onChange={(e) => setTelefone(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
           </div>
-          <button type="submit" disabled={saving} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">
+          <button type="submit" disabled={saving} className="px-3 py-1.5 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 disabled:opacity-50">
             {saving ? 'Salvando...' : 'Salvar'}
           </button>
         </form>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-        {profissionais.length === 0 && <p className="p-6 text-center text-sm text-gray-400">Nenhum profissional cadastrado ainda.</p>}
+      <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100">
+        {profissionais.length === 0 && <p className="p-6 text-center text-sm text-ink-400">Nenhum profissional cadastrado ainda.</p>}
         {profissionais.map((p) => (
           <div key={p.id} className="px-4 py-3">
             {editingId === p.id ? (
               <div className="flex flex-wrap items-end gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
-                  <input value={editNome} onChange={(e) => setEditNome(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Nome</label>
+                  <input value={editNome} onChange={(e) => setEditNome(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Telefone</label>
-                  <input value={editTelefone} onChange={(e) => setEditTelefone(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Telefone</label>
+                  <input value={editTelefone} onChange={(e) => setEditTelefone(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
                 </div>
-                <label className="flex items-center gap-1.5 text-xs text-gray-600 pb-2">
+                <label className="flex items-center gap-1.5 text-xs text-ink-600 pb-2">
                   <input type="checkbox" checked={editAtivo} onChange={(e) => setEditAtivo(e.target.checked)} /> Ativo
                 </label>
-                <button onClick={() => handleSaveEdit(p.id)} disabled={saving} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Salvar">
+                <button onClick={() => handleSaveEdit(p.id)} disabled={saving} className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors" title="Salvar">
                   <Check className="w-4 h-4" />
                 </button>
-                <button onClick={() => setEditingId(null)} className="p-1.5 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors" title="Cancelar">
+                <button onClick={() => setEditingId(null)} className="p-1.5 text-ink-400 hover:bg-ink-50 rounded-lg transition-colors" title="Cancelar">
                   <X className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">{p.nome}{!p.ativo && <span className="ml-2 text-[10px] text-gray-400 font-normal">inativo</span>}</p>
-                  <p className="text-xs text-gray-500">{p.telefone || 'sem telefone'}</p>
+                  <p className="text-sm font-semibold text-ink-900">{p.nome}{!p.ativo && <span className="ml-2 text-[10px] text-ink-400 font-normal">inativo</span>}</p>
+                  <p className="text-xs text-ink-500">{p.telefone || 'sem telefone'}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {p.google?.conectado ? (
-                    <span className="flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full">
+                    <span className="flex items-center gap-1 text-xs text-brand-700 bg-brand-50 px-2 py-1 rounded-full">
                       <CheckCircle2 className="w-3.5 h-3.5" /> Google conectado{p.google.email ? ` (${p.google.email})` : ''}
                     </span>
                   ) : (
@@ -323,10 +354,10 @@ function ProfissionaisTab({ profissionais, onChanged }: { profissionais: Profiss
                       <Link2 className="w-3.5 h-3.5" /> Conectar Google Calendar
                     </a>
                   )}
-                  <button onClick={() => startEdit(p)} className="p-1.5 text-gray-400 hover:text-green-600 transition-colors" title="Editar">
+                  <button onClick={() => startEdit(p)} className="p-1.5 text-ink-400 hover:text-brand-600 transition-colors" title="Editar">
                     <Pencil className="w-4 h-4" />
                   </button>
-                  <button onClick={() => handleDelete(p.id)} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors" title="Remover">
+                  <button onClick={() => handleDelete(p.id)} className="p-1.5 text-ink-400 hover:text-red-600 transition-colors" title="Remover">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -439,33 +470,33 @@ function ServicosTab({ servicos, profissionais, onChanged }: { servicos: Servico
     <div className="space-y-3">
       <button
         onClick={() => setShowForm((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors"
       >
         {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
         Novo serviço
       </button>
 
       {showForm && (
-        <form onSubmit={handleCreate} className="space-y-3 bg-white p-3 rounded-xl border border-gray-200">
+        <form onSubmit={handleCreate} className="space-y-3 bg-white p-3 rounded-xl border border-ink-200">
           <div className="flex flex-wrap items-end gap-2">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
-              <input value={nome} onChange={(e) => setNome(e.target.value)} required className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+              <label className="block text-xs font-medium text-ink-600 mb-1">Nome</label>
+              <input value={nome} onChange={(e) => setNome(e.target.value)} required className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Duração (minutos)</label>
-              <input type="number" min={5} step={5} value={duracao} onChange={(e) => setDuracao(e.target.value)} required className="w-24 px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+              <label className="block text-xs font-medium text-ink-600 mb-1">Duração (minutos)</label>
+              <input type="number" min={5} step={5} value={duracao} onChange={(e) => setDuracao(e.target.value)} required className="w-24 px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
             </div>
-            <button type="submit" disabled={saving} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">
+            <button type="submit" disabled={saving} className="px-3 py-1.5 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 disabled:opacity-50">
               {saving ? 'Salvando...' : 'Salvar'}
             </button>
           </div>
           {profissionais.length > 0 && (
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Quem atende esse serviço (vazio = todos)</label>
+              <label className="block text-xs font-medium text-ink-600 mb-1">Quem atende esse serviço (vazio = todos)</label>
               <div className="flex flex-wrap gap-2">
                 {profissionais.map((p) => (
-                  <label key={p.id} className="flex items-center gap-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 cursor-pointer">
+                  <label key={p.id} className="flex items-center gap-1.5 text-xs bg-ink-50 border border-ink-200 rounded-lg px-2 py-1 cursor-pointer">
                     <input type="checkbox" checked={selecionados.includes(p.id)} onChange={() => toggleProfissional(p.id)} />
                     {p.nome}
                   </label>
@@ -476,37 +507,37 @@ function ServicosTab({ servicos, profissionais, onChanged }: { servicos: Servico
         </form>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-        {servicos.length === 0 && <p className="p-6 text-center text-sm text-gray-400">Nenhum serviço cadastrado ainda.</p>}
+      <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100">
+        {servicos.length === 0 && <p className="p-6 text-center text-sm text-ink-400">Nenhum serviço cadastrado ainda.</p>}
         {servicos.map((s) => (
           <div key={s.id} className="px-4 py-3">
             {editingId === s.id ? (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-end gap-2">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
-                    <input value={editNome} onChange={(e) => setEditNome(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+                    <label className="block text-xs font-medium text-ink-600 mb-1">Nome</label>
+                    <input value={editNome} onChange={(e) => setEditNome(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Duração (minutos)</label>
-                    <input type="number" min={5} step={5} value={editDuracao} onChange={(e) => setEditDuracao(e.target.value)} className="w-24 px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+                    <label className="block text-xs font-medium text-ink-600 mb-1">Duração (minutos)</label>
+                    <input type="number" min={5} step={5} value={editDuracao} onChange={(e) => setEditDuracao(e.target.value)} className="w-24 px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
                   </div>
-                  <label className="flex items-center gap-1.5 text-xs text-gray-600 pb-2">
+                  <label className="flex items-center gap-1.5 text-xs text-ink-600 pb-2">
                     <input type="checkbox" checked={editAtivo} onChange={(e) => setEditAtivo(e.target.checked)} /> Ativo
                   </label>
-                  <button onClick={() => handleSaveEdit(s.id)} disabled={saving} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Salvar">
+                  <button onClick={() => handleSaveEdit(s.id)} disabled={saving} className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors" title="Salvar">
                     <Check className="w-4 h-4" />
                   </button>
-                  <button onClick={() => setEditingId(null)} className="p-1.5 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors" title="Cancelar">
+                  <button onClick={() => setEditingId(null)} className="p-1.5 text-ink-400 hover:bg-ink-50 rounded-lg transition-colors" title="Cancelar">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
                 {profissionais.length > 0 && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Quem atende esse serviço (vazio = todos)</label>
+                    <label className="block text-xs font-medium text-ink-600 mb-1">Quem atende esse serviço (vazio = todos)</label>
                     <div className="flex flex-wrap gap-2">
                       {profissionais.map((p) => (
-                        <label key={p.id} className="flex items-center gap-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 cursor-pointer">
+                        <label key={p.id} className="flex items-center gap-1.5 text-xs bg-ink-50 border border-ink-200 rounded-lg px-2 py-1 cursor-pointer">
                           <input type="checkbox" checked={editSelecionados.includes(p.id)} onChange={() => toggleEditProfissional(p.id)} />
                           {p.nome}
                         </label>
@@ -518,17 +549,17 @@ function ServicosTab({ servicos, profissionais, onChanged }: { servicos: Servico
             ) : (
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">{s.nome}{!s.ativo && <span className="ml-2 text-[10px] text-gray-400 font-normal">inativo</span>}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-sm font-semibold text-ink-900">{s.nome}{!s.ativo && <span className="ml-2 text-[10px] text-ink-400 font-normal">inativo</span>}</p>
+                  <p className="text-xs text-ink-500">
                     {s.duracaoMinutos} min
                     {s.profissionalIds?.length ? ` · ${s.profissionalIds.map((id) => profissionais.find((p) => p.id === id)?.nome ?? id).join(', ')}` : ' · qualquer profissional'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => startEdit(s)} className="p-1.5 text-gray-400 hover:text-green-600 transition-colors" title="Editar">
+                  <button onClick={() => startEdit(s)} className="p-1.5 text-ink-400 hover:text-brand-600 transition-colors" title="Editar">
                     <Pencil className="w-4 h-4" />
                   </button>
-                  <button onClick={() => handleDelete(s.id)} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors" title="Remover">
+                  <button onClick={() => handleDelete(s.id)} className="p-1.5 text-ink-400 hover:text-red-600 transition-colors" title="Remover">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -556,6 +587,7 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
   const [editData, setEditData] = useState('')
   const [editHoraInicio, setEditHoraInicio] = useState('')
   const [editHoraFim, setEditHoraFim] = useState('')
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     if (!profissionalId) {
@@ -659,77 +691,105 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
     }
   }
 
+  const marks = useMemo(() => {
+    const m: Record<string, DayMark> = {}
+    for (const b of blocos) m[toDateKey(new Date(b.inicio))] = 'available'
+    return m
+  }, [blocos])
+
+  const blocosDoDia = selectedDate ? blocos.filter((b) => toDateKey(new Date(b.inicio)) === selectedDate) : blocos
+
   if (profissionais.length === 0) {
-    return <p className="text-sm text-gray-400 py-8 text-center">Cadastre um profissional primeiro, na aba Profissionais.</p>
+    return <p className="text-sm text-ink-400 py-8 text-center">Cadastre um profissional primeiro, na aba Profissionais.</p>
   }
 
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Profissional</label>
-        <select value={profissionalId} onChange={(e) => setProfissionalId(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm">
+        <label className="block text-xs font-medium text-ink-600 mb-1">Profissional</label>
+        <select value={profissionalId} onChange={(e) => { setProfissionalId(e.target.value); setSelectedDate(null) }} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm">
           {profissionais.map((p) => (
             <option key={p.id} value={p.id}>{p.nome}</option>
           ))}
         </select>
       </div>
 
-      <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2 bg-white p-3 rounded-xl border border-gray-200">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Data</label>
-          <input type="date" value={data} onChange={(e) => setData(e.target.value)} required className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Início</label>
-          <input type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} required className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Fim</label>
-          <input type="time" value={horaFim} onChange={(e) => setHoraFim(e.target.value)} required className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Repetir por (semanas)</label>
-          <input type="number" min={0} max={52} value={repetirSemanas} onChange={(e) => setRepetirSemanas(e.target.value)} className="w-20 px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
-        </div>
-        <button type="submit" disabled={saving} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">
-          {saving ? 'Salvando...' : 'Adicionar bloco'}
-        </button>
-      </form>
+      <div className="grid md:grid-cols-[320px_1fr] gap-4 items-start">
+        <AgendaCalendar
+          dataTour="agenda-calendar"
+          marks={marks}
+          selected={selectedDate}
+          onSelect={(key) => {
+            setSelectedDate((prev) => (prev === key ? null : key))
+            setData(key)
+          }}
+          legend={{ available: 'Dia com horário livre cadastrado' }}
+        />
 
-      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-        {loading && <p className="p-6 text-center text-sm text-gray-400">Carregando...</p>}
-        {!loading && blocos.length === 0 && <p className="p-6 text-center text-sm text-gray-400">Nenhum bloco de disponibilidade nos próximos 90 dias.</p>}
-        {blocos.map((b) => (
+        <div className="space-y-3 min-w-0">
+          <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2 bg-white p-3 rounded-xl border border-ink-200">
+            <div>
+              <label className="block text-xs font-medium text-ink-600 mb-1">Data</label>
+              <input type="date" value={data} onChange={(e) => setData(e.target.value)} required className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-600 mb-1">Início</label>
+              <input type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} required className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-600 mb-1">Fim</label>
+              <input type="time" value={horaFim} onChange={(e) => setHoraFim(e.target.value)} required className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-600 mb-1">Repetir por (semanas)</label>
+              <input type="number" min={0} max={52} value={repetirSemanas} onChange={(e) => setRepetirSemanas(e.target.value)} className="w-20 px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+            </div>
+            <button type="submit" disabled={saving} className="px-3 py-1.5 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 disabled:opacity-50">
+              {saving ? 'Salvando...' : 'Adicionar bloco'}
+            </button>
+          </form>
+
+          {selectedDate && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-ink-500">Mostrando blocos de {new Date(`${selectedDate}T00:00:00`).toLocaleDateString('pt-BR')}</p>
+              <button onClick={() => setSelectedDate(null)} className="text-xs font-medium text-brand-700 hover:underline">Ver todos os dias</button>
+            </div>
+          )}
+
+      <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100">
+        {loading && Array.from({ length: 3 }).map((_, i) => <ListRowSkeleton key={i} />)}
+        {!loading && blocosDoDia.length === 0 && <p className="p-6 text-center text-sm text-ink-400">Nenhum bloco de disponibilidade {selectedDate ? 'nesse dia' : 'nos próximos 90 dias'}.</p>}
+        {!loading && blocosDoDia.map((b) => (
           <div key={b.id} className="px-4 py-3">
             {editingId === b.id ? (
               <div className="flex flex-wrap items-end gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Data</label>
-                  <input type="date" value={editData} onChange={(e) => setEditData(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Data</label>
+                  <input type="date" value={editData} onChange={(e) => setEditData(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Início</label>
-                  <input type="time" value={editHoraInicio} onChange={(e) => setEditHoraInicio(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Início</label>
+                  <input type="time" value={editHoraInicio} onChange={(e) => setEditHoraInicio(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Fim</label>
-                  <input type="time" value={editHoraFim} onChange={(e) => setEditHoraFim(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Fim</label>
+                  <input type="time" value={editHoraFim} onChange={(e) => setEditHoraFim(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
                 </div>
-                <button onClick={() => handleSaveEdit(b.id)} disabled={saving} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Salvar">
+                <button onClick={() => handleSaveEdit(b.id)} disabled={saving} className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors" title="Salvar">
                   <Check className="w-4 h-4" />
                 </button>
-                <button onClick={() => setEditingId(null)} className="p-1.5 text-gray-400 hover:bg-gray-50 rounded-lg transition-colors" title="Cancelar">
+                <button onClick={() => setEditingId(null)} className="p-1.5 text-ink-400 hover:bg-ink-50 rounded-lg transition-colors" title="Cancelar">
                   <X className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-700">{formatDateTime(b.inicio)} — {formatDateTime(b.fim)}</p>
+                <p className="text-sm text-ink-700">{formatDateTime(b.inicio)} — {formatDateTime(b.fim)}</p>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => startEdit(b)} className="p-1.5 text-gray-400 hover:text-green-600 transition-colors" title="Editar">
+                  <button onClick={() => startEdit(b)} className="p-1.5 text-ink-400 hover:text-brand-600 transition-colors" title="Editar">
                     <Pencil className="w-4 h-4" />
                   </button>
-                  <button onClick={() => handleDelete(b.id)} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors" title="Remover">
+                  <button onClick={() => handleDelete(b.id)} className="p-1.5 text-ink-400 hover:text-red-600 transition-colors" title="Remover">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -737,6 +797,8 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
             )}
           </div>
         ))}
+      </div>
+        </div>
       </div>
     </div>
   )
@@ -749,6 +811,7 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -786,17 +849,29 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
   }
 
   const statusStyle: Record<Agendamento['status'], string> = {
-    confirmado: 'bg-green-50 text-green-700',
+    confirmado: 'bg-brand-50 text-brand-700',
     cancelado: 'bg-red-50 text-red-700',
-    concluido: 'bg-gray-100 text-gray-600',
+    concluido: 'bg-ink-100 text-ink-600',
   }
+
+  const marks = useMemo(() => {
+    const m: Record<string, DayMark> = {}
+    for (const a of agendamentos) {
+      if (a.status !== 'cancelado') m[toDateKey(new Date(a.inicio))] = 'booked'
+    }
+    return m
+  }, [agendamentos])
+
+  const agendamentosDoDia = selectedDate
+    ? agendamentos.filter((a) => toDateKey(new Date(a.inicio)) === selectedDate)
+    : agendamentos
 
   return (
     <div className="space-y-3">
       <div className="flex items-end justify-between gap-2 flex-wrap">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Profissional</label>
-          <select value={profissionalId} onChange={(e) => setProfissionalId(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm">
+          <label className="block text-xs font-medium text-ink-600 mb-1">Profissional</label>
+          <select value={profissionalId} onChange={(e) => setProfissionalId(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm">
             <option value="">Todos</option>
             {profissionais.map((p) => (
               <option key={p.id} value={p.id}>{p.nome}</option>
@@ -805,7 +880,7 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors"
         >
           {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
           Novo agendamento
@@ -823,17 +898,33 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
         />
       )}
 
-      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-        {loading && <p className="p-6 text-center text-sm text-gray-400">Carregando...</p>}
-        {!loading && agendamentos.length === 0 && <p className="p-6 text-center text-sm text-gray-400">Nenhum agendamento encontrado.</p>}
-        {agendamentos.map((a) => {
+      <div className="grid md:grid-cols-[320px_1fr] gap-4 items-start">
+        <AgendaCalendar
+          marks={marks}
+          selected={selectedDate}
+          onSelect={(key) => setSelectedDate((prev) => (prev === key ? null : key))}
+          legend={{ booked: 'Dia com agendamento' }}
+        />
+
+        <div className="space-y-3 min-w-0">
+          {selectedDate && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-ink-500">Mostrando agendamentos de {new Date(`${selectedDate}T00:00:00`).toLocaleDateString('pt-BR')}</p>
+              <button onClick={() => setSelectedDate(null)} className="text-xs font-medium text-brand-700 hover:underline">Ver todos os dias</button>
+            </div>
+          )}
+
+      <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100">
+        {loading && Array.from({ length: 3 }).map((_, i) => <ListRowSkeleton key={i} />)}
+        {!loading && agendamentosDoDia.length === 0 && <p className="p-6 text-center text-sm text-ink-400">Nenhum agendamento {selectedDate ? 'nesse dia' : 'encontrado'}.</p>}
+        {!loading && agendamentosDoDia.map((a) => {
           const profissional = profissionais.find((p) => p.id === a.profissionalId)
           const servico = servicos.find((s) => s.id === a.servicoId)
           return (
             <div key={a.id} className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-sm font-semibold text-gray-900">{a.clienteNome} <span className="font-normal text-gray-400">· {a.clienteTelefone}</span></p>
-                <p className="text-xs text-gray-500">
+                <p className="text-sm font-semibold text-ink-900">{a.clienteNome} <span className="font-normal text-ink-400">· {a.clienteTelefone}</span></p>
+                <p className="text-xs text-ink-500">
                   {servico?.nome ?? 'Serviço removido'} com {profissional?.nome ?? 'profissional removido'} · {formatDateTime(a.inicio)}
                 </p>
               </div>
@@ -848,6 +939,8 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
             </div>
           )
         })}
+      </div>
+        </div>
       </div>
     </div>
   )
@@ -929,17 +1022,17 @@ function NovoAgendamentoForm({
   }
 
   if (profissionais.length === 0) {
-    return <p className="text-sm text-gray-400 py-4 text-center bg-white rounded-xl border border-gray-200">Cadastre um profissional primeiro, na aba Profissionais.</p>
+    return <p className="text-sm text-ink-400 py-4 text-center bg-white rounded-xl border border-ink-200">Cadastre um profissional primeiro, na aba Profissionais.</p>
   }
   if (servicos.length === 0) {
-    return <p className="text-sm text-gray-400 py-4 text-center bg-white rounded-xl border border-gray-200">Cadastre um serviço primeiro, na aba Serviços.</p>
+    return <p className="text-sm text-ink-400 py-4 text-center bg-white rounded-xl border border-ink-200">Cadastre um serviço primeiro, na aba Serviços.</p>
   }
 
   return (
-    <div className="bg-white p-3 rounded-xl border border-gray-200 space-y-3">
+    <div className="bg-white p-3 rounded-xl border border-ink-200 space-y-3">
       <form onSubmit={handleBuscarHorarios} className="flex flex-wrap items-end gap-2">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Profissional</label>
+          <label className="block text-xs font-medium text-ink-600 mb-1">Profissional</label>
           <select
             value={profissionalId}
             onChange={(e) => {
@@ -948,7 +1041,7 @@ function NovoAgendamentoForm({
               setBuscou(false)
               setSlotSelecionado(null)
             }}
-            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+            className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm"
           >
             {profissionais.map((p) => (
               <option key={p.id} value={p.id}>{p.nome}</option>
@@ -956,12 +1049,12 @@ function NovoAgendamentoForm({
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Serviço</label>
+          <label className="block text-xs font-medium text-ink-600 mb-1">Serviço</label>
           <select
             value={servicoId}
             onChange={(e) => { setServicoId(e.target.value); setBuscou(false); setSlotSelecionado(null) }}
             required
-            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+            className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm"
           >
             <option value="">Selecione</option>
             {servicosDoProfissional.map((s) => (
@@ -970,25 +1063,25 @@ function NovoAgendamentoForm({
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Data</label>
+          <label className="block text-xs font-medium text-ink-600 mb-1">Data</label>
           <input
             type="date"
             value={data}
             onChange={(e) => { setData(e.target.value); setBuscou(false); setSlotSelecionado(null) }}
             required
-            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+            className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm"
           />
         </div>
-        <button type="submit" disabled={buscando || !servicoId || !data} className="px-3 py-1.5 bg-gray-800 text-white text-sm rounded-lg hover:bg-gray-900 disabled:opacity-50">
+        <button type="submit" disabled={buscando || !servicoId || !data} className="px-3 py-1.5 bg-ink-800 text-white text-sm rounded-lg hover:bg-ink-900 disabled:opacity-50">
           {buscando ? 'Buscando...' : 'Buscar horários'}
         </button>
       </form>
 
       {buscou && (
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Horários livres</label>
+          <label className="block text-xs font-medium text-ink-600 mb-1">Horários livres</label>
           {horarios.length === 0 ? (
-            <p className="text-xs text-gray-400">Nenhum horário livre nesse dia.</p>
+            <p className="text-xs text-ink-400">Nenhum horário livre nesse dia.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {horarios.map((h) => (
@@ -998,8 +1091,8 @@ function NovoAgendamentoForm({
                   onClick={() => setSlotSelecionado(h)}
                   className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
                     slotSelecionado?.inicio === h.inicio
-                      ? 'bg-green-600 border-green-600 text-white'
-                      : 'bg-white border-gray-200 text-gray-700 hover:border-green-400'
+                      ? 'bg-brand-600 border-brand-600 text-white'
+                      : 'bg-white border-ink-200 text-ink-700 hover:border-brand-400'
                   }`}
                 >
                   {toTimeInputValue(h.inicio)}
@@ -1011,22 +1104,22 @@ function NovoAgendamentoForm({
       )}
 
       {slotSelecionado && (
-        <form onSubmit={handleConfirmar} className="flex flex-wrap items-end gap-2 pt-2 border-t border-gray-100">
+        <form onSubmit={handleConfirmar} className="flex flex-wrap items-end gap-2 pt-2 border-t border-ink-100">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nome do cliente</label>
-            <input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} required className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" />
+            <label className="block text-xs font-medium text-ink-600 mb-1">Nome do cliente</label>
+            <input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} required className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">WhatsApp do cliente</label>
+            <label className="block text-xs font-medium text-ink-600 mb-1">WhatsApp do cliente</label>
             <input
               value={clienteTelefone}
               onChange={(e) => setClienteTelefone(e.target.value)}
               placeholder="Ex: 5511999990000"
               required
-              className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+              className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm"
             />
           </div>
-          <button type="submit" disabled={salvando} className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50">
+          <button type="submit" disabled={salvando} className="px-3 py-1.5 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 disabled:opacity-50">
             {salvando ? 'Confirmando...' : `Confirmar ${toTimeInputValue(slotSelecionado.inicio)}`}
           </button>
         </form>

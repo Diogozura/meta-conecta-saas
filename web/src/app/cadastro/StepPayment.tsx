@@ -10,9 +10,9 @@ const GoogleGIcon = () => (
 )
 
 const METHODS = [
-  { key: 'cartao', label: 'Cartão de crédito', badgeClass: 'bg-gray-700', icon: <CreditCard className="w-5 h-5 text-white" /> },
+  { key: 'cartao', label: 'Cartão de crédito', badgeClass: 'bg-ink-700', icon: <CreditCard className="w-5 h-5 text-white" /> },
   { key: 'pix', label: 'Pix', badgeClass: 'bg-[#32BCAD]', icon: <QrCode className="w-5 h-5 text-white" /> },
-  { key: 'google_pay', label: 'Google Pay', badgeClass: 'bg-white border border-gray-200', icon: <GoogleGIcon /> },
+  { key: 'google_pay', label: 'Google Pay', badgeClass: 'bg-white border border-ink-200', icon: <GoogleGIcon /> },
 ] as const
 
 interface StepPaymentProps {
@@ -30,7 +30,7 @@ export default function StepPayment({ paymentMethod, onSelectMethod, onBack, onS
         type="button"
         onClick={onBack}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-700 mb-4 disabled:opacity-50"
       >
         <ArrowLeft className="w-4 h-4" />
         Voltar
@@ -47,18 +47,18 @@ export default function StepPayment({ paymentMethod, onSelectMethod, onBack, onS
                 disabled={loading}
                 onClick={() => onSelectMethod(selected ? '' : key)}
                 className={`relative flex flex-col items-center gap-2 rounded-xl border p-4 transition-colors disabled:opacity-50 ${
-                  selected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white hover:bg-gray-50'
+                  selected ? 'border-brand-500 bg-brand-50' : 'border-ink-200 bg-white hover:bg-ink-50'
                 }`}
               >
                 {selected && (
-                  <span className="absolute top-2 right-2 w-4 h-4 bg-green-600 rounded-full flex items-center justify-center">
+                  <span className="absolute top-2 right-2 w-4 h-4 bg-brand-600 rounded-full flex items-center justify-center">
                     <Check className="w-2.5 h-2.5 text-white" />
                   </span>
                 )}
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${badgeClass}`}>
                   {icon}
                 </div>
-                <span className="text-sm font-medium text-gray-700">{label}</span>
+                <span className="text-sm font-medium text-ink-700">{label}</span>
               </button>
             )
           })}
@@ -68,7 +68,7 @@ export default function StepPayment({ paymentMethod, onSelectMethod, onBack, onS
           <button
             type="submit"
             disabled={loading || !paymentMethod}
-            className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
             Finalizar cadastro
@@ -77,7 +77,7 @@ export default function StepPayment({ paymentMethod, onSelectMethod, onBack, onS
             type="button"
             onClick={onSubmit}
             disabled={loading}
-            className="w-full py-2.5 px-4 text-gray-500 hover:text-gray-700 text-sm font-medium transition-colors disabled:opacity-50"
+            className="w-full py-2.5 px-4 text-ink-500 hover:text-ink-700 text-sm font-medium transition-colors disabled:opacity-50"
           >
             Pular por agora e começar a usar
           </button>

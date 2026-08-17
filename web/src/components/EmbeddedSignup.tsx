@@ -197,16 +197,16 @@ export default function EmbeddedSignup({ onSuccess }: EmbeddedSignupProps) {
             <div key={i} className="flex items-start gap-3">
               <div className="mt-0.5 shrink-0">
                 {step.status === 'loading' && <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />}
-                {step.status === 'done' && <CheckCircle className="w-4 h-4 text-green-500" />}
+                {step.status === 'done' && <CheckCircle className="w-4 h-4 text-brand-500" />}
                 {step.status === 'error' && <XCircle className="w-4 h-4 text-red-500" />}
-                {step.status === 'idle' && <div className="w-4 h-4 rounded-full border-2 border-gray-300" />}
+                {step.status === 'idle' && <div className="w-4 h-4 rounded-full border-2 border-ink-300" />}
               </div>
               <div>
-                <p className={`text-sm font-medium ${step.status === 'error' ? 'text-red-700' : 'text-gray-800'}`}>
+                <p className={`text-sm font-medium ${step.status === 'error' ? 'text-red-700' : 'text-ink-800'}`}>
                   {step.label}
                 </p>
                 {step.detail && (
-                  <p className={`text-xs mt-0.5 ${step.status === 'error' ? 'text-red-500' : 'text-gray-500'}`}>
+                  <p className={`text-xs mt-0.5 ${step.status === 'error' ? 'text-red-500' : 'text-ink-500'}`}>
                     {step.detail}
                   </p>
                 )}

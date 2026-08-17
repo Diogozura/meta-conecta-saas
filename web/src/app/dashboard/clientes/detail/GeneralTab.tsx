@@ -59,62 +59,62 @@ export default function GeneralTab({ company, disabled, onUpdated }: TabProps) {
     <form onSubmit={handleSave} className="space-y-4">
       <fieldset disabled={disabled} className="space-y-4 disabled:opacity-60">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Nome da empresa</label>
+          <label className="block text-sm font-medium text-ink-700 mb-1.5">Nome da empresa</label>
           <input
             type="text"
             required
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">CNPJ</label>
+          <label className="block text-sm font-medium text-ink-700 mb-1.5">CNPJ</label>
           <input
             type="text"
             required
             value={cnpj}
             onChange={(e) => setCnpj(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Responsável</label>
+          <label className="block text-sm font-medium text-ink-700 mb-1.5">Responsável</label>
           <input
             type="text"
             required
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">E-mail do responsável</label>
+          <label className="block text-sm font-medium text-ink-700 mb-1.5">E-mail do responsável</label>
           <input
             type="email"
             required
             value={clientEmail}
             onChange={(e) => setClientEmail(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Setor</label>
+          <label className="block text-sm font-medium text-ink-700 mb-1.5">Setor</label>
           <input
             type="text"
             required
             value={sector}
             onChange={(e) => setSector(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Tags</label>
+          <label className="block text-sm font-medium text-ink-700 mb-1.5">Tags</label>
           <div className="flex flex-wrap gap-1.5 mb-2">
             {tags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-700"
+                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-ink-100 text-ink-700"
               >
                 {tag}
                 <button type="button" onClick={() => removeTag(tag)}>
@@ -134,7 +134,7 @@ export default function GeneralTab({ company, disabled, onUpdated }: TabProps) {
               }
             }}
             placeholder="Digite uma tag e pressione Enter"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
         </div>
       </fieldset>
@@ -142,7 +142,7 @@ export default function GeneralTab({ company, disabled, onUpdated }: TabProps) {
       <button
         type="submit"
         disabled={disabled || saving}
-        className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {saving ? 'Salvando...' : 'Salvar alterações'}
       </button>

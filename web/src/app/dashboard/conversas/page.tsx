@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck, Bot } from 'lucide-react'
+import { WhatsAppGlyph, InstagramGlyph, FacebookGlyph } from '@/components/BrandIcons'
+import { Skeleton } from '@/components/Skeleton'
 
 type Message = {
   id: string
@@ -95,6 +97,21 @@ function buildConversationsFromHistory(mensagens: HistoryMessage[], existingName
   return conversations.sort((a, b) => b.lastTimestamp - a.lastTimestamp).map((c) => c.conv)
 }
 
+function ConversationRowSkeleton() {
+  return (
+    <div className="flex items-center gap-3 px-3 py-3">
+      <Skeleton className="w-9 h-9 rounded-full shrink-0" />
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-3.5 w-24" />
+          <Skeleton className="h-3 w-8" />
+        </div>
+        <Skeleton className="h-3 w-32" />
+      </div>
+    </div>
+  )
+}
+
 export default function ConversasPage() {
   return (
     <Suspense>
@@ -109,6 +126,7 @@ function ConversasInner() {
   // divergia entre servidor (sem localStorage) e cliente (com dados
   // salvos), causando erro de hydration.
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [loadingConversas, setLoadingConversas] = useState(true)
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [message, setMessage] = useState('')
   const [sendStatus, setSendStatus] = useState<'idle' | 'loading' | 'error'>('idle')
@@ -151,6 +169,9 @@ function ConversasInner() {
       })
       .catch(() => {
         // silencioso — mantém o que já tinha no localStorage/memória
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingConversas(false)
       })
     return () => {
       cancelled = true
@@ -374,15 +395,42 @@ function ConversasInner() {
   }
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-7rem)]">
+    <div className="flex flex-col h-[calc(100vh-7rem)]">
+      {/* Channel switcher */}
+      <div data-tour="conversas-channels" className="flex items-center gap-2 mb-3 shrink-0">
+        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-brand-600 text-white shadow-sm">
+          <WhatsAppGlyph className="w-4 h-4" />
+          WhatsApp
+        </button>
+        <button
+          disabled
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-ink-200 text-ink-400 cursor-not-allowed"
+          title="Em breve"
+        >
+          <InstagramGlyph className="w-3.5 h-3.5" />
+          Instagram
+          <span className="text-[9px] font-semibold uppercase px-1 py-0.5 rounded-full bg-ink-100">em breve</span>
+        </button>
+        <button
+          disabled
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-ink-200 text-ink-400 cursor-not-allowed"
+          title="Em breve"
+        >
+          <FacebookGlyph className="w-3.5 h-3.5" />
+          Facebook
+          <span className="text-[9px] font-semibold uppercase px-1 py-0.5 rounded-full bg-ink-100">em breve</span>
+        </button>
+      </div>
+
+      <div className="flex gap-4 flex-1 min-h-0">
       {/* Left: conversation list */}
-      <div className="w-72 flex flex-col bg-white rounded-xl border border-gray-200 overflow-hidden shrink-0">
-        <div className="p-3 border-b border-gray-100 space-y-2">
+      <div data-tour="conversas-list" className="w-72 flex flex-col bg-white rounded-xl border border-ink-200 overflow-hidden shrink-0">
+        <div className="p-3 border-b border-ink-100 space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-gray-900">Conversas</h2>
+            <h2 className="text-sm font-bold text-ink-900">Conversas</h2>
             <button
               onClick={() => setShowNewForm((v) => !v)}
-              className="p-1.5 rounded-lg hover:bg-green-50 text-green-600 transition-colors"
+              className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
               title="Nova conversa"
             >
               {showNewForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
@@ -396,7 +444,7 @@ function ConversasInner() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="Nome (opcional)"
-                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
+                className="w-full px-3 py-1.5 border border-ink-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-brand-400"
               />
               <input
                 type="text"
@@ -404,11 +452,11 @@ function ConversasInner() {
                 onChange={(e) => setNewNumber(e.target.value)}
                 placeholder="Número (Ex: 5511999990000)"
                 required
-                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
+                className="w-full px-3 py-1.5 border border-ink-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-brand-400"
               />
               <button
                 type="submit"
-                className="w-full py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
+                className="w-full py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors"
               >
                 Iniciar conversa
               </button>
@@ -416,69 +464,75 @@ function ConversasInner() {
           )}
 
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar..."
-              className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
+              className="w-full pl-8 pr-3 py-1.5 border border-ink-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
-          {filtered.map((c) => {
+        <div className="flex-1 overflow-y-auto divide-y divide-ink-100">
+          {loadingConversas && conversations.length === 0 && (
+            <>
+              {Array.from({ length: 5 }).map((_, i) => <ConversationRowSkeleton key={i} />)}
+            </>
+          )}
+          {(!loadingConversas || conversations.length > 0) && filtered.map((c) => {
             const idx = conversations.indexOf(c)
             return (
               <div
                 key={idx}
                 onClick={() => { setSelectedIdx(idx); setSendError('') }}
                 className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${
-                  selectedIdx === idx ? 'bg-green-50 border-l-2 border-green-500' : 'hover:bg-gray-50'
+                  selectedIdx === idx ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'
                 }`}
               >
-                <div className="w-9 h-9 bg-green-100 rounded-full flex items-center justify-center shrink-0">
-                  <span className="text-xs font-bold text-green-700">{c.name[0]}</span>
+                <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
+                  <span className="text-xs font-bold text-brand-700">{c.name[0]}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-gray-900 truncate">{c.name}</p>
-                    <span className="text-[10px] text-gray-400 shrink-0 ml-1">{c.time}</span>
+                    <p className="text-xs font-semibold text-ink-900 truncate">{c.name}</p>
+                    <span className="text-[10px] text-ink-400 shrink-0 ml-1">{c.time}</span>
                   </div>
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5">{c.last || 'Sem mensagens'}</p>
+                  <p className="text-[11px] text-ink-500 truncate mt-0.5">{c.last || 'Sem mensagens'}</p>
                 </div>
               </div>
             )
           })}
-          {filtered.length === 0 && (
-            <div className="py-10 text-center text-gray-400 text-xs">Nenhuma conversa encontrada.</div>
+          {!loadingConversas && filtered.length === 0 && (
+            <div className="py-10 text-center text-ink-400 text-xs">Nenhuma conversa encontrada.</div>
           )}
         </div>
       </div>
 
       {/* Right: chat panel */}
-      <div className="flex-1 flex flex-col bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="flex-1 flex flex-col bg-white rounded-xl border border-ink-200 overflow-hidden">
         {currentConv ? (
           <>
             {/* Chat header */}
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3 bg-gray-50">
-              <div className="w-9 h-9 bg-green-100 rounded-full flex items-center justify-center shrink-0">
-                <span className="text-xs font-bold text-green-700">{currentConv.name[0]}</span>
+            <div className="px-4 py-3 border-b border-ink-100 flex items-center gap-3 bg-ink-50">
+              <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
+                <span className="text-xs font-bold text-brand-700">{currentConv.name[0]}</span>
               </div>
               <div>
-                <p className="text-sm font-semibold text-gray-900">{currentConv.name}</p>
-                <p className="text-xs text-gray-500">{currentConv.number}</p>
+                <p className="text-sm font-semibold text-ink-900">{currentConv.name}</p>
+                <p className="text-xs text-ink-500">{currentConv.number}</p>
               </div>
 
               {iaStatus && (
                 <button
+                  data-tour="conversas-ai-toggle"
                   onClick={() => handleToggleIA(!iaStatus.iaAtiva)}
                   title={iaStatus.iaAtiva ? 'Desativar a IA nessa conversa' : 'Reativar a IA nessa conversa'}
                   className={`ml-auto shrink-0 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
                     iaStatus.iaAtiva
-                      ? 'text-green-700 bg-green-100 hover:bg-green-200'
-                      : 'text-gray-600 bg-gray-200 hover:bg-gray-300'
+                      ? 'text-brand-700 bg-brand-100 hover:bg-brand-200'
+                      : 'text-ink-600 bg-ink-200 hover:bg-ink-300'
                   }`}
                 >
                   <Bot className="w-3.5 h-3.5" />
@@ -505,21 +559,21 @@ function ConversasInner() {
             )}
 
             {/* Messages area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#f0f2f5]">
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-ink-50">
               {currentConv.messages.length === 0 && (
-                <div className="text-center text-xs text-gray-400 py-8">Nenhuma mensagem ainda. Envie a primeira!</div>
+                <div className="text-center text-xs text-ink-400 py-8">Nenhuma mensagem ainda. Envie a primeira!</div>
               )}
               {currentConv.messages.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm shadow-sm ${
                       msg.direction === 'sent'
-                        ? 'bg-green-600 text-white rounded-br-sm'
-                        : 'bg-white text-gray-800 rounded-bl-sm'
+                        ? 'bg-brand-600 text-white rounded-br-sm'
+                        : 'bg-white text-ink-800 rounded-bl-sm'
                     }`}
                   >
                     <p className="leading-snug">{msg.text}</p>
-                    <p className={`text-[10px] mt-1 text-right ${msg.direction === 'sent' ? 'text-green-200' : 'text-gray-400'}`}>
+                    <p className={`text-[10px] mt-1 text-right ${msg.direction === 'sent' ? 'text-brand-200' : 'text-ink-400'}`}>
                       {msg.time}
                     </p>
                   </div>
@@ -537,7 +591,7 @@ function ConversasInner() {
             )}
 
             {/* Input bar */}
-            <div className="p-3 border-t border-gray-100 bg-white">
+            <div data-tour="conversas-input" className="p-3 border-t border-ink-100 bg-white">
               <form onSubmit={handleSend} className="flex items-end gap-2">
                 <textarea
                   value={message}
@@ -550,13 +604,13 @@ function ConversasInner() {
                   }}
                   rows={1}
                   placeholder="Digite uma mensagem..."
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
+                  className="flex-1 px-3 py-2 border border-ink-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
                   style={{ maxHeight: '120px' }}
                 />
                 <button
                   type="submit"
                   disabled={sendStatus === 'loading' || !message.trim()}
-                  className="p-2.5 bg-green-600 text-white rounded-full hover:bg-green-700 disabled:opacity-50 transition-colors shrink-0"
+                  className="p-2.5 bg-brand-600 text-white rounded-full hover:bg-brand-700 disabled:opacity-50 transition-colors shrink-0"
                 >
                   {sendStatus === 'loading'
                     ? <Loader2 className="w-5 h-5 animate-spin" />
@@ -567,12 +621,13 @@ function ConversasInner() {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-[#f0f2f5]">
+          <div className="flex-1 flex flex-col items-center justify-center text-ink-400 bg-ink-50">
             <MessageSquare className="w-12 h-12 mb-3 opacity-30" />
             <p className="text-sm font-medium">Selecione uma conversa</p>
             <p className="text-xs mt-1 opacity-70">ou clique em + para iniciar uma nova</p>
           </div>
         )}
+      </div>
       </div>
     </div>
   )

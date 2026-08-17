@@ -72,7 +72,7 @@ export default function MetaTab({ company, disabled, onUpdated }: TabProps) {
     <div className="space-y-4">
       <span
         className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium ${
-          isConnected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+          isConnected ? 'bg-brand-50 text-brand-700' : 'bg-red-50 text-red-700'
         }`}
       >
         {isConnected ? 'Meta Conectada' : 'Meta Desconectada'}
@@ -81,16 +81,16 @@ export default function MetaTab({ company, disabled, onUpdated }: TabProps) {
       {isConnected ? (
         <div className="space-y-3">
           <div>
-            <p className="text-xs text-gray-500">Phone Number ID</p>
-            <p className="text-sm text-gray-900">{meta.phone_number_id}</p>
+            <p className="text-xs text-ink-500">Phone Number ID</p>
+            <p className="text-sm text-ink-900">{meta.phone_number_id}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Business Account ID</p>
-            <p className="text-sm text-gray-900">{meta.business_account_id}</p>
+            <p className="text-xs text-ink-500">Business Account ID</p>
+            <p className="text-sm text-ink-900">{meta.business_account_id}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Última sincronização</p>
-            <p className="text-sm text-gray-900">{formatDate(meta.last_sync)}</p>
+            <p className="text-xs text-ink-500">Última sincronização</p>
+            <p className="text-sm text-ink-900">{formatDate(meta.last_sync)}</p>
           </div>
           {!disabled && (
             <button
@@ -106,39 +106,39 @@ export default function MetaTab({ company, disabled, onUpdated }: TabProps) {
         !disabled && (
           <form onSubmit={handleConnect} className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number ID</label>
+              <label className="block text-sm font-medium text-ink-700 mb-1.5">Phone Number ID</label>
               <input
                 type="text"
                 required
                 value={phoneNumberId}
                 onChange={(e) => setPhoneNumberId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Account ID</label>
+              <label className="block text-sm font-medium text-ink-700 mb-1.5">Business Account ID</label>
               <input
                 type="text"
                 required
                 value={businessAccountId}
                 onChange={(e) => setBusinessAccountId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Access Token</label>
+              <label className="block text-sm font-medium text-ink-700 mb-1.5">Access Token</label>
               <input
                 type="password"
                 required
                 value={accessToken}
                 onChange={(e) => setAccessToken(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
               />
             </div>
             <button
               type="submit"
               disabled={busy}
-              className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+              className="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
             >
               {busy ? 'Conectando...' : 'Conectar Meta'}
             </button>

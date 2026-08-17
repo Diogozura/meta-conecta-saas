@@ -41,11 +41,11 @@ export default function SendMessageForm() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-      <h3 className="font-semibold text-gray-800 text-sm">Enviar Nova Mensagem</h3>
+    <div className="bg-white rounded-xl border border-ink-200 p-5 space-y-4">
+      <h3 className="font-semibold text-ink-800 text-sm">Enviar Nova Mensagem</h3>
       <form onSubmit={handleSend} className="space-y-4">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
+          <label className="block text-xs font-medium text-ink-600 mb-1">
             Número de destino (com DDI, sem espaços ou traços)
           </label>
           <input
@@ -54,23 +54,23 @@ export default function SendMessageForm() {
             onChange={(e) => setTo(e.target.value)}
             placeholder="Ex: 5511999990000"
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Mensagem</label>
+          <label className="block text-xs font-medium text-ink-600 mb-1">Mensagem</label>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={3}
             required
             placeholder="Digite a mensagem..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
           />
         </div>
 
         {feedback && (
-          <div className={`flex items-start gap-2 text-sm p-3 rounded-lg ${status === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+          <div className={`flex items-start gap-2 text-sm p-3 rounded-lg ${status === 'success' ? 'bg-brand-50 text-brand-700' : 'bg-red-50 text-red-700'}`}>
             {status === 'success'
               ? <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
               : <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -82,7 +82,7 @@ export default function SendMessageForm() {
         <button
           type="submit"
           disabled={status === 'loading' || !to || !message}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
         >
           {status === 'loading'
             ? <Loader2 className="w-4 h-4 animate-spin" />

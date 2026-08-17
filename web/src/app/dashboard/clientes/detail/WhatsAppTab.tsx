@@ -96,22 +96,22 @@ export default function WhatsAppTab({ company, disabled, onUpdated }: TabProps) 
     <div className="space-y-4">
       <div className="space-y-2">
         {company.whatsapp.map((item) => (
-          <div key={item.id} className="border border-gray-200 rounded-lg p-3">
+          <div key={item.id} className="border border-ink-200 rounded-lg p-3">
             {editingId === item.id ? (
               <div className="space-y-2">
                 <input
                   type="text"
                   value={editNumber}
                   onChange={(e) => setEditNumber(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                  className="w-full px-3 py-1.5 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
                 />
                 <input
                   type="text"
                   value={editLabel}
                   onChange={(e) => setEditLabel(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                  className="w-full px-3 py-1.5 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
                 />
-                <label className="flex items-center gap-2 text-sm text-gray-600">
+                <label className="flex items-center gap-2 text-sm text-ink-600">
                   <input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />
                   Ativo
                 </label>
@@ -119,14 +119,14 @@ export default function WhatsAppTab({ company, disabled, onUpdated }: TabProps) 
                   <button
                     disabled={busy}
                     onClick={() => saveEdit(item.id)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
                   >
                     <Check className="w-3.5 h-3.5" />
                     Salvar
                   </button>
                   <button
                     onClick={cancelEdit}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 border border-ink-300 text-xs font-medium rounded-lg text-ink-700 hover:bg-ink-50 transition-colors"
                   >
                     <X className="w-3.5 h-3.5" />
                     Cancelar
@@ -135,7 +135,7 @@ export default function WhatsAppTab({ company, disabled, onUpdated }: TabProps) 
               </div>
             ) : confirmingRemoveId === item.id ? (
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-gray-600">Remover {item.number}?</p>
+                <p className="text-xs text-ink-600">Remover {item.number}?</p>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     disabled={busy}
@@ -146,7 +146,7 @@ export default function WhatsAppTab({ company, disabled, onUpdated }: TabProps) 
                   </button>
                   <button
                     onClick={() => setConfirmingRemoveId(null)}
-                    className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium border border-ink-300 rounded-lg text-ink-700 hover:bg-ink-50 transition-colors"
                   >
                     Cancelar
                   </button>
@@ -155,8 +155,8 @@ export default function WhatsAppTab({ company, disabled, onUpdated }: TabProps) 
             ) : (
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{item.number}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-sm font-medium text-ink-900">{item.number}</p>
+                  <p className="text-xs text-ink-500">
                     {item.label} · {item.active ? 'Ativo' : 'Inativo'}
                   </p>
                 </div>
@@ -164,7 +164,7 @@ export default function WhatsAppTab({ company, disabled, onUpdated }: TabProps) 
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => startEdit(item)}
-                      className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                      className="p-1.5 rounded-md text-ink-400 hover:text-ink-600 hover:bg-ink-100 transition-colors"
                     >
                       <Pencil className="w-4 h-4" />
                     </button>
@@ -172,7 +172,7 @@ export default function WhatsAppTab({ company, disabled, onUpdated }: TabProps) 
                       disabled={busy || isLastNumber}
                       title={isLastNumber ? 'A empresa deve manter ao menos um número de WhatsApp' : undefined}
                       onClick={() => setConfirmingRemoveId(item.id)}
-                      className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      className="p-1.5 rounded-md text-ink-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -185,15 +185,15 @@ export default function WhatsAppTab({ company, disabled, onUpdated }: TabProps) 
       </div>
 
       {!disabled && (
-        <form onSubmit={addNumber} className="border-t border-gray-200 pt-4 space-y-2">
-          <p className="text-sm font-medium text-gray-700">Adicionar novo WhatsApp</p>
+        <form onSubmit={addNumber} className="border-t border-ink-200 pt-4 space-y-2">
+          <p className="text-sm font-medium text-ink-700">Adicionar novo WhatsApp</p>
           <input
             type="text"
             required
             value={newNumber}
             onChange={(e) => setNewNumber(e.target.value)}
             placeholder="+5511999999999"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
           <input
             type="text"
@@ -201,12 +201,12 @@ export default function WhatsAppTab({ company, disabled, onUpdated }: TabProps) 
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
             placeholder="Rótulo (ex: Suporte)"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
           <button
             type="submit"
             disabled={adding}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
           >
             <Plus className="w-4 h-4" />
             {adding ? 'Adicionando...' : 'Adicionar'}

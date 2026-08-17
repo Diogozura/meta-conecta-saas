@@ -11,6 +11,7 @@ import {
 import { auth } from '@/lib/firebase'
 import { setSession } from '@/lib/auth'
 import { MessageSquare, Loader2 } from 'lucide-react'
+import { Logo } from '@/components/Logo'
 
 const googleProvider = new GoogleAuthProvider()
 
@@ -60,20 +61,20 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-gray-100">
+    <div className="flex min-h-screen bg-gradient-to-br from-brand-50 to-ink-100">
       {/* Left panel */}
-      <div className="hidden lg:flex lg:w-1/2 bg-green-600 flex-col items-center justify-center p-12 text-white">
+      <div className="hidden lg:flex lg:w-1/2 bg-brand-600 flex-col items-center justify-center p-12 text-white">
         <div className="max-w-md">
           <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center mb-8">
             <MessageSquare className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-4xl font-bold mb-4">Meta Conecta</h1>
-          <p className="text-green-100 text-lg leading-relaxed">
-            Plataforma de comunicação via WhatsApp Business API. Envie mensagens, gerencie clientes e automatize seu atendimento.
+          <h1 className="text-4xl font-bold mb-4">Zybot</h1>
+          <p className="text-brand-100 text-lg leading-relaxed">
+            Sua central de atendimento, agenda e automação com IA — WhatsApp hoje, Instagram e Facebook em breve, tudo em um só lugar.
           </p>
           <div className="mt-10 space-y-3">
             {['Envio de mensagens em massa', 'Templates personalizados', 'Cadastro e gestão de clientes', 'Múltiplos números conectados'].map((f) => (
-              <div key={f} className="flex items-center gap-3 text-green-100 text-sm">
+              <div key={f} className="flex items-center gap-3 text-brand-100 text-sm">
                 <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center shrink-0">
                   <span className="text-white text-xs">✓</span>
                 </div>
@@ -88,17 +89,14 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
-          <div className="lg:hidden flex items-center gap-2 justify-center mb-8">
-            <div className="w-9 h-9 bg-green-600 rounded-xl flex items-center justify-center">
-              <MessageSquare className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-gray-900">Meta Conecta</span>
+          <div className="lg:hidden flex items-center justify-center mb-8">
+            <Logo markClassName="w-9 h-9" textClassName="text-xl font-bold text-ink-900" />
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+          <div className="bg-white rounded-2xl shadow-sm border border-ink-200 p-8">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Bem-vindo!</h2>
-              <p className="text-sm text-gray-500 mt-1">Entre com suas credenciais para continuar</p>
+              <h2 className="text-2xl font-bold text-ink-900">Bem-vindo!</h2>
+              <p className="text-sm text-ink-500 mt-1">Entre com suas credenciais para continuar</p>
             </div>
 
             {error && (
@@ -109,33 +107,33 @@ export default function LoginPage() {
 
             <form onSubmit={handleEmailLogin} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Email</label>
                 <input
                   type="email"
                   name="email"
                   required
                   autoComplete="email"
                   disabled={loading}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition disabled:opacity-50"
+                  className="w-full px-3 py-2.5 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent transition disabled:opacity-50"
                   placeholder="seu@email.com"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Senha</label>
                 <input
                   type="password"
                   name="password"
                   required
                   autoComplete="current-password"
                   disabled={loading}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition disabled:opacity-50"
+                  className="w-full px-3 py-2.5 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent transition disabled:opacity-50"
                   placeholder="••••••••"
                 />
               </div>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading && <Loader2 className="w-4 h-4 animate-spin" />}
                 Entrar
@@ -144,9 +142,9 @@ export default function LoginPage() {
 
             <div className="relative my-5">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200" />
+                <div className="w-full border-t border-ink-200" />
               </div>
-              <div className="relative flex justify-center text-xs text-gray-400">
+              <div className="relative flex justify-center text-xs text-ink-400">
                 <span className="bg-white px-2">ou continue com</span>
               </div>
             </div>
@@ -154,7 +152,7 @@ export default function LoginPage() {
             <button
               onClick={handleGoogleLogin}
               disabled={loading}
-              className="w-full py-2.5 px-4 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-2.5 px-4 border border-ink-300 hover:bg-ink-50 text-ink-700 text-sm font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -165,9 +163,9 @@ export default function LoginPage() {
               Entrar com Google
             </button>
 
-            <p className="mt-6 text-center text-sm text-gray-500">
+            <p className="mt-6 text-center text-sm text-ink-500">
               Não tem uma conta?{' '}
-              <Link href="/cadastro" className="font-medium text-green-700 hover:text-green-800">
+              <Link href="/cadastro" className="font-medium text-brand-700 hover:text-brand-800">
                 Cadastre-se
               </Link>
             </p>

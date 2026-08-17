@@ -51,45 +51,45 @@ export default function PlanTab({ company, disabled, onUpdated }: TabProps) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-lg p-3">
+      <div className="grid grid-cols-2 gap-4 bg-ink-50 rounded-lg p-3">
         <div>
-          <p className="text-xs text-gray-500">Mensagens usadas no mês</p>
-          <p className="text-sm font-medium text-gray-900">{usage.messages_this_month}</p>
+          <p className="text-xs text-ink-500">Mensagens usadas no mês</p>
+          <p className="text-sm font-medium text-ink-900">{usage.messages_this_month}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-500">Tokens usados no mês</p>
-          <p className="text-sm font-medium text-gray-900">{usage.tokens_this_month}</p>
+          <p className="text-xs text-ink-500">Tokens usados no mês</p>
+          <p className="text-sm font-medium text-ink-900">{usage.tokens_this_month}</p>
         </div>
       </div>
 
       <form onSubmit={handleSave} className="space-y-4">
         <fieldset disabled={disabled} className="space-y-4 disabled:opacity-60">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Plano</label>
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">Plano</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Expira em</label>
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">Expira em</label>
             <input
               type="date"
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Limite de mensagens</label>
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">Limite de mensagens</label>
             <input
               type="number"
               min={0}
               value={messagesLimit}
               onChange={(e) => setMessagesLimit(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
         </fieldset>
@@ -97,7 +97,7 @@ export default function PlanTab({ company, disabled, onUpdated }: TabProps) {
         <button
           type="submit"
           disabled={disabled || saving}
-          className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? 'Salvando...' : 'Salvar plano'}
         </button>

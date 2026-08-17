@@ -21,13 +21,13 @@ const appUrl =
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),
   title: {
-    default: "DyBot — Automação via WhatsApp para Apps Meta",
-    template: "%s | DyBot",
+    default: "Zybot — Atendimento, Agenda e IA no WhatsApp",
+    template: "%s | Zybot",
   },
   description:
-    "DyBot é uma plataforma SaaS de automação de comunicação via WhatsApp Business API para aplicativos Meta. Crie bots, templates e gerencie conversas em um só lugar.",
+    "Zybot é a plataforma que reúne conversas, agenda e um agente de IA em um só lugar — hoje no WhatsApp Business API, com Instagram e Facebook em breve.",
   keywords: [
-    "DyBot",
+    "Zybot",
     "chatbot WhatsApp",
     "WhatsApp Business API",
     "automação Meta",
@@ -36,9 +36,9 @@ export const metadata: Metadata = {
     "WABA",
     "atendimento automatizado",
   ],
-  authors: [{ name: "DyBot" }],
-  creator: "DyBot",
-  publisher: "DyBot",
+  authors: [{ name: "Zybot" }],
+  creator: "Zybot",
+  publisher: "Zybot",
   robots: {
     index: true,
     follow: true,
@@ -48,24 +48,24 @@ export const metadata: Metadata = {
     type: "website",
     locale: "pt_BR",
     url: appUrl,
-    siteName: "DyBot",
-    title: "DyBot — Automação via WhatsApp para Apps Meta",
+    siteName: "Zybot",
+    title: "Zybot — Atendimento, Agenda e IA no WhatsApp",
     description:
-      "Plataforma SaaS de bots e automação de mensagens via WhatsApp Business API para aplicativos Meta.",
+      "Conversas, agenda e um agente de IA em um só lugar — hoje no WhatsApp Business API, com Instagram e Facebook em breve.",
     images: [
       {
         url: "/capa%20dybot.png",
         width: 1200,
         height: 630,
-        alt: "DyBot — Automação WhatsApp para Apps Meta",
+        alt: "Zybot — Atendimento, Agenda e IA no WhatsApp",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "DyBot — Automação via WhatsApp para Apps Meta",
+    title: "Zybot — Atendimento, Agenda e IA no WhatsApp",
     description:
-      "Plataforma SaaS de bots e automação de mensagens via WhatsApp Business API para aplicativos Meta.",
+      "Conversas, agenda e um agente de IA em um só lugar — hoje no WhatsApp Business API, com Instagram e Facebook em breve.",
     images: ["/capa%20dybot.png"],
   },
   icons: {

@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react'
 import { UserPlus, Search, Shield, Mail, Calendar, MoreHorizontal, Copy, Check, X } from 'lucide-react'
 import AddUserModal from './AddUserModal'
 import EditUserModal from './EditUserModal'
+import { Skeleton } from '@/components/Skeleton'
 import type { AccessLevel, UserCreateInput, UserResponse, UserStatus, UserUpdateInput } from '@/types/user'
 
 const accessLevelColors: Record<AccessLevel, string> = {
   administrador: 'bg-purple-50 text-purple-700',
   supervisor: 'bg-blue-50 text-blue-700',
-  atendente: 'bg-green-50 text-green-700',
+  atendente: 'bg-brand-50 text-brand-700',
 }
 
 const accessLevelLabels: Record<AccessLevel, string> = {
@@ -139,13 +140,13 @@ export default function UsuariosPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-gray-900">Usuários</h2>
-          <p className="text-sm text-gray-500">Gerencie os usuários e permissões da sua empresa</p>
+          <h2 className="text-lg font-bold text-ink-900">Usuários</h2>
+          <p className="text-sm text-ink-500">Gerencie os usuários e permissões da sua empresa</p>
         </div>
         {canManageUsers && (
           <button
             onClick={() => setIsModalOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors"
           >
             <UserPlus className="w-4 h-4" />
             Adicionar Usuário
@@ -179,67 +180,66 @@ export default function UsuariosPage() {
       )}
 
       {/* Search */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="bg-white rounded-xl border border-ink-200 p-4">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
           <input
             type="text"
             placeholder="Buscar usuário..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full pl-9 pr-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-        {loading ? (
-          <div className="p-8 text-center text-gray-500">Carregando usuários...</div>
-        ) : filteredUsers.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
+      <div className="bg-white rounded-xl border border-ink-200 overflow-x-auto">
+        {!loading && filteredUsers.length === 0 ? (
+          <div className="p-8 text-center text-ink-500">
             {searchTerm ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado'}
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Usuário</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Cargo</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Nível</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Cadastro</th>
-                <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Ações</th>
+              <tr className="border-b border-ink-100 bg-ink-50">
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Usuário</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Email</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Cargo</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Nível</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Status</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Cadastro</th>
+                <th className="px-5 py-3 text-right text-xs font-semibold text-ink-500 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredUsers.map((user) => {
+            <tbody className="divide-y divide-ink-100">
+              {loading && Array.from({ length: 5 }).map((_, i) => <UserRowSkeleton key={i} />)}
+              {!loading && filteredUsers.map((user) => {
                 const isSelf = me?.id === user.id
                 const showMenu = (canManageUsers || canToggleStatus) && !isSelf
                 return (
-                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={user.id} className="hover:bg-ink-50 transition-colors">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center shrink-0">
-                          <span className="text-xs font-bold text-green-700">{user.name[0]}</span>
+                        <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
+                          <span className="text-xs font-bold text-brand-700">{user.name[0]}</span>
                         </div>
-                        <span className="font-medium text-gray-900">
+                        <span className="font-medium text-ink-900">
                           {user.name}
-                          {isSelf && <span className="text-xs text-gray-400 font-normal"> (você)</span>}
+                          {isSelf && <span className="text-xs text-ink-400 font-normal"> (você)</span>}
                         </span>
                       </div>
                     </td>
                     <td className="px-5 py-3">
-                      <div className="flex items-center gap-1.5 text-gray-600">
-                        <Mail className="w-3 h-3 text-gray-400" />
+                      <div className="flex items-center gap-1.5 text-ink-600">
+                        <Mail className="w-3 h-3 text-ink-400" />
                         {user.email}
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-gray-600">{user.role}</td>
+                    <td className="px-5 py-3 text-ink-600">{user.role}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-1.5">
-                        <Shield className="w-3 h-3 text-gray-400" />
+                        <Shield className="w-3 h-3 text-ink-400" />
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${accessLevelColors[user.access_level]}`}>
                           {accessLevelLabels[user.access_level]}
                         </span>
@@ -248,15 +248,15 @@ export default function UsuariosPage() {
                     <td className="px-5 py-3">
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          user.status === 'ativo' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
+                          user.status === 'ativo' ? 'bg-brand-50 text-brand-700' : 'bg-ink-100 text-ink-500'
                         }`}
                       >
                         {user.status === 'ativo' ? 'Ativo' : 'Inativo'}
                       </span>
                     </td>
                     <td className="px-5 py-3">
-                      <div className="flex items-center gap-1.5 text-gray-500">
-                        <Calendar className="w-3 h-3 text-gray-400" />
+                      <div className="flex items-center gap-1.5 text-ink-500">
+                        <Calendar className="w-3 h-3 text-ink-400" />
                         {formatDate(user.created_at)}
                       </div>
                     </td>
@@ -295,6 +295,25 @@ export default function UsuariosPage() {
   )
 }
 
+function UserRowSkeleton() {
+  return (
+    <tr>
+      <td className="px-5 py-3">
+        <div className="flex items-center gap-3">
+          <Skeleton className="w-8 h-8 rounded-full shrink-0" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+      </td>
+      <td className="px-5 py-3"><Skeleton className="h-4 w-36" /></td>
+      <td className="px-5 py-3"><Skeleton className="h-4 w-24" /></td>
+      <td className="px-5 py-3"><Skeleton className="h-5 w-20 rounded-full" /></td>
+      <td className="px-5 py-3"><Skeleton className="h-5 w-14 rounded-full" /></td>
+      <td className="px-5 py-3"><Skeleton className="h-4 w-20" /></td>
+      <td className="px-5 py-3" />
+    </tr>
+  )
+}
+
 function UserActionsMenu({
   user,
   canEdit,
@@ -314,21 +333,21 @@ function UserActionsMenu({
     <div className="relative inline-block text-left">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+        className="p-1.5 rounded-md text-ink-400 hover:text-ink-600 hover:bg-ink-100 transition-colors"
       >
         <MoreHorizontal className="w-4 h-4" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-20 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+          <div className="absolute right-0 z-20 mt-1 w-40 bg-white border border-ink-200 rounded-lg shadow-lg py-1">
             {canEdit && (
               <button
                 onClick={() => {
                   setOpen(false)
                   onEdit()
                 }}
-                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                className="w-full text-left px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
               >
                 Editar
               </button>
@@ -339,7 +358,7 @@ function UserActionsMenu({
                   setOpen(false)
                   onToggleStatus(user)
                 }}
-                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                className="w-full text-left px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
               >
                 {user.status === 'ativo' ? 'Desativar' : 'Ativar'}
               </button>

@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { Check, MessageSquare } from 'lucide-react'
+import { Check } from 'lucide-react'
+import { Logo } from '@/components/Logo'
 import StepAccount from './StepAccount'
 import StepCompany from './StepCompany'
 import StepProfile from './StepProfile'
@@ -69,16 +70,13 @@ export default function CadastroPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-gray-100 py-10 px-6">
-      <div className="flex items-center gap-2 justify-center mb-8">
-        <div className="w-9 h-9 bg-green-600 rounded-xl flex items-center justify-center">
-          <MessageSquare className="w-5 h-5 text-white" />
-        </div>
-        <span className="text-xl font-bold text-gray-900">Meta Conecta</span>
+    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-ink-100 py-10 px-6">
+      <div className="flex items-center justify-center mb-8">
+        <Logo markClassName="w-9 h-9" textClassName="text-xl font-bold text-ink-900" />
       </div>
 
       <div className="w-full max-w-2xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+        <div className="bg-white rounded-2xl shadow-sm border border-ink-200 p-8">
           {/* Progress indicator */}
           <div className="flex items-center mb-6">
             {STEPS.map((s, i) => (
@@ -87,26 +85,26 @@ export default function CadastroPage() {
                   <div
                     className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${
                       step >= s.number
-                        ? 'bg-green-600 text-white'
-                        : 'bg-gray-100 text-gray-400 border border-gray-300'
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-ink-100 text-ink-400 border border-ink-300'
                     }`}
                   >
                     {step > s.number ? <Check className="w-3.5 h-3.5" /> : s.number}
                   </div>
-                  <span className={`text-xs font-medium hidden sm:inline ${step >= s.number ? 'text-green-700' : 'text-gray-400'}`}>
+                  <span className={`text-xs font-medium hidden sm:inline ${step >= s.number ? 'text-brand-700' : 'text-ink-400'}`}>
                     {s.label}
                   </span>
                 </div>
                 {i < STEPS.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-3 ${step > s.number ? 'bg-green-600' : 'bg-gray-200'}`} />
+                  <div className={`flex-1 h-0.5 mx-3 ${step > s.number ? 'bg-brand-600' : 'bg-ink-200'}`} />
                 )}
               </div>
             ))}
           </div>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">{STEP_COPY[step].title}</h2>
-            <p className="text-sm text-gray-500 mt-1">{STEP_COPY[step].subtitle}</p>
+            <h2 className="text-2xl font-bold text-ink-900">{STEP_COPY[step].title}</h2>
+            <p className="text-sm text-ink-500 mt-1">{STEP_COPY[step].subtitle}</p>
           </div>
 
           {step === 1 && (
@@ -155,9 +153,9 @@ export default function CadastroPage() {
             />
           )}
 
-          <p className="mt-6 text-center text-sm text-gray-500">
+          <p className="mt-6 text-center text-sm text-ink-500">
             Já tem uma conta?{' '}
-            <Link href="/login" className="font-medium text-green-700 hover:text-green-800">
+            <Link href="/login" className="font-medium text-brand-700 hover:text-brand-800">
               Entrar
             </Link>
           </p>

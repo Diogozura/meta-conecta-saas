@@ -8,8 +8,8 @@ const SEGMENT_OPTIONS = [
 const TEAM_SIZE_OPTIONS = ['Só eu', '2-10', '11-50', '51-200', '200+'] as const
 
 const inputClass =
-  'w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition disabled:opacity-50'
-const labelClass = 'block text-sm font-medium text-gray-700 mb-1'
+  'w-full px-3 py-2.5 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent transition disabled:opacity-50'
+const labelClass = 'block text-sm font-medium text-ink-700 mb-1'
 
 interface StepProfileProps {
   formData: CadastroFormData
@@ -26,7 +26,7 @@ export default function StepProfile({ formData, updateField, onBack, onContinue,
         type="button"
         onClick={onBack}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-700 mb-4 disabled:opacity-50"
       >
         <ArrowLeft className="w-4 h-4" />
         Voltar
@@ -83,7 +83,7 @@ export default function StepProfile({ formData, updateField, onBack, onContinue,
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Continuar
         </button>

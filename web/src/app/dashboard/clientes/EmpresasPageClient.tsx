@@ -5,23 +5,24 @@ import { Building2, Search, Phone, Mail, MoreHorizontal, Copy, Check, X, Chevron
 import { toast } from 'sonner'
 import AddCompanyModal from './AddCompanyModal'
 import CompanyDetailPanel from './detail/CompanyDetailPanel'
+import { Skeleton } from '@/components/Skeleton'
 import type { CompanyListItem, CompanyStatus, MetaConnectionStatus } from '@/types/company'
 
 const statusBadge: Record<CompanyStatus, { label: string; className: string }> = {
-  active: { label: 'Ativa', className: 'bg-green-50 text-green-700' },
+  active: { label: 'Ativa', className: 'bg-brand-50 text-brand-700' },
   inactive: { label: 'Inativa', className: 'bg-red-50 text-red-700' },
-  deleted: { label: 'Excluída', className: 'bg-gray-100 text-gray-500' },
+  deleted: { label: 'Excluída', className: 'bg-ink-100 text-ink-500' },
 }
 
 const metaBadge: Record<MetaConnectionStatus, { label: string; className: string }> = {
-  connected: { label: 'Meta Conectada', className: 'bg-green-50 text-green-700' },
+  connected: { label: 'Meta Conectada', className: 'bg-brand-50 text-brand-700' },
   inactive: { label: 'Meta Desconectada', className: 'bg-red-50 text-red-700' },
 }
 
 function aiBadge(enabled: boolean) {
   return enabled
     ? { label: 'IA Ativa', className: 'bg-purple-50 text-purple-700' }
-    : { label: 'IA Desativada', className: 'bg-gray-100 text-gray-500' }
+    : { label: 'IA Desativada', className: 'bg-ink-100 text-ink-500' }
 }
 
 const searchByLabels: Record<string, string> = {
@@ -153,12 +154,12 @@ export default function EmpresasPageClient() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-gray-900">Empresas</h2>
-          <p className="text-sm text-gray-500">Gerencie as contas de clientes do SaaS</p>
+          <h2 className="text-lg font-bold text-ink-900">Empresas</h2>
+          <p className="text-sm text-ink-500">Gerencie as contas de clientes do SaaS</p>
         </div>
         <button
           onClick={() => setIsCreateOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors"
         >
           <Building2 className="w-4 h-4" />
           Nova Empresa
@@ -191,10 +192,10 @@ export default function EmpresasPageClient() {
       )}
 
       {/* Busca + filtros */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+      <div className="bg-white rounded-xl border border-ink-200 p-4 space-y-3">
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
             <input
               type="text"
               placeholder={`Buscar por ${searchByLabels[searchBy].toLowerCase()}...`}
@@ -203,7 +204,7 @@ export default function EmpresasPageClient() {
                 setSearchValue(e.target.value)
                 resetPagination()
               }}
-              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              className="w-full pl-9 pr-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
           <select
@@ -212,7 +213,7 @@ export default function EmpresasPageClient() {
               setSearchBy(e.target.value as typeof searchBy)
               resetPagination()
             }}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           >
             {Object.entries(searchByLabels).map(([value, label]) => (
               <option key={value} value={value}>
@@ -229,7 +230,7 @@ export default function EmpresasPageClient() {
               setStatusFilter(e.target.value as CompanyStatus | '')
               resetPagination()
             }}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           >
             <option value="">Todos os status</option>
             <option value="active">Ativa</option>
@@ -243,7 +244,7 @@ export default function EmpresasPageClient() {
               setMetaFilter(e.target.value as MetaConnectionStatus | '')
               resetPagination()
             }}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           >
             <option value="">Meta: todas</option>
             <option value="connected">Meta conectada</option>
@@ -256,7 +257,7 @@ export default function EmpresasPageClient() {
               setAiFilter(e.target.value as typeof aiFilter)
               resetPagination()
             }}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           >
             <option value="">IA: todas</option>
             <option value="true">IA ativa</option>
@@ -271,64 +272,63 @@ export default function EmpresasPageClient() {
               setPlanFilter(e.target.value)
               resetPagination()
             }}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
         </div>
       </div>
 
       {/* Tabela */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-        {loading ? (
-          <div className="p-8 text-center text-gray-500">Carregando empresas...</div>
-        ) : items.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">Nenhuma empresa encontrada</div>
+      <div data-tour="clientes-list" className="bg-white rounded-xl border border-ink-200 overflow-x-auto">
+        {!loading && items.length === 0 ? (
+          <div className="p-8 text-center text-ink-500">Nenhuma empresa encontrada</div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Empresa</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Responsável</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Setor</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Plano</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">WhatsApp</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Cadastro</th>
-                <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Ações</th>
+              <tr className="border-b border-ink-100 bg-ink-50">
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Empresa</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Responsável</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Setor</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Plano</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">WhatsApp</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Status</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-ink-500 uppercase tracking-wider">Cadastro</th>
+                <th className="px-5 py-3 text-right text-xs font-semibold text-ink-500 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {items.map((company) => {
+            <tbody className="divide-y divide-ink-100">
+              {loading && Array.from({ length: 6 }).map((_, i) => <CompanyRowSkeleton key={i} />)}
+              {!loading && items.map((company) => {
                 const status = statusBadge[company.status]
                 const meta = metaBadge[company.meta_connection_status]
                 const ai = aiBadge(company.ai_enabled)
                 return (
                   <tr
                     key={company.id}
-                    className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    className="hover:bg-ink-50 transition-colors cursor-pointer"
                     onClick={() => setSelectedCompanyId(company.id)}
                   >
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center shrink-0">
-                          <span className="text-xs font-bold text-green-700">{company.company_name[0]}</span>
+                        <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
+                          <span className="text-xs font-bold text-brand-700">{company.company_name[0]}</span>
                         </div>
-                        <span className="font-medium text-gray-900">{company.company_name}</span>
+                        <span className="font-medium text-ink-900">{company.company_name}</span>
                       </div>
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-gray-700">{company.client_name}</span>
-                        <span className="flex items-center gap-1.5 text-gray-500">
-                          <Mail className="w-3 h-3 text-gray-400" />
+                        <span className="text-ink-700">{company.client_name}</span>
+                        <span className="flex items-center gap-1.5 text-ink-500">
+                          <Mail className="w-3 h-3 text-ink-400" />
                           {company.client_email}
                         </span>
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-gray-600">{company.sector}</td>
-                    <td className="px-5 py-3 text-gray-600">{company.plan_name}</td>
+                    <td className="px-5 py-3 text-ink-600">{company.sector}</td>
+                    <td className="px-5 py-3 text-ink-600">{company.plan_name}</td>
                     <td className="px-5 py-3">
-                      <span className="flex items-center gap-1.5 text-gray-600">
-                        <Phone className="w-3 h-3 text-gray-400" />
+                      <span className="flex items-center gap-1.5 text-ink-600">
+                        <Phone className="w-3 h-3 text-ink-400" />
                         {company.whatsapp_count}
                       </span>
                     </td>
@@ -339,7 +339,7 @@ export default function EmpresasPageClient() {
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ai.className}`}>{ai.label}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-gray-500">{formatDate(company.created_at)}</td>
+                    <td className="px-5 py-3 text-ink-500">{formatDate(company.created_at)}</td>
                     <td className="px-5 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       <QuickActionsMenu
                         company={company}
@@ -360,7 +360,7 @@ export default function EmpresasPageClient() {
         <button
           onClick={goToPreviousPage}
           disabled={cursorStack.length === 0}
-          className="inline-flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="inline-flex items-center gap-1 px-3 py-1.5 border border-ink-300 rounded-lg text-sm text-ink-600 hover:bg-ink-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
           Anterior
@@ -368,7 +368,7 @@ export default function EmpresasPageClient() {
         <button
           onClick={goToNextPage}
           disabled={!nextCursor}
-          className="inline-flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="inline-flex items-center gap-1 px-3 py-1.5 border border-ink-300 rounded-lg text-sm text-ink-600 hover:bg-ink-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           Próxima
           <ChevronRight className="w-4 h-4" />
@@ -388,6 +388,36 @@ export default function EmpresasPageClient() {
         />
       )}
     </div>
+  )
+}
+
+function CompanyRowSkeleton() {
+  return (
+    <tr>
+      <td className="px-5 py-3">
+        <div className="flex items-center gap-3">
+          <Skeleton className="w-8 h-8 rounded-full shrink-0" />
+          <Skeleton className="h-4 w-32" />
+        </div>
+      </td>
+      <td className="px-5 py-3">
+        <div className="flex flex-col gap-1.5">
+          <Skeleton className="h-3.5 w-24" />
+          <Skeleton className="h-3.5 w-32" />
+        </div>
+      </td>
+      <td className="px-5 py-3"><Skeleton className="h-4 w-16" /></td>
+      <td className="px-5 py-3"><Skeleton className="h-4 w-16" /></td>
+      <td className="px-5 py-3"><Skeleton className="h-4 w-8" /></td>
+      <td className="px-5 py-3">
+        <div className="flex gap-1">
+          <Skeleton className="h-5 w-14 rounded-full" />
+          <Skeleton className="h-5 w-20 rounded-full" />
+        </div>
+      </td>
+      <td className="px-5 py-3"><Skeleton className="h-4 w-20" /></td>
+      <td className="px-5 py-3" />
+    </tr>
   )
 }
 
@@ -413,17 +443,17 @@ function QuickActionsMenu({
       <button
         disabled={isPending}
         onClick={() => setOpen((v) => !v)}
-        className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="p-1.5 rounded-md text-ink-400 hover:text-ink-600 hover:bg-ink-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         <MoreHorizontal className="w-4 h-4" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={closeMenu} />
-          <div className="absolute right-0 z-20 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+          <div className="absolute right-0 z-20 mt-1 w-56 bg-white border border-ink-200 rounded-lg shadow-lg py-1">
             {confirmingDelete ? (
               <div className="px-3 py-2 space-y-2">
-                <p className="text-xs text-gray-600">Confirmar exclusão de {company.company_name}?</p>
+                <p className="text-xs text-ink-600">Confirmar exclusão de {company.company_name}?</p>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
@@ -436,7 +466,7 @@ function QuickActionsMenu({
                   </button>
                   <button
                     onClick={() => setConfirmingDelete(false)}
-                    className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium border border-ink-300 rounded-lg text-ink-700 hover:bg-ink-50 transition-colors"
                   >
                     Cancelar
                   </button>
@@ -450,7 +480,7 @@ function QuickActionsMenu({
                       closeMenu()
                       onAction(company.id, 'activate', 'ativada')
                     }}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="w-full text-left px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
                   >
                     Ativar
                   </button>
@@ -461,7 +491,7 @@ function QuickActionsMenu({
                       closeMenu()
                       onAction(company.id, 'deactivate', 'desativada')
                     }}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="w-full text-left px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
                   >
                     Desativar
                   </button>

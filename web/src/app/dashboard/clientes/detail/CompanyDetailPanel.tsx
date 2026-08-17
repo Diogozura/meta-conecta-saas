@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, Loader2 } from 'lucide-react'
+import { X } from 'lucide-react'
 import { toast } from 'sonner'
+import { Skeleton } from '@/components/Skeleton'
 import type { CompanyResponse } from '@/types/company'
 import GeneralTab from './GeneralTab'
 import WhatsAppTab from './WhatsAppTab'
@@ -29,9 +30,9 @@ const tabs: { key: TabKey; label: string }[] = [
 ]
 
 const statusBadge: Record<CompanyResponse['status'], { label: string; className: string }> = {
-  active: { label: 'Ativa', className: 'bg-green-50 text-green-700' },
+  active: { label: 'Ativa', className: 'bg-brand-50 text-brand-700' },
   inactive: { label: 'Inativa', className: 'bg-red-50 text-red-700' },
-  deleted: { label: 'Excluída', className: 'bg-gray-100 text-gray-500' },
+  deleted: { label: 'Excluída', className: 'bg-ink-100 text-ink-500' },
 }
 
 export default function CompanyDetailPanel({ companyId, onClose, onChanged }: CompanyDetailPanelProps) {
@@ -89,19 +90,43 @@ export default function CompanyDetailPanel({ companyId, onClose, onChanged }: Co
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-xl bg-white h-full shadow-xl flex flex-col overflow-hidden">
         {loading || !company ? (
-          <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+          <div className="flex flex-col overflow-hidden h-full">
+            <div className="border-b border-ink-200 p-5 space-y-3 shrink-0">
+              <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                  <Skeleton className="h-5 w-40" />
+                  <Skeleton className="h-3 w-28" />
+                </div>
+                <Skeleton className="w-7 h-7 rounded-lg" />
+              </div>
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <div className="flex gap-2 pt-1">
+                <Skeleton className="h-7 w-20 rounded-lg" />
+                <Skeleton className="h-7 w-20 rounded-lg" />
+              </div>
+            </div>
+            <div className="flex border-b border-ink-200 shrink-0 gap-4 px-5 py-3">
+              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-4 w-14" />)}
+            </div>
+            <div className="flex-1 p-5 space-y-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-1.5">
+                  <Skeleton className="h-3.5 w-24" />
+                  <Skeleton className="h-9 w-full rounded-lg" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <>
             {/* Header */}
-            <div className="border-b border-gray-200 p-5 space-y-3 shrink-0">
+            <div className="border-b border-ink-200 p-5 space-y-3 shrink-0">
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">{company.company_name}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">{company.cnpj}</p>
+                  <h3 className="text-lg font-bold text-ink-900">{company.company_name}</h3>
+                  <p className="text-xs text-ink-500 mt-0.5">{company.cnpj}</p>
                 </div>
-                <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                <button onClick={onClose} className="p-1 rounded-lg text-ink-400 hover:text-ink-600 hover:bg-ink-100 transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -116,7 +141,7 @@ export default function CompanyDetailPanel({ companyId, onClose, onChanged }: Co
                   <button
                     disabled={actionLoading}
                     onClick={() => runAction(`/api/empresas/${company.id}/deactivate`, 'PATCH', 'desativada')}
-                    className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium border border-ink-300 rounded-lg text-ink-700 hover:bg-ink-50 disabled:opacity-50 transition-colors"
                   >
                     Desativar
                   </button>
@@ -125,7 +150,7 @@ export default function CompanyDetailPanel({ companyId, onClose, onChanged }: Co
                   <button
                     disabled={actionLoading}
                     onClick={() => runAction(`/api/empresas/${company.id}/activate`, 'PATCH', 'ativada')}
-                    className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium border border-ink-300 rounded-lg text-ink-700 hover:bg-ink-50 disabled:opacity-50 transition-colors"
                   >
                     Ativar
                   </button>
@@ -134,13 +159,13 @@ export default function CompanyDetailPanel({ companyId, onClose, onChanged }: Co
                   <button
                     disabled={actionLoading}
                     onClick={() => runAction(`/api/empresas/${company.id}/restore`, 'PATCH', 'restaurada')}
-                    className="px-3 py-1.5 text-xs font-medium border border-green-300 text-green-700 rounded-lg hover:bg-green-50 disabled:opacity-50 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium border border-brand-300 text-brand-700 rounded-lg hover:bg-brand-50 disabled:opacity-50 transition-colors"
                   >
                     Restaurar
                   </button>
                 ) : confirmingDelete ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-600">Confirmar exclusão?</span>
+                    <span className="text-xs text-ink-600">Confirmar exclusão?</span>
                     <button
                       disabled={actionLoading}
                       onClick={() => runAction(`/api/empresas/${company.id}`, 'DELETE', 'excluída')}
@@ -150,7 +175,7 @@ export default function CompanyDetailPanel({ companyId, onClose, onChanged }: Co
                     </button>
                     <button
                       onClick={() => setConfirmingDelete(false)}
-                      className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                      className="px-3 py-1.5 text-xs font-medium border border-ink-300 rounded-lg text-ink-700 hover:bg-ink-50 transition-colors"
                     >
                       Cancelar
                     </button>
@@ -167,15 +192,15 @@ export default function CompanyDetailPanel({ companyId, onClose, onChanged }: Co
             </div>
 
             {/* Tab nav */}
-            <div className="flex border-b border-gray-200 shrink-0 overflow-x-auto">
+            <div className="flex border-b border-ink-200 shrink-0 overflow-x-auto overflow-y-hidden">
               {tabs.map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
                   className={`px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                     activeTab === tab.key
-                      ? 'border-green-600 text-green-700'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                      ? 'border-brand-600 text-brand-700'
+                      : 'border-transparent text-ink-500 hover:text-ink-700'
                   }`}
                 >
                   {tab.label}

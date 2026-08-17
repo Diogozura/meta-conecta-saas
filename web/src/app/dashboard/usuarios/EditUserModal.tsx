@@ -52,16 +52,16 @@ export default function EditUserModal({ isOpen, user, onClose, onSave }: EditUse
         className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-5 border-b border-gray-200">
-          <h3 className="text-lg font-bold text-gray-900">Editar Usuário</h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+        <div className="flex items-center justify-between p-5 border-b border-ink-200">
+          <h3 className="text-lg font-bold text-ink-900">Editar Usuário</h3>
+          <button onClick={onClose} className="p-1 rounded-lg text-ink-400 hover:text-ink-600 hover:bg-ink-100 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">
               Nome completo <span className="text-red-500">*</span>
             </label>
             <input
@@ -69,23 +69,23 @@ export default function EditUserModal({ isOpen, user, onClose, onSave }: EditUse
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">Email</label>
             <input
               type="email"
               value={user.email}
               disabled
-              className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-sm text-gray-500 cursor-not-allowed"
+              className="w-full px-3 py-2 border border-ink-200 bg-ink-50 rounded-lg text-sm text-ink-500 cursor-not-allowed"
             />
-            <p className="text-xs text-gray-400 mt-1">O email não pode ser alterado após o cadastro.</p>
+            <p className="text-xs text-ink-400 mt-1">O email não pode ser alterado após o cadastro.</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">
               Cargo <span className="text-red-500">*</span>
             </label>
             <input
@@ -93,29 +93,29 @@ export default function EditUserModal({ isOpen, user, onClose, onSave }: EditUse
               required
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Setor</label>
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">Setor</label>
             <input
               type="text"
               value={sector}
               onChange={(e) => setSector(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium text-ink-700 mb-1.5">
               Nível de Acesso <span className="text-red-500">*</span>
             </label>
             <select
               required
               value={accessLevel}
               onChange={(e) => setAccessLevel(e.target.value as AccessLevel)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
             >
               <option value="administrador">Administrador</option>
               <option value="supervisor">Supervisor</option>
@@ -136,14 +136,14 @@ export default function EditUserModal({ isOpen, user, onClose, onSave }: EditUse
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex-1 px-4 py-2 border border-ink-300 text-ink-700 text-sm font-medium rounded-lg hover:bg-ink-50 transition-colors"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Salvando...' : 'Salvar alterações'}
             </button>
