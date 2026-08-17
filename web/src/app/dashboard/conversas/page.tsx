@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck, Bot } from 'lucide-react'
+import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck, Bot, ArrowLeft } from 'lucide-react'
 import { WhatsAppGlyph, InstagramGlyph, FacebookGlyph } from '@/components/BrandIcons'
 import { Skeleton } from '@/components/Skeleton'
 
@@ -397,14 +397,14 @@ function ConversasInner() {
   return (
     <div className="flex flex-col h-[calc(100vh-7rem)]">
       {/* Channel switcher */}
-      <div data-tour="conversas-channels" className="flex items-center gap-2 mb-3 shrink-0">
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-brand-600 text-white shadow-sm">
+      <div data-tour="conversas-channels" className="flex items-center gap-2 mb-3 shrink-0 overflow-x-auto overflow-y-hidden scrollbar-thin -mx-1 px-1">
+        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-brand-600 text-white shadow-sm shrink-0 whitespace-nowrap">
           <WhatsAppGlyph className="w-4 h-4" />
           WhatsApp
         </button>
         <button
           disabled
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-ink-200 text-ink-400 cursor-not-allowed"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-ink-200 text-ink-400 cursor-not-allowed shrink-0 whitespace-nowrap"
           title="Em breve"
         >
           <InstagramGlyph className="w-3.5 h-3.5" />
@@ -413,7 +413,7 @@ function ConversasInner() {
         </button>
         <button
           disabled
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-ink-200 text-ink-400 cursor-not-allowed"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-ink-200 text-ink-400 cursor-not-allowed shrink-0 whitespace-nowrap"
           title="Em breve"
         >
           <FacebookGlyph className="w-3.5 h-3.5" />
@@ -423,8 +423,13 @@ function ConversasInner() {
       </div>
 
       <div className="flex gap-4 flex-1 min-h-0">
-      {/* Left: conversation list */}
-      <div data-tour="conversas-list" className="w-72 flex flex-col bg-white rounded-xl border border-ink-200 overflow-hidden shrink-0">
+      {/* Left: conversation list — full width on mobile, hidden once a conversation is open */}
+      <div
+        data-tour="conversas-list"
+        className={`w-full lg:w-72 flex-col bg-white rounded-xl border border-ink-200 overflow-hidden shrink-0 ${
+          selectedIdx !== null ? 'hidden lg:flex' : 'flex'
+        }`}
+      >
         <div className="p-3 border-b border-ink-100 space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-ink-900">Conversas</h2>
@@ -510,12 +515,19 @@ function ConversasInner() {
         </div>
       </div>
 
-      {/* Right: chat panel */}
-      <div className="flex-1 flex flex-col bg-white rounded-xl border border-ink-200 overflow-hidden">
+      {/* Right: chat panel — hidden on mobile until a conversation is open */}
+      <div className={`flex-1 flex-col bg-white rounded-xl border border-ink-200 overflow-hidden ${currentConv ? 'flex' : 'hidden lg:flex'}`}>
         {currentConv ? (
           <>
             {/* Chat header */}
             <div className="px-4 py-3 border-b border-ink-100 flex items-center gap-3 bg-ink-50">
+              <button
+                onClick={() => setSelectedIdx(null)}
+                className="lg:hidden -ml-1 p-1.5 rounded-lg text-ink-500 hover:bg-ink-100 transition-colors shrink-0"
+                aria-label="Voltar para a lista"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
               <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
                 <span className="text-xs font-bold text-brand-700">{currentConv.name[0]}</span>
               </div>

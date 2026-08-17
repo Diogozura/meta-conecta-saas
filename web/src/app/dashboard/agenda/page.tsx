@@ -143,12 +143,12 @@ function AgendaInner() {
         <h1 className="text-lg font-bold text-ink-900">Agenda</h1>
       </div>
 
-      <div data-tour="agenda-tabs" className="border-b border-ink-200 flex gap-1">
+      <div data-tour="agenda-tabs" className="border-b border-ink-200 flex gap-1 overflow-x-auto overflow-y-hidden scrollbar-thin">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-medium border-b-2 whitespace-nowrap shrink-0 transition-colors ${
               activeTab === tab.key
                 ? 'border-brand-600 text-brand-700'
                 : 'border-transparent text-ink-500 hover:text-ink-700'
