@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowLeft, ArrowRight, X } from 'lucide-react'
 import type { TourStep } from '@/lib/tour/types'
 
 const CARD_WIDTH = 320
 const GAP = 14
+const MARGIN = 16
 
 export function TourOverlay({
   step,
@@ -25,6 +26,8 @@ export function TourOverlay({
 }) {
   const [mounted, setMounted] = useState(false)
   const [rect, setRect] = useState<DOMRect | null>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ top: 0, left: 0, ready: false })
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- portal só pode montar após o client confirmar que document existe
@@ -32,41 +35,51 @@ export function TourOverlay({
   }, [])
 
   useEffect(() => {
-    function measure() {
+    function measureTarget() {
       const el = document.querySelector(step.target)
       setRect(el ? el.getBoundingClientRect() : null)
     }
-    measure()
-    const id = window.setInterval(measure, 250)
-    window.addEventListener('resize', measure)
-    window.addEventListener('scroll', measure, true)
+    measureTarget()
+    const id = window.setInterval(measureTarget, 250)
+    window.addEventListener('resize', measureTarget)
+    window.addEventListener('scroll', measureTarget, true)
     return () => {
       window.clearInterval(id)
-      window.removeEventListener('resize', measure)
-      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measureTarget)
+      window.removeEventListener('scroll', measureTarget, true)
     }
   }, [step.target])
 
-  if (!mounted) return null
+  // Reposiciona usando a altura REAL do card (medida após ele renderizar o
+  // conteúdo do passo atual) em vez de uma altura estimada — passos com
+  // descrição maior (ex: 3 linhas) empurravam o botão "Próximo" pra fora da
+  // tela quando o alvo ficava perto da borda inferior do viewport.
+  useLayoutEffect(() => {
+    const cardEl = cardRef.current
+    if (!cardEl) return
+    const cardHeight = cardEl.offsetHeight
+    const viewportW = window.innerWidth
+    const viewportH = window.innerHeight
 
-  const viewportW = window.innerWidth
-  const viewportH = window.innerHeight
+    let top: number
+    let left: number
 
-  let cardTop: number
-  let cardLeft: number
-
-  if (rect) {
-    const spaceBelow = viewportH - rect.bottom
-    if (spaceBelow > 180 || spaceBelow > rect.top) {
-      cardTop = Math.min(rect.bottom + GAP, viewportH - 200)
+    if (rect) {
+      const spaceBelow = viewportH - rect.bottom - GAP
+      const spaceAbove = rect.top - GAP
+      top = spaceBelow >= cardHeight || spaceBelow >= spaceAbove
+        ? rect.bottom + GAP
+        : rect.top - GAP - cardHeight
+      top = Math.min(Math.max(MARGIN, top), Math.max(MARGIN, viewportH - cardHeight - MARGIN))
+      left = Math.min(Math.max(MARGIN, rect.left), Math.max(MARGIN, viewportW - CARD_WIDTH - MARGIN))
     } else {
-      cardTop = Math.max(16, rect.top - GAP - 190)
+      top = Math.max(MARGIN, viewportH / 2 - cardHeight / 2)
+      left = viewportW / 2 - CARD_WIDTH / 2
     }
-    cardLeft = Math.min(Math.max(16, rect.left), viewportW - CARD_WIDTH - 16)
-  } else {
-    cardTop = viewportH / 2 - 90
-    cardLeft = viewportW / 2 - CARD_WIDTH / 2
-  }
+    setPos({ top, left, ready: true })
+  }, [rect, step, stepNumber])
+
+  if (!mounted) return null
 
   const overlay = (
     <div className="fixed inset-0 z-[100]" role="dialog" aria-modal="true">
@@ -93,8 +106,15 @@ export function TourOverlay({
       />
 
       <div
-        className="fixed z-[102] bg-white rounded-2xl shadow-2xl border border-ink-200 p-5 animate-fade-in"
-        style={{ top: cardTop, left: cardLeft, width: CARD_WIDTH }}
+        ref={cardRef}
+        className="fixed z-[102] bg-white rounded-2xl shadow-2xl border border-ink-200 p-5 overflow-y-auto scrollbar-thin animate-fade-in"
+        style={{
+          top: pos.top,
+          left: pos.left,
+          width: CARD_WIDTH,
+          maxHeight: `calc(100vh - ${MARGIN * 2}px)`,
+          visibility: pos.ready ? 'visible' : 'hidden',
+        }}
       >
         <div className="flex items-start justify-between gap-2 mb-2">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-600">
