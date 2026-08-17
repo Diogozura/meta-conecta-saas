@@ -69,7 +69,7 @@ function DashboardShellInner({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const helpRef = useRef<HTMLDivElement>(null)
-  const { start } = useTour()
+  const { active, steps, index, start } = useTour()
 
   // "Clientes" (Empresas) é uma tela de admin de plataforma — vê/gerencia
   // TODAS as empresas. Usuários comuns de uma empresa (mesmo Administrador
@@ -99,6 +99,24 @@ function DashboardShellInner({
     document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
+
+  // Em telas estreitas o menu lateral fica escondido (fora da tela) por
+  // padrão — sem isso, os passos do tour que apontam pra itens do menu
+  // (Visão Geral, Agenda, WhatsApp, Clientes, Configurações) ficavam
+  // destacando algo invisível atrás do menu fechado. Abre o menu sozinho
+  // durante esses passos e fecha de volta nos passos que não precisam dele.
+  useEffect(() => {
+    if (!active) return
+    if (window.innerWidth >= 1024) return
+    const isSidebarStep = steps[index]?.target.startsWith('[data-tour="nav-')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza o menu lateral com o passo atual do tour, que só é conhecido depois do efeito medir a viewport
+    setSidebarOpen(!!isSidebarStep)
+  }, [active, steps, index])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fecha o menu que o tour abriu sozinho quando o tour termina
+    if (!active) setSidebarOpen(false)
+  }, [active])
 
   const pageTourSteps = getPageTourSteps(pathname)
 
