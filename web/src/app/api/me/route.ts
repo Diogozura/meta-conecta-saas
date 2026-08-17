@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server'
 import { getBackendUser, getSessionCookieValue } from '@/lib/auth'
-import { backendErrorResponse } from '@/lib/apiRouteHelpers'
+import { backendErrorResponse, quotaErrorResponse } from '@/lib/apiRouteHelpers'
+import { FirestoreQuotaExceededError } from '@/lib/firestoreErrors'
 import { getMe } from '@/lib/usersApi'
 
 // GET /api/me - Perfil do usuário autenticado (empresa, cargo, nível de acesso)
 export async function GET() {
-  const user = await getBackendUser()
+  let user
+  try {
+    user = await getBackendUser()
+  } catch (error) {
+    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse()
+    throw error
+  }
   const sessionCookie = await getSessionCookieValue()
   if (!user || !sessionCookie) {
     return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })

@@ -20,6 +20,27 @@ function startVisibilityAwarePolling(poll: () => Promise<void>, intervalMs: numb
   return () => clearInterval(id)
 }
 
+// Mesmo `id` em toda chamada: se os 3 pollers baterem nisso ao mesmo tempo
+// (ou a cada 20s enquanto durar), o sonner atualiza o toast existente em
+// vez de empilhar um atrás do outro.
+function avisarLimiteFirebase() {
+  toast.error('Passou do limite diário de requisição do Firebase.', {
+    id: 'firestore-quota-exceeded',
+    description: 'As atualizações em tempo real do painel ficam pausadas até a cota renovar. Isso não é um problema de login.',
+    duration: 15000,
+    position: 'top-right',
+  })
+}
+
+/** Só os pollers passam por aqui — se a resposta não é 2xx por outro motivo (sessão realmente expirada, etc.), continua em silêncio como antes. */
+async function tratarRespostaComErro(res: Response) {
+  if (res.status !== 503) return
+  try {
+    const body = await res.json()
+    if (body?.code === 'firestore_quota_exceeded') avisarLimiteFirebase()
+  } catch {}
+}
+
 export function RealtimeListeners() {
   const pathname = usePathname()
   const router = useRouter()
@@ -32,7 +53,7 @@ export function RealtimeListeners() {
     const poll = async () => {
       try {
         const res = await fetch(`/api/messages?since=${since}`)
-        if (!res.ok) return
+        if (!res.ok) { await tratarRespostaComErro(res); return }
         const { messages, serverTime } = await res.json()
         since = serverTime
         for (const msg of messages) {
@@ -62,7 +83,7 @@ export function RealtimeListeners() {
     const poll = async () => {
       try {
         const res = await fetch(`/api/agenda/agendamentos/recentes?since=${since}`)
-        if (!res.ok) return
+        if (!res.ok) { await tratarRespostaComErro(res); return }
         const { eventos, serverTime } = await res.json()
         since = serverTime
         for (const evt of eventos) {
@@ -90,7 +111,7 @@ export function RealtimeListeners() {
     const poll = async () => {
       try {
         const res = await fetch(`/api/handoff/recentes?since=${since}`)
-        if (!res.ok) return
+        if (!res.ok) { await tratarRespostaComErro(res); return }
         const { eventos, serverTime } = await res.json()
         since = serverTime
         for (const evt of eventos) {

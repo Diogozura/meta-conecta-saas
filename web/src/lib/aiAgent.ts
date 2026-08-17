@@ -3,7 +3,7 @@ import { sendTextMessage } from '@/lib/meta'
 import { runGeminiAgent } from '@/lib/aiProviderGemini'
 import { runOpenAIAgent } from '@/lib/aiProviderOpenAI'
 import { runAnthropicAgent } from '@/lib/aiProviderAnthropic'
-import { AgentRunParams } from '@/lib/aiAgentTypes'
+import { AgentRunParams, humanizarErroAgente } from '@/lib/aiAgentTypes'
 
 /**
  * Processa uma mensagem recebida no WhatsApp com o agente de IA: monta o
@@ -77,7 +77,7 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
     }
   } catch (error) {
     console.error('Erro ao processar mensagem com o agente de IA:', error)
-    const mensagemErro = error instanceof Error ? error.message : 'Erro desconhecido'
+    const mensagemErro = humanizarErroAgente(error)
     // Falha ao registrar o erro não pode gerar outro erro não tratado aqui —
     // essa função já roda em segundo plano via after(), sem ninguém esperando.
     await registrarErroAgenteIA(contaId, mensagemErro.slice(0, 500)).catch(() => {})

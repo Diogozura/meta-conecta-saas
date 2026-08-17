@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { obterIndiceUsuarioPorUid, salvarIndiceUsuarioPorUid, obterUsuario, atualizarUsuario } from './firestore'
+import { isFirestoreQuotaExceededError, FirestoreQuotaExceededError } from './firestoreErrors'
 
 const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 7 * 1000 // 7 dias em ms
 const SESSION_MAX_AGE_S = SESSION_MAX_AGE_MS / 1000  // 7 dias em segundos
@@ -115,6 +116,12 @@ export async function auth() {
     try {
       contasSnapshot = await db.collection('contas').get()
     } catch (error: unknown) {
+      // Admin de plataforma vê o motivo real (cota do Firestore estourada)
+      // em vez de um "não autenticado" enganoso — ver isFirestoreQuotaExceededError.
+      // Usuário comum continua com o fallback degradado de sempre.
+      if (isFirestoreQuotaExceededError(error) && isPlatformAdminEmail(session.email)) {
+        throw new FirestoreQuotaExceededError()
+      }
       // Se a coleção não existe ainda (5 NOT_FOUND), retorna dados básicos
       console.error('Erro ao buscar dados do usuário:', error)
       return {
@@ -177,6 +184,10 @@ export async function auth() {
       }
     }
   } catch (error) {
+    if (error instanceof FirestoreQuotaExceededError) throw error
+    if (isFirestoreQuotaExceededError(error) && isPlatformAdminEmail(session.email)) {
+      throw new FirestoreQuotaExceededError()
+    }
     console.error('Erro ao buscar dados do usuário:', error)
     return null
   }
@@ -232,6 +243,9 @@ export async function getBackendUser(): Promise<BackendUserSession | null> {
       status: data.status,
     }
   } catch (error) {
+    if (isFirestoreQuotaExceededError(error) && isPlatformAdminEmail(session.email)) {
+      throw new FirestoreQuotaExceededError()
+    }
     console.error('Erro ao resolver usuário do backend:', error)
     return null
   }

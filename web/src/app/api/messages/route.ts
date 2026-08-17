@@ -1,5 +1,7 @@
 import { auth } from '@/lib/auth'
 import { listarMensagensRecebidasDesde } from '@/lib/firestore'
+import { FirestoreQuotaExceededError } from '@/lib/firestoreErrors'
+import { quotaErrorResponse } from '@/lib/apiRouteHelpers'
 
 // GET /api/messages?since=<ms> - Polling leve pro painel receber mensagens
 // novas do WhatsApp. Antes lia de um store em memória (populado no webhook)
@@ -8,7 +10,13 @@ import { listarMensagensRecebidasDesde } from '@/lib/firestore'
 // a mensagem chegava e era salva no Firestore, mas o polling nunca a via.
 // Agora lê direto do Firestore, igual ao histórico.
 export async function GET(request: Request) {
-  const session = await auth()
+  let session
+  try {
+    session = await auth()
+  } catch (error) {
+    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse()
+    throw error
+  }
   if (!session?.user?.contaId) {
     return Response.json({ error: 'Não autenticado' }, { status: 401 })
   }

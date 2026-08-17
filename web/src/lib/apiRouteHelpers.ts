@@ -12,6 +12,19 @@ export function backendErrorResponse(error: unknown) {
 }
 
 /**
+ * Resposta padrão pra quando `auth()`/`getBackendUser()` lançam
+ * FirestoreQuotaExceededError (só acontece pra admin de plataforma — ver
+ * auth.ts). Use no catch de qualquer rota que chama essas funções:
+ * `if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse()`.
+ */
+export function quotaErrorResponse() {
+  return NextResponse.json(
+    { error: 'Passou do limite diário de requisição do Firebase. Tente novamente em alguns minutos.', code: 'firestore_quota_exceeded' },
+    { status: 503 }
+  )
+}
+
+/**
  * Guarda de todas as rotas /api/empresas/**: exige não só estar logado, mas
  * estar na lista PLATFORM_ADMIN_EMAILS — essas rotas usam a chave de admin
  * do backend (BACKEND_ADMIN_KEY) e dão acesso a TODAS as empresas, nunca

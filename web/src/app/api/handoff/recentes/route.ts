@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { listarTransferenciasRecentes } from '@/lib/firestore'
+import { FirestoreQuotaExceededError } from '@/lib/firestoreErrors'
+import { quotaErrorResponse } from '@/lib/apiRouteHelpers'
 
 // GET /api/handoff/recentes?since=<ms> - Polling leve pra notificar a empresa
 // em tempo real quando a IA transfere uma conversa pra atendimento humano.
 // Lê direto do Firestore (campo dataTransferencia em contas/{contaId}/conversas)
 // — antes usava um store em memória que não é confiável em produção na Vercel.
 export async function GET(req: NextRequest) {
-  const session = await auth()
+  let session
+  try {
+    session = await auth()
+  } catch (error) {
+    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse()
+    throw error
+  }
   if (!session?.user?.contaId) {
     return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   }
