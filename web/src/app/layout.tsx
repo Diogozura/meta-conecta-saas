@@ -71,6 +71,12 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
+  // Verificação de propriedade do domínio no Google Search Console —
+  // necessária pra usar zybot.com.br na tela de consentimento OAuth
+  // (Google Auth Platform) e submeter pra verificação do escopo do Calendar.
+  verification: {
+    google: "aWGBcm9znw-lp3ZlTzgrit9SzZNiCkLVuxLRU64WFas",
+  },
 };
 
 export default function RootLayout({
