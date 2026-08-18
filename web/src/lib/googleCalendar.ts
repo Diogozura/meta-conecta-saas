@@ -19,8 +19,12 @@ function getOAuthClient() {
 export function getGoogleAuthUrl(state: string): string {
   const client = getOAuthClient()
   return client.generateAuthUrl({
-    access_type: 'offline', // necessário para receber refresh_token
-    prompt: 'consent',      // força a devolver refresh_token mesmo em reconexões
+    access_type: 'offline',
+    // 'consent' força devolver refresh_token mesmo em reconexões; sem
+    // 'select_account', o Google pula direto pra conta já logada no
+    // navegador e nunca deixa escolher/trocar de conta — com os dois,
+    // sempre mostra o seletor de conta antes do consentimento.
+    prompt: 'select_account consent',
     scope: SCOPES,
     state,
   })
