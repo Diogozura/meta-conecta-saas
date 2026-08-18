@@ -135,8 +135,14 @@ export async function criarAgendamentoInterno(contaId: string, params: CriarAgen
       agendamento.googleEventId = googleEventId
     } catch (error) {
       // Agendamento já está confirmado no sistema — a falta de sync com o
-      // Google não deve impedir a confirmação pro cliente.
+      // Google não deve impedir a confirmação pro cliente. Mas grava o
+      // motivo no próprio agendamento (não só no log do servidor) — quando
+      // é a IA que agenda, isso roda em segundo plano via after() e ninguém
+      // vê o console nesse caminho.
+      const mensagemErro = error instanceof Error ? error.message : 'Erro desconhecido ao sincronizar com o Google Calendar.'
       console.error('Erro ao criar evento no Google Calendar (agendamento já foi salvo):', error)
+      await atualizarAgendamento(contaId, agendamento.id, { googleSyncError: mensagemErro.slice(0, 500) }).catch(() => {})
+      agendamento.googleSyncError = mensagemErro
     }
   }
 

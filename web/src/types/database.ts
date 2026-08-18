@@ -217,6 +217,10 @@ export interface Agendamento {
   status: 'confirmado' | 'cancelado' | 'concluido'
   origem: 'manual' | 'agente_ia'
   googleEventId?: string
+  // Preenchido quando o agendamento foi confirmado mas o sync com o Google
+  // Calendar falhou — assim dá pra saber e reprocessar sem depender de log
+  // do servidor (que a IA, rodando em segundo plano via after(), não expõe).
+  googleSyncError?: string
   observacoes?: string
   dataCriacao: Date
   dataAtualizacao: Date

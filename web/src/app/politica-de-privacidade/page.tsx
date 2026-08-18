@@ -121,6 +121,30 @@ export default function PoliticaDePrivacidade() {
                 Esses dados são tratados exclusivamente para execução do serviço, segurança operacional e cumprimento dos requisitos da plataforma Meta.
               </p>
             </div>
+            <div>
+              <h3 className="text-2xl font-semibold">3.4. Dados da integração com o Google Calendar</h3>
+              <p className="mt-3">
+                Quando o Cliente opta por conectar a agenda de um profissional ao Google Calendar, solicitamos autorização (OAuth) para acessar os seguintes dados da Conta Google desse profissional:
+              </p>
+              <ul className="mt-3 pl-5 space-y-2">
+                <li>• Consulta de horários ocupados (freebusy) no calendário conectado, para calcular os horários livres oferecidos ao cliente final;</li>
+                <li>• Criação, leitura e exclusão de eventos no calendário conectado, correspondentes aos agendamentos confirmados na plataforma;</li>
+                <li>• E-mail da Conta Google, exibido no painel apenas para identificar qual conta está conectada.</li>
+              </ul>
+              <p className="mt-3">
+                O token de acesso é armazenado de forma criptografada e usado exclusivamente para essas finalidades. O profissional pode revogar o acesso a qualquer momento, tanto pelo painel da plataforma quanto diretamente em{" "}
+                <a className="font-semibold text-slate-900" href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">
+                  myaccount.google.com/permissions
+                </a>.
+              </p>
+              <p className="mt-3">
+                O uso e a transferência de informações recebidas das APIs do Google por esta plataforma seguem a{" "}
+                <a className="font-semibold text-slate-900" href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">
+                  Google API Services User Data Policy
+                </a>
+                , incluindo os requisitos de Uso Limitado (Limited Use). Não vendemos, nem usamos para fins publicitários, dados obtidos das APIs do Google.
+              </p>
+            </div>
           </div>
         </article>
 
@@ -210,6 +234,8 @@ export default function PoliticaDePrivacidade() {
               </p>
               <ul className="mt-3 pl-5 space-y-2">
                 <li>• Meta Platforms, Inc. / WhatsApp LLC. Provedora da API oficial do WhatsApp Business Platform. A Scale opera como parceira integrada dessa API, e a relação com a Meta é regida pelos termos da plataforma.</li>
+                <li>• Google LLC. Quando o Cliente conecta a agenda de um profissional, usamos a API do Google Calendar para consultar disponibilidade e criar eventos, conforme detalhado no capítulo 3.4. A relação com o Google é regida pelos termos e políticas da própria Google.</li>
+                <li>• Provedores de inteligência artificial (OpenAI, Anthropic, Google). Quando o Cliente ativa o agente de IA, o conteúdo das mensagens trocadas é enviado ao provedor escolhido pelo Cliente para gerar as respostas automáticas, conforme os termos de uso e política de privacidade de cada provedor.</li>
                 <li>• Plataformas de pagamento. Processam dados de faturamento conforme suas próprias políticas de privacidade.</li>
               </ul>
             </div>
@@ -293,7 +319,7 @@ export default function PoliticaDePrivacidade() {
             <ul className="mt-3 pl-5 space-y-2">
               <li>• Brasil — provedores nacionais utilizados na operação corporativa;</li>
               <li>• União Europeia — provedores de infraestrutura sob regime do GDPR;</li>
-              <li>• Estados Unidos e outras regiões — Meta Platforms e demais ferramentas de operação e mensuração.</li>
+              <li>• Estados Unidos e outras regiões — Meta Platforms, Google LLC, provedores de inteligência artificial e demais ferramentas de operação e mensuração.</li>
             </ul>
           </div>
         </article>
@@ -318,7 +344,7 @@ export default function PoliticaDePrivacidade() {
 
         <footer className="rounded-3xl border border-slate-200 bg-slate-50 p-6 text-slate-600">
           <p>© 2026 Scale Estratégia Digital. Todos os direitos reservados.</p>
-          <p className="mt-2">Última atualização: 19 de maio de 2026</p>
+          <p className="mt-2">Última atualização: 18 de agosto de 2026</p>
         </footer>
       </div>
     </main>
