@@ -343,9 +343,18 @@ function ProfissionaisTab({ profissionais, onChanged }: { profissionais: Profiss
                 </div>
                 <div className="flex items-center gap-2">
                   {p.google?.conectado ? (
-                    <span className="flex items-center gap-1 text-xs text-brand-700 bg-brand-50 px-2 py-1 rounded-full">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Google conectado{p.google.email ? ` (${p.google.email})` : ''}
-                    </span>
+                    <>
+                      <span className="flex items-center gap-1 text-xs text-brand-700 bg-brand-50 px-2 py-1 rounded-full">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Google conectado{p.google.email ? ` (${p.google.email})` : ''}
+                      </span>
+                      <a
+                        href={`/api/agenda/profissionais/${p.id}/google/connect`}
+                        title="Reconectar ou trocar de conta Google"
+                        className="flex items-center gap-1 text-xs text-ink-500 bg-ink-50 px-2 py-1 rounded-full hover:bg-ink-100 transition-colors"
+                      >
+                        <Link2 className="w-3.5 h-3.5" /> Trocar conta
+                      </a>
+                    </>
                   ) : (
                     <a
                       href={`/api/agenda/profissionais/${p.id}/google/connect`}
