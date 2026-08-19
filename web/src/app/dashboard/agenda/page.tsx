@@ -1223,13 +1223,16 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
 
 /* ─── Agendamentos ───────────────────────────────────────────────────────── */
 
-const STATUS_FILTROS = ['todos', 'confirmado', 'cancelado', 'concluido'] as const
-type StatusFiltro = (typeof STATUS_FILTROS)[number]
-const STATUS_LABELS: Record<StatusFiltro, string> = {
-  todos: 'Todos',
+const TODOS_STATUS = ['confirmado', 'cancelado', 'concluido'] as const satisfies readonly Agendamento['status'][]
+const STATUS_LABELS: Record<Agendamento['status'], string> = {
   confirmado: 'Confirmados',
   cancelado: 'Cancelados',
   concluido: 'Concluídos',
+}
+const STATUS_PILL_ATIVO: Record<Agendamento['status'], string> = {
+  confirmado: 'bg-brand-600 text-white',
+  cancelado: 'bg-red-600 text-white',
+  concluido: 'bg-ink-700 text-white',
 }
 
 type ItemLista = { tipo: 'header'; key: string; label: string } | { tipo: 'item'; agendamento: Agendamento }
@@ -1260,7 +1263,7 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [statusFiltro, setStatusFiltro] = useState<StatusFiltro>('todos')
+  const [statusVisiveis, setStatusVisiveis] = useState<Set<Agendamento['status']>>(() => new Set(TODOS_STATUS))
   const [mesVisivel, setMesVisivel] = useState(() => {
     const hoje = new Date()
     return { ano: hoje.getFullYear(), mes: hoje.getMonth() }
@@ -1289,6 +1292,15 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
     carregar()
   }, [carregar])
+
+  function toggleStatusVisivel(s: Agendamento['status']) {
+    setStatusVisiveis((prev) => {
+      const next = new Set(prev)
+      if (next.has(s)) next.delete(s)
+      else next.add(s)
+      return next
+    })
+  }
 
   async function handleCancelar(id: string) {
     if (!(await confirm('Cancelar este agendamento? Isso também remove o evento do Google Calendar.'))) return
@@ -1322,14 +1334,14 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
   }, [agendamentos])
 
   const contagemPorStatus = useMemo(() => {
-    const c: Record<StatusFiltro, number> = { todos: agendamentos.length, confirmado: 0, cancelado: 0, concluido: 0 }
+    const c: Record<Agendamento['status'], number> = { confirmado: 0, cancelado: 0, concluido: 0 }
     for (const a of agendamentos) c[a.status]++
     return c
   }, [agendamentos])
 
   const agendamentosFiltrados = useMemo(
-    () => (statusFiltro === 'todos' ? agendamentos : agendamentos.filter((a) => a.status === statusFiltro)),
-    [agendamentos, statusFiltro]
+    () => agendamentos.filter((a) => statusVisiveis.has(a.status)),
+    [agendamentos, statusVisiveis]
   )
 
   const agendamentosDoDia = selectedDate
@@ -1357,15 +1369,15 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
           </select>
         </div>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => setShowForm(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors"
         >
-          {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+          <Plus className="w-3.5 h-3.5" />
           Novo agendamento
         </button>
       </div>
 
-      {showForm && (
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Novo agendamento" widthClass="max-w-lg">
         <NovoAgendamentoForm
           profissionais={profissionais}
           servicos={servicos}
@@ -1374,7 +1386,7 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
             carregar()
           }}
         />
-      )}
+      </Modal>
 
       <div className="grid md:grid-cols-[320px_1fr] gap-4 items-start">
         <div className="md:sticky md:top-4">
@@ -1388,19 +1400,33 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
         </div>
 
         <div className="space-y-3 min-w-0">
-          <div className="flex flex-wrap gap-1.5">
-            {STATUS_FILTROS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatusFiltro(s)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
-                  statusFiltro === s ? 'bg-brand-600 text-white' : 'bg-white border border-ink-200 text-ink-600 hover:bg-ink-50'
-                }`}
-              >
-                {STATUS_LABELS[s]} ({contagemPorStatus[s]})
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setStatusVisiveis(new Set(TODOS_STATUS))}
+              className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
+                statusVisiveis.size === TODOS_STATUS.length ? 'bg-brand-600 text-white' : 'bg-white border border-ink-200 text-ink-600 hover:bg-ink-50'
+              }`}
+            >
+              Todos ({agendamentos.length})
+            </button>
+            {TODOS_STATUS.map((s) => {
+              const visivel = statusVisiveis.has(s)
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => toggleStatusVisivel(s)}
+                  title={visivel ? 'Clique para ocultar' : 'Clique para mostrar'}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-colors ${
+                    visivel ? `${STATUS_PILL_ATIVO[s]} border-transparent` : 'bg-white border-ink-200 text-ink-400 line-through'
+                  }`}
+                >
+                  {STATUS_LABELS[s]} ({contagemPorStatus[s]})
+                </button>
+              )
+            })}
+            <span className="text-[11px] text-ink-400">clique pra ocultar</span>
           </div>
 
           <div className="flex items-center justify-between flex-wrap gap-1">
@@ -1418,8 +1444,8 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
               <p className="p-6 text-center text-sm text-ink-400">
                 {selectedDate
                   ? 'Nenhum agendamento nesse dia.'
-                  : statusFiltro !== 'todos'
-                    ? 'Nenhum agendamento com esse status nesse mês.'
+                  : statusVisiveis.size < TODOS_STATUS.length
+                    ? 'Nenhum agendamento visível com os filtros atuais.'
                     : `Nenhum agendamento em ${mesLabel}.`}
               </p>
             )}
@@ -1536,14 +1562,14 @@ function NovoAgendamentoForm({
   }
 
   if (profissionais.length === 0) {
-    return <p className="text-sm text-ink-400 py-4 text-center bg-white rounded-xl border border-ink-200">Cadastre um profissional primeiro, na aba Profissionais.</p>
+    return <p className="text-sm text-ink-400 py-4 text-center">Cadastre um profissional primeiro, na aba Profissionais.</p>
   }
   if (servicos.length === 0) {
-    return <p className="text-sm text-ink-400 py-4 text-center bg-white rounded-xl border border-ink-200">Cadastre um serviço primeiro, na aba Serviços.</p>
+    return <p className="text-sm text-ink-400 py-4 text-center">Cadastre um serviço primeiro, na aba Serviços.</p>
   }
 
   return (
-    <div className="bg-white p-3 rounded-xl border border-ink-200 space-y-3">
+    <div className="space-y-3">
       <form onSubmit={handleBuscarHorarios} className="flex flex-wrap items-end gap-2">
         <div>
           <label className="block text-xs font-medium text-ink-600 mb-1">Profissional</label>
