@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 export type DayMark = 'available' | 'booked' | 'both'
@@ -25,18 +25,26 @@ export function AgendaCalendar({
   onSelect,
   legend,
   dataTour,
+  onMonthChange,
 }: {
   marks: Record<string, DayMark>
   selected: string | null
   onSelect: (dateKey: string) => void
   legend?: { available?: string; booked?: string }
   dataTour?: string
+  /** Avisa o componente pai qual mês está visível — útil pra buscar dados só do período exibido. */
+  onMonthChange?: (year: number, month: number) => void
 }) {
   const today = new Date()
   const [cursor, setCursor] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
 
   const year = cursor.getFullYear()
   const month = cursor.getMonth()
+
+  useEffect(() => {
+    onMonthChange?.(year, month)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, month])
   const firstDay = new Date(year, month, 1)
   const startWeekday = firstDay.getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()

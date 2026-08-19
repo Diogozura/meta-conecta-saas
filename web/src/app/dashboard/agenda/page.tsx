@@ -1223,26 +1223,67 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
 
 /* ─── Agendamentos ───────────────────────────────────────────────────────── */
 
+const STATUS_FILTROS = ['todos', 'confirmado', 'cancelado', 'concluido'] as const
+type StatusFiltro = (typeof STATUS_FILTROS)[number]
+const STATUS_LABELS: Record<StatusFiltro, string> = {
+  todos: 'Todos',
+  confirmado: 'Confirmados',
+  cancelado: 'Cancelados',
+  concluido: 'Concluídos',
+}
+
+type ItemLista = { tipo: 'header'; key: string; label: string } | { tipo: 'item'; agendamento: Agendamento }
+
+/** Insere um cabeçalho de data antes do primeiro item de cada dia — evita repetir "18/08" em cada linha. */
+function agruparPorDia(lista: Agendamento[]): ItemLista[] {
+  const ordenado = [...lista].sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime())
+  const itens: ItemLista[] = []
+  let ultimaChave = ''
+  for (const a of ordenado) {
+    const chave = toDateKey(new Date(a.inicio))
+    if (chave !== ultimaChave) {
+      itens.push({
+        tipo: 'header',
+        key: chave,
+        label: new Date(`${chave}T00:00:00`).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }),
+      })
+      ultimaChave = chave
+    }
+    itens.push({ tipo: 'item', agendamento: a })
+  }
+  return itens
+}
+
 function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissional[]; servicos: Servico[] }) {
   const [profissionalId, setProfissionalId] = useState('')
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [statusFiltro, setStatusFiltro] = useState<StatusFiltro>('todos')
+  const [mesVisivel, setMesVisivel] = useState(() => {
+    const hoje = new Date()
+    return { ano: hoje.getFullYear(), mes: hoje.getMonth() }
+  })
   const { confirm, ConfirmDialogElement } = useConfirmDialog()
 
+  // Busca só o mês que está sendo exibido no calendário — evita carregar o
+  // histórico inteiro da conta de uma vez conforme os agendamentos se acumulam.
   const carregar = useCallback(async () => {
     setLoading(true)
     try {
-      const qs = profissionalId ? `?profissionalId=${profissionalId}` : ''
-      const res = await fetchJson<{ agendamentos: Agendamento[] }>(`/api/agenda/agendamentos${qs}`)
+      const de = new Date(mesVisivel.ano, mesVisivel.mes, 1)
+      const ate = new Date(mesVisivel.ano, mesVisivel.mes + 1, 0, 23, 59, 59)
+      const params = new URLSearchParams({ de: de.toISOString(), ate: ate.toISOString() })
+      if (profissionalId) params.set('profissionalId', profissionalId)
+      const res = await fetchJson<{ agendamentos: Agendamento[] }>(`/api/agenda/agendamentos?${params.toString()}`)
       setAgendamentos(res.agendamentos)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao carregar agendamentos')
     } finally {
       setLoading(false)
     }
-  }, [profissionalId])
+  }, [profissionalId, mesVisivel])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
@@ -1280,9 +1321,27 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
     return m
   }, [agendamentos])
 
+  const contagemPorStatus = useMemo(() => {
+    const c: Record<StatusFiltro, number> = { todos: agendamentos.length, confirmado: 0, cancelado: 0, concluido: 0 }
+    for (const a of agendamentos) c[a.status]++
+    return c
+  }, [agendamentos])
+
+  const agendamentosFiltrados = useMemo(
+    () => (statusFiltro === 'todos' ? agendamentos : agendamentos.filter((a) => a.status === statusFiltro)),
+    [agendamentos, statusFiltro]
+  )
+
   const agendamentosDoDia = selectedDate
-    ? agendamentos.filter((a) => toDateKey(new Date(a.inicio)) === selectedDate)
-    : agendamentos
+    ? agendamentosFiltrados.filter((a) => toDateKey(new Date(a.inicio)) === selectedDate)
+    : agendamentosFiltrados
+
+  const listaComCabecalhos = useMemo(
+    () => (selectedDate ? agendamentosDoDia.map((a): ItemLista => ({ tipo: 'item', agendamento: a })) : agruparPorDia(agendamentosDoDia)),
+    [agendamentosDoDia, selectedDate]
+  )
+
+  const mesLabel = new Date(mesVisivel.ano, mesVisivel.mes, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
   return (
     <div className="space-y-3">
@@ -1318,47 +1377,83 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
       )}
 
       <div className="grid md:grid-cols-[320px_1fr] gap-4 items-start">
-        <AgendaCalendar
-          marks={marks}
-          selected={selectedDate}
-          onSelect={(key) => setSelectedDate((prev) => (prev === key ? null : key))}
-          legend={{ booked: 'Dia com agendamento' }}
-        />
+        <div className="md:sticky md:top-4">
+          <AgendaCalendar
+            marks={marks}
+            selected={selectedDate}
+            onSelect={(key) => setSelectedDate((prev) => (prev === key ? null : key))}
+            onMonthChange={(ano, mes) => setMesVisivel((prev) => (prev.ano === ano && prev.mes === mes ? prev : { ano, mes }))}
+            legend={{ booked: 'Dia com agendamento' }}
+          />
+        </div>
 
         <div className="space-y-3 min-w-0">
-          {selectedDate && (
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-ink-500">Mostrando agendamentos de {new Date(`${selectedDate}T00:00:00`).toLocaleDateString('pt-BR')}</p>
-              <button onClick={() => setSelectedDate(null)} className="text-xs font-medium text-brand-700 hover:underline">Ver todos os dias</button>
-            </div>
-          )}
+          <div className="flex flex-wrap gap-1.5">
+            {STATUS_FILTROS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFiltro(s)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
+                  statusFiltro === s ? 'bg-brand-600 text-white' : 'bg-white border border-ink-200 text-ink-600 hover:bg-ink-50'
+                }`}
+              >
+                {STATUS_LABELS[s]} ({contagemPorStatus[s]})
+              </button>
+            ))}
+          </div>
 
-      <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100">
-        {loading && Array.from({ length: 3 }).map((_, i) => <ListRowSkeleton key={i} />)}
-        {!loading && agendamentosDoDia.length === 0 && <p className="p-6 text-center text-sm text-ink-400">Nenhum agendamento {selectedDate ? 'nesse dia' : 'encontrado'}.</p>}
-        {!loading && agendamentosDoDia.map((a) => {
-          const profissional = profissionais.find((p) => p.id === a.profissionalId)
-          const servico = servicos.find((s) => s.id === a.servicoId)
-          return (
-            <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-ink-900 break-words">{a.clienteNome} <span className="font-normal text-ink-400">· {a.clienteTelefone}</span></p>
-                <p className="text-xs text-ink-500 break-words">
-                  {servico?.nome ?? 'Serviço removido'} com {profissional?.nome ?? 'profissional removido'} · {formatDateTime(a.inicio)}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className={`text-xs px-2 py-1 rounded-full ${statusStyle[a.status]}`}>{a.status}</span>
-                {a.status === 'confirmado' && (
-                  <button onClick={() => handleCancelar(a.id)} className="text-xs text-red-600 hover:underline">
-                    Cancelar
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+          <div className="flex items-center justify-between flex-wrap gap-1">
+            <p className="text-xs text-ink-500 capitalize">
+              {selectedDate ? `Agendamentos de ${new Date(`${selectedDate}T00:00:00`).toLocaleDateString('pt-BR')}` : mesLabel}
+            </p>
+            {selectedDate && (
+              <button onClick={() => setSelectedDate(null)} className="text-xs font-medium text-brand-700 hover:underline">Ver o mês inteiro</button>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100 max-h-[560px] overflow-y-auto">
+            {loading && Array.from({ length: 3 }).map((_, i) => <ListRowSkeleton key={i} />)}
+            {!loading && agendamentosDoDia.length === 0 && (
+              <p className="p-6 text-center text-sm text-ink-400">
+                {selectedDate
+                  ? 'Nenhum agendamento nesse dia.'
+                  : statusFiltro !== 'todos'
+                    ? 'Nenhum agendamento com esse status nesse mês.'
+                    : `Nenhum agendamento em ${mesLabel}.`}
+              </p>
+            )}
+            {!loading && listaComCabecalhos.map((item) => {
+              if (item.tipo === 'header') {
+                return (
+                  <div key={`h-${item.key}`} className="px-4 py-1.5 bg-ink-50 text-[11px] font-semibold text-ink-500 uppercase tracking-wide sticky top-0 capitalize">
+                    {item.label}
+                  </div>
+                )
+              }
+              const a = item.agendamento
+              const profissional = profissionais.find((p) => p.id === a.profissionalId)
+              const servico = servicos.find((s) => s.id === a.servicoId)
+              return (
+                <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-ink-900 break-words">{a.clienteNome} <span className="font-normal text-ink-400">· {a.clienteTelefone}</span></p>
+                    <p className="text-xs text-ink-500 break-words">
+                      {servico?.nome ?? 'Serviço removido'} com {profissional?.nome ?? 'profissional removido'} · {formatDateTime(a.inicio)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-xs px-2 py-1 rounded-full ${statusStyle[a.status]}`}>{a.status}</span>
+                    {a.status === 'confirmado' && (
+                      <button onClick={() => handleCancelar(a.id)} className="text-xs text-red-600 hover:underline">
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
     </div>
