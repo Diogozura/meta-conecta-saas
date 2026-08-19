@@ -75,9 +75,25 @@ async function resolverProfissional(contaId: string, nomeProfissional: string | 
   return elegivel
 }
 
+// O agente roda em produção num servidor UTC (Vercel), mas todo horário
+// falado com o cliente e gravado pelo dono da conta é sempre em horário de
+// Brasília — usar getHours()/getMinutes()/`new Date(\`${data}T${hora}\`)`
+// direto pega o fuso do servidor, não o do Brasil, e desalinha em 3h só em
+// produção (por isso funcionava certo local e quebrava só no ar).
+const BRASIL_OFFSET_MINUTOS = -180 // America/Sao_Paulo é UTC-3 o ano todo, sem horário de verão desde 2019
+
+/** Converte data (YYYY-MM-DD) + hora (HH:MM) no horário de Brasília pro instante UTC correto. */
+function brasiliaParaData(data: string, hora: string): Date {
+  const [ano, mes, dia] = data.split('-').map(Number)
+  const [h, m] = hora.split(':').map(Number)
+  return new Date(Date.UTC(ano, mes - 1, dia, h, m, 0) - BRASIL_OFFSET_MINUTOS * 60 * 1000)
+}
+
+/** Formata um instante como HH:MM no horário de Brasília, independente do fuso do servidor. */
 function formatarHora(iso: string): string {
   const d = new Date(iso)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const minutosNoDia = (((d.getUTCHours() * 60 + d.getUTCMinutes() + BRASIL_OFFSET_MINUTOS) % 1440) + 1440) % 1440
+  return `${String(Math.floor(minutosNoDia / 60)).padStart(2, '0')}:${String(minutosNoDia % 60).padStart(2, '0')}`
 }
 
 /** Executa uma chamada de função pedida pelo modelo (qualquer provedor) e devolve o resultado. */
@@ -98,8 +114,8 @@ export async function executarFuncaoAgente(
         const { nomeServico, nomeProfissional, data } = args as { nomeServico: string; nomeProfissional?: string; data: string }
         const servico = await resolverServico(contaId, nomeServico)
         const profissional = await resolverProfissional(contaId, nomeProfissional, servico)
-        const de = new Date(`${data}T00:00:00`)
-        const ate = new Date(`${data}T23:59:59`)
+        const de = brasiliaParaData(data, '00:00')
+        const ate = new Date(de.getTime() + 24 * 60 * 60 * 1000 - 1000)
         const slots = await buscarHorariosLivres(contaId, profissional.id, servico.id, de, ate)
         return {
           profissional: profissional.nome,
@@ -113,7 +129,7 @@ export async function executarFuncaoAgente(
         }
         const servico = await resolverServico(contaId, nomeServico)
         const profissional = await resolverProfissional(contaId, nomeProfissional, servico)
-        const inicio = new Date(`${data}T${hora}:00`)
+        const inicio = brasiliaParaData(data, hora)
         if (isNaN(inicio.getTime())) throw new Error('Data/hora inválida.')
 
         const agendamento = await criarAgendamentoInterno(contaId, {
@@ -124,7 +140,13 @@ export async function executarFuncaoAgente(
           inicio,
           origem: 'agente_ia',
         })
-        return { confirmado: true, profissional: profissional.nome, servico: servico.nome, inicio: agendamento.inicio.toISOString() }
+        return {
+          confirmado: true,
+          profissional: profissional.nome,
+          servico: servico.nome,
+          data,
+          hora: formatarHora(agendamento.inicio.toISOString()),
+        }
       }
 
       case 'transferir_para_humano': {

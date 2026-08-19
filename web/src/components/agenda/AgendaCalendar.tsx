@@ -101,7 +101,9 @@ export function AgendaCalendar({
                   ? 'bg-brand-600 text-white'
                   : isToday
                     ? 'bg-brand-50 text-brand-700'
-                    : 'text-ink-700 hover:bg-ink-100'
+                    : mark === 'available' || mark === 'both'
+                      ? 'bg-brand-50/70 text-ink-700 hover:bg-brand-100'
+                      : 'text-ink-700 hover:bg-ink-100'
               }`}
             >
               {d.getDate()}
