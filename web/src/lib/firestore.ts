@@ -3,7 +3,7 @@
  * Use em Server Components ou Server Actions apenas
  */
 
-import { getFirestore, Timestamp, Query, Filter } from 'firebase-admin/firestore'
+import { getFirestore, Timestamp, Query, Filter, FieldValue } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
 import { Conta, ContaAiConfig, Usuario, MetaAccess, ContaVinculada, Cliente, Mensagem, Profissional, Servico, Disponibilidade, Agendamento, Conversa } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
@@ -125,6 +125,37 @@ export async function registrarErroAgenteIA(contaId: string, erro: string | null
     'ai.ultimoErro': erro,
     'ai.ultimoErroEm': erro ? new Date().toISOString() : null,
   })
+}
+
+/**
+ * Contador próprio de uso do agente de IA — não é a cota oficial do provedor
+ * (Gemini/OpenAI/Anthropic não expõem isso via chave de API comum), mas dá um
+ * número prático pra comparar com o limite conhecido do plano e diagnosticar
+ * quando o agente parar de responder por causa de limite atingido.
+ * Um doc por dia em contas/{contaId}/usoAgenteIA/{YYYY-MM-DD}.
+ */
+export async function registrarUsoAgenteIA(contaId: string): Promise<void> {
+  const db = getDb()
+  const hoje = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+  await db
+    .collection('contas')
+    .doc(contaId)
+    .collection('usoAgenteIA')
+    .doc(hoje)
+    .set({ total: FieldValue.increment(1), atualizadoEm: new Date().toISOString() }, { merge: true })
+}
+
+/** Uso do agente por dia, num intervalo [deChaveISO, ateChaveISO] (formato YYYY-MM-DD, inclusive). */
+export async function obterUsoAgenteIA(contaId: string, deChave: string, ateChave: string): Promise<{ data: string; total: number }[]> {
+  const db = getDb()
+  const snap = await db
+    .collection('contas')
+    .doc(contaId)
+    .collection('usoAgenteIA')
+    .where('__name__', '>=', deChave)
+    .where('__name__', '<=', ateChave)
+    .get()
+  return snap.docs.map((doc) => ({ data: doc.id, total: (doc.data().total as number) ?? 0 }))
 }
 
 // ─────────────────────────────────────────

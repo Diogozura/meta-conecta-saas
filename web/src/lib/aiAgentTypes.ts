@@ -39,8 +39,8 @@ export function humanizarErroAgente(error: unknown): string {
   return mensagem
 }
 
-export const AGENT_PROVIDERS: { value: AgentProvider; label: string; modeloExemplo: string; ondeConseguirChave: string }[] = [
-  { value: 'gemini', label: 'Google Gemini', modeloExemplo: 'gemini-2.5-flash', ondeConseguirChave: 'aistudio.google.com → Get API key' },
-  { value: 'openai', label: 'OpenAI (ChatGPT)', modeloExemplo: 'gpt-4o-mini', ondeConseguirChave: 'platform.openai.com/api-keys' },
-  { value: 'anthropic', label: 'Anthropic (Claude)', modeloExemplo: 'claude-opus-5', ondeConseguirChave: 'console.anthropic.com/settings/keys' },
+export const AGENT_PROVIDERS: { value: AgentProvider; label: string; modeloExemplo: string; ondeConseguirChave: string; ondeVerUso: string }[] = [
+  { value: 'gemini', label: 'Google Gemini', modeloExemplo: 'gemini-2.5-flash', ondeConseguirChave: 'aistudio.google.com → Get API key', ondeVerUso: 'https://aistudio.google.com/' },
+  { value: 'openai', label: 'OpenAI (ChatGPT)', modeloExemplo: 'gpt-4o-mini', ondeConseguirChave: 'platform.openai.com/api-keys', ondeVerUso: 'https://platform.openai.com/usage' },
+  { value: 'anthropic', label: 'Anthropic (Claude)', modeloExemplo: 'claude-opus-5', ondeConseguirChave: 'console.anthropic.com/settings/keys', ondeVerUso: 'https://console.anthropic.com/settings/usage' },
 ]

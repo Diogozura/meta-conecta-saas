@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { Calendar, Plus, Trash2, Link2, CheckCircle2, X, Pencil, Check } from 'lucide-react'
+import { Calendar, Plus, Trash2, Link2, CheckCircle2, X, Pencil, Check, Eye, EyeOff } from 'lucide-react'
 import { AgendaCalendar, toDateKey, type DayMark } from '@/components/agenda/AgendaCalendar'
 import { Skeleton } from '@/components/Skeleton'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
@@ -1234,6 +1234,19 @@ const STATUS_PILL_ATIVO: Record<Agendamento['status'], string> = {
   cancelado: 'bg-red-600 text-white',
   concluido: 'bg-ink-700 text-white',
 }
+const LIMITE_LISTA_SEM_PERIODO = 50
+const LIMITE_LISTA_INLINE = 6
+
+function toWeekStartKey(d: Date) {
+  const inicio = new Date(d)
+  inicio.setDate(d.getDate() - d.getDay())
+  inicio.setHours(0, 0, 0, 0)
+  return toDateKey(inicio)
+}
+
+function mesAbrev(d: Date) {
+  return d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')
+}
 
 type ItemLista = { tipo: 'header'; key: string; label: string } | { tipo: 'item'; agendamento: Agendamento }
 
@@ -1268,6 +1281,11 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
     const hoje = new Date()
     return { ano: hoje.getFullYear(), mes: hoje.getMonth() }
   })
+  const [semanaSelecionada, setSemanaSelecionada] = useState<string | null>(null)
+  const [forcarListaCompleta, setForcarListaCompleta] = useState(false)
+  const [listaVisivel, setListaVisivel] = useState(true)
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [ocultosManualmente, setOcultosManualmente] = useState<Set<string>>(new Set())
   const { confirm, ConfirmDialogElement } = useConfirmDialog()
 
   // Busca só o mês que está sendo exibido no calendário — evita carregar o
@@ -1292,6 +1310,34 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
     carregar()
   }, [carregar])
+
+  // Trocar de mês ou de profissional muda o conjunto de agendamentos — a semana
+  // escolhida antes não faz mais sentido, então volta pra visão do mês inteiro.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    setSemanaSelecionada(null)
+    setForcarListaCompleta(false)
+    setSelecionados(new Set())
+    setOcultosManualmente(new Set())
+  }, [mesVisivel, profissionalId])
+
+  function toggleSelecionado(id: string) {
+    setSelecionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function ocultarSelecionados() {
+    setOcultosManualmente((prev) => new Set([...prev, ...selecionados]))
+    setSelecionados(new Set())
+  }
+
+  function mostrarOcultos() {
+    setOcultosManualmente(new Set())
+  }
 
   function toggleStatusVisivel(s: Agendamento['status']) {
     setStatusVisiveis((prev) => {
@@ -1340,13 +1386,44 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
   }, [agendamentos])
 
   const agendamentosFiltrados = useMemo(
-    () => agendamentos.filter((a) => statusVisiveis.has(a.status)),
-    [agendamentos, statusVisiveis]
+    () => agendamentos.filter((a) => statusVisiveis.has(a.status) && !ocultosManualmente.has(a.id)),
+    [agendamentos, statusVisiveis, ocultosManualmente]
   )
 
-  const agendamentosDoDia = selectedDate
-    ? agendamentosFiltrados.filter((a) => toDateKey(new Date(a.inicio)) === selectedDate)
-    : agendamentosFiltrados
+  // Agrupa o mês filtrado em semanas (dom–sáb) — permite reduzir a lista a um
+  // recorte menor antes de renderizar tudo, quando o mês tem muitos agendamentos.
+  const semanas = useMemo(() => {
+    const porSemana = new Map<string, { inicio: Date; fim: Date; count: number }>()
+    for (const a of agendamentosFiltrados) {
+      const key = toWeekStartKey(new Date(a.inicio))
+      if (!porSemana.has(key)) {
+        const inicio = new Date(`${key}T00:00:00`)
+        const fim = new Date(inicio)
+        fim.setDate(inicio.getDate() + 6)
+        porSemana.set(key, { inicio, fim, count: 0 })
+      }
+      porSemana.get(key)!.count++
+    }
+    return [...porSemana.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, v]) => ({
+        key,
+        count: v.count,
+        label:
+          v.inicio.getMonth() === v.fim.getMonth()
+            ? `${pad2(v.inicio.getDate())}–${pad2(v.fim.getDate())} ${mesAbrev(v.inicio)}`
+            : `${pad2(v.inicio.getDate())} ${mesAbrev(v.inicio)} – ${pad2(v.fim.getDate())} ${mesAbrev(v.fim)}`,
+      }))
+  }, [agendamentosFiltrados])
+
+  const semPeriodoEscolhido = !selectedDate && !semanaSelecionada
+  const listaGrandeDemais = semPeriodoEscolhido && agendamentosFiltrados.length > LIMITE_LISTA_SEM_PERIODO && !forcarListaCompleta
+
+  const agendamentosDoDia = useMemo(() => {
+    if (selectedDate) return agendamentosFiltrados.filter((a) => toDateKey(new Date(a.inicio)) === selectedDate)
+    if (semanaSelecionada) return agendamentosFiltrados.filter((a) => toWeekStartKey(new Date(a.inicio)) === semanaSelecionada)
+    return agendamentosFiltrados
+  }, [agendamentosFiltrados, selectedDate, semanaSelecionada])
 
   const listaComCabecalhos = useMemo(
     () => (selectedDate ? agendamentosDoDia.map((a): ItemLista => ({ tipo: 'item', agendamento: a })) : agruparPorDia(agendamentosDoDia)),
@@ -1354,6 +1431,72 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
   )
 
   const mesLabel = new Date(mesVisivel.ano, mesVisivel.mes, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+  const periodoLabel = selectedDate
+    ? `Agendamentos de ${new Date(`${selectedDate}T00:00:00`).toLocaleDateString('pt-BR')}`
+    : semanaSelecionada
+      ? `Semana de ${semanas.find((s) => s.key === semanaSelecionada)?.label ?? ''}`
+      : mesLabel
+  const mostrarLista = listaVisivel && !listaGrandeDemais
+  // Lista curta cabe embaixo do calendário; lista longa abre em overlay pra não
+  // esticar o layout e desalinhar o espaçamento das outras abas/seções.
+  const listaEmOverlay = mostrarLista && agendamentosDoDia.length > LIMITE_LISTA_INLINE
+  const listaInline = mostrarLista && !listaEmOverlay
+
+  // Conteúdo da lista em si — reaproveitado tanto no card inline (lista curta)
+  // quanto dentro do Modal (lista longa), pra não duplicar a renderização dos itens.
+  const conteudoLista = (
+    <>
+      {loading && Array.from({ length: 3 }).map((_, i) => <ListRowSkeleton key={i} />)}
+      {!loading && agendamentosDoDia.length === 0 && (
+        <p className="p-6 text-center text-sm text-ink-400">
+          {selectedDate
+            ? 'Nenhum agendamento nesse dia.'
+            : statusVisiveis.size < TODOS_STATUS.length
+              ? 'Nenhum agendamento visível com os filtros atuais.'
+              : `Nenhum agendamento em ${mesLabel}.`}
+        </p>
+      )}
+      {!loading && listaComCabecalhos.map((item) => {
+        if (item.tipo === 'header') {
+          return (
+            <div key={`h-${item.key}`} className="px-4 py-1.5 bg-ink-50 text-[11px] font-semibold text-ink-500 uppercase tracking-wide sticky top-0 capitalize">
+              {item.label}
+            </div>
+          )
+        }
+        const a = item.agendamento
+        const profissional = profissionais.find((p) => p.id === a.profissionalId)
+        const servico = servicos.find((s) => s.id === a.servicoId)
+        return (
+          <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <input
+                type="checkbox"
+                checked={selecionados.has(a.id)}
+                onChange={() => toggleSelecionado(a.id)}
+                title="Selecionar pra ocultar"
+                className="mt-1 w-3.5 h-3.5 shrink-0 rounded border-gray-300 text-brand-600 focus:ring-brand-400"
+              />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-ink-900 break-words">{a.clienteNome} <span className="font-normal text-ink-400">· {a.clienteTelefone}</span></p>
+                <p className="text-xs text-ink-500 break-words">
+                  {servico?.nome ?? 'Serviço removido'} com {profissional?.nome ?? 'profissional removido'} · {formatDateTime(a.inicio)}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`text-xs px-2 py-1 rounded-full ${statusStyle[a.status]}`}>{a.status}</span>
+              {a.status === 'confirmado' && (
+                <button onClick={() => handleCancelar(a.id)} className="text-xs text-red-600 hover:underline">
+                  Cancelar
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </>
+  )
 
   return (
     <div className="space-y-3">
@@ -1412,74 +1555,114 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
             </button>
             {TODOS_STATUS.map((s) => {
               const visivel = statusVisiveis.has(s)
+              const semItens = contagemPorStatus[s] === 0
               return (
                 <button
                   key={s}
                   type="button"
+                  disabled={semItens}
                   onClick={() => toggleStatusVisivel(s)}
-                  title={visivel ? 'Clique para ocultar' : 'Clique para mostrar'}
+                  title={semItens ? 'Nenhum agendamento com esse status neste período' : visivel ? 'Clique para ocultar' : 'Clique para mostrar'}
                   className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-colors ${
-                    visivel ? `${STATUS_PILL_ATIVO[s]} border-transparent` : 'bg-white border-ink-200 text-ink-400 line-through'
+                    semItens
+                      ? 'bg-white border-ink-100 text-ink-300 cursor-not-allowed'
+                      : visivel
+                        ? `${STATUS_PILL_ATIVO[s]} border-transparent`
+                        : 'bg-white border-ink-200 text-ink-400 line-through'
                   }`}
                 >
                   {STATUS_LABELS[s]} ({contagemPorStatus[s]})
                 </button>
               )
             })}
-            <span className="text-[11px] text-ink-400">clique pra ocultar</span>
           </div>
+
+          {!selectedDate && semanas.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-ink-400">Semana:</span>
+              <button
+                type="button"
+                onClick={() => setSemanaSelecionada(null)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
+                  !semanaSelecionada ? 'bg-ink-800 text-white' : 'bg-white border border-ink-200 text-ink-600 hover:bg-ink-50'
+                }`}
+              >
+                Mês inteiro
+              </button>
+              {semanas.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => setSemanaSelecionada((prev) => (prev === s.key ? null : s.key))}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
+                    semanaSelecionada === s.key ? 'bg-ink-800 text-white' : 'bg-white border border-ink-200 text-ink-600 hover:bg-ink-50'
+                  }`}
+                >
+                  {s.label} ({s.count})
+                </button>
+              ))}
+            </div>
+          )}
+
+          {(selecionados.size > 0 || ocultosManualmente.size > 0) && (
+            <div className="flex flex-wrap items-center gap-2 bg-ink-50 border border-ink-200 rounded-lg px-3 py-1.5">
+              {selecionados.size > 0 && (
+                <>
+                  <span className="text-xs text-ink-600">{selecionados.size} agendamento(s) selecionado(s)</span>
+                  <button type="button" onClick={ocultarSelecionados} className="text-xs font-medium text-red-600 hover:underline">Ocultar selecionados</button>
+                  <button type="button" onClick={() => setSelecionados(new Set())} className="text-xs font-medium text-ink-500 hover:underline">Limpar seleção</button>
+                </>
+              )}
+              {ocultosManualmente.size > 0 && (
+                <span className="text-xs text-ink-500 ml-auto">
+                  {ocultosManualmente.size} agendamento(s) oculto(s) manualmente ·{' '}
+                  <button type="button" onClick={mostrarOcultos} className="font-medium text-brand-700 hover:underline">mostrar</button>
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center justify-between flex-wrap gap-1">
-            <p className="text-xs text-ink-500 capitalize">
-              {selectedDate ? `Agendamentos de ${new Date(`${selectedDate}T00:00:00`).toLocaleDateString('pt-BR')}` : mesLabel}
-            </p>
-            {selectedDate && (
-              <button onClick={() => setSelectedDate(null)} className="text-xs font-medium text-brand-700 hover:underline">Ver o mês inteiro</button>
-            )}
+            <p className="text-xs text-ink-500 capitalize">{periodoLabel}</p>
+            <div className="flex items-center gap-3">
+              {selectedDate && (
+                <button onClick={() => setSelectedDate(null)} className="text-xs font-medium text-brand-700 hover:underline">Ver o mês inteiro</button>
+              )}
+              {!listaGrandeDemais && (
+                <button
+                  type="button"
+                  onClick={() => setListaVisivel((v) => !v)}
+                  className="flex items-center gap-1 text-xs font-medium text-ink-500 hover:text-ink-700"
+                >
+                  {listaVisivel ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {listaVisivel ? 'Ocultar lista' : 'Mostrar lista'}
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100 max-h-[560px] overflow-y-auto">
-            {loading && Array.from({ length: 3 }).map((_, i) => <ListRowSkeleton key={i} />)}
-            {!loading && agendamentosDoDia.length === 0 && (
-              <p className="p-6 text-center text-sm text-ink-400">
-                {selectedDate
-                  ? 'Nenhum agendamento nesse dia.'
-                  : statusVisiveis.size < TODOS_STATUS.length
-                    ? 'Nenhum agendamento visível com os filtros atuais.'
-                    : `Nenhum agendamento em ${mesLabel}.`}
+          {listaGrandeDemais && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center space-y-2">
+              <p className="text-sm text-ink-700">
+                {agendamentosFiltrados.length} agendamentos em {mesLabel} — escolha uma semana acima ou um dia no calendário pra ver a lista sem poluição.
               </p>
-            )}
-            {!loading && listaComCabecalhos.map((item) => {
-              if (item.tipo === 'header') {
-                return (
-                  <div key={`h-${item.key}`} className="px-4 py-1.5 bg-ink-50 text-[11px] font-semibold text-ink-500 uppercase tracking-wide sticky top-0 capitalize">
-                    {item.label}
-                  </div>
-                )
-              }
-              const a = item.agendamento
-              const profissional = profissionais.find((p) => p.id === a.profissionalId)
-              const servico = servicos.find((s) => s.id === a.servicoId)
-              return (
-                <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-ink-900 break-words">{a.clienteNome} <span className="font-normal text-ink-400">· {a.clienteTelefone}</span></p>
-                    <p className="text-xs text-ink-500 break-words">
-                      {servico?.nome ?? 'Serviço removido'} com {profissional?.nome ?? 'profissional removido'} · {formatDateTime(a.inicio)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-xs px-2 py-1 rounded-full ${statusStyle[a.status]}`}>{a.status}</span>
-                    {a.status === 'confirmado' && (
-                      <button onClick={() => handleCancelar(a.id)} className="text-xs text-red-600 hover:underline">
-                        Cancelar
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+              <button type="button" onClick={() => setForcarListaCompleta(true)} className="text-xs font-medium text-brand-700 hover:underline">
+                Mostrar o mês inteiro mesmo assim
+              </button>
+            </div>
+          )}
+
+          {listaEmOverlay && (
+            <div className="bg-white rounded-xl border border-ink-200 p-4 text-center">
+              <p className="text-sm text-ink-500">{agendamentosDoDia.length} agendamento(s) nesse período — exibindo em uma janela separada pra não desalinhar a tela.</p>
+            </div>
+          )}
+
+          {listaInline && <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100">{conteudoLista}</div>}
+
+          <Modal open={listaEmOverlay} onClose={() => setListaVisivel(false)} title={periodoLabel} widthClass="max-w-2xl">
+            <div className="border border-ink-200 rounded-xl divide-y divide-ink-100">{conteudoLista}</div>
+          </Modal>
         </div>
       </div>
     </div>

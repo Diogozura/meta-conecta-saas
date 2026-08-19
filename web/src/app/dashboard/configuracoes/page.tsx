@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Save, Eye, EyeOff, AlertCircle, Sparkles, SlidersHorizontal, FileText, UserCog, Plug } from 'lucide-react'
+import { Save, Eye, EyeOff, AlertCircle, AlertTriangle, Sparkles, SlidersHorizontal, FileText, UserCog, Plug, ExternalLink, Gauge } from 'lucide-react'
 import { toast } from 'sonner'
 import { AGENT_PROVIDERS } from '@/lib/aiAgentTypes'
 import { Skeleton } from '@/components/Skeleton'
@@ -66,11 +66,18 @@ interface AiConfig {
   ultimoErroEm?: string
 }
 
+interface UsoAgenteIA {
+  hoje: number
+  mes: number
+  ultimos30Dias: number
+}
+
 function GeneralSettingsTab() {
   const [loadingData, setLoadingData] = useState(true)
   const [aiConfig, setAiConfig] = useState<AiConfig>({ enabled: false, provider: 'gemini', model: 'gemini-2.5-flash', prompt: '', apiKey: '', informacoesNegocio: '' })
   const [aiLoading, setAiLoading] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
+  const [uso, setUso] = useState<UsoAgenteIA | null>(null)
 
   async function loadAiConfig() {
     try {
@@ -86,10 +93,23 @@ function GeneralSettingsTab() {
     }
   }
 
+  async function loadUso() {
+    try {
+      const res = await fetch('/api/conta/ai/uso')
+      if (res.ok) setUso(await res.json())
+    } catch (error) {
+      console.error('Erro ao carregar uso do agente de IA:', error)
+    }
+  }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
     loadAiConfig()
+    loadUso()
   }, [])
+
+  const provedorAtual = AGENT_PROVIDERS.find((p) => p.value === aiConfig.provider)
+  const erroEhLimite = !!aiConfig.ultimoErro && /limite de uso|rate limit/i.test(aiConfig.ultimoErro)
 
   async function handleSaveAi(e: React.FormEvent) {
     e.preventDefault()
@@ -143,10 +163,17 @@ function GeneralSettingsTab() {
         </p>
 
         {aiConfig.enabled && aiConfig.ultimoErro && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            {erroEhLimite ? (
+              <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+            )}
             <div className="text-sm">
-              <p className="font-medium text-red-900">O agente está ativo, mas a última tentativa de responder falhou</p>
+              <p className="font-medium text-red-900 flex items-center gap-2 flex-wrap">
+                {erroEhLimite ? 'Limite de uso atingido' : 'O agente está ativo, mas a última tentativa de responder falhou'}
+                {erroEhLimite && <span className="text-[10px] font-semibold uppercase tracking-wide bg-red-600 text-white px-1.5 py-0.5 rounded">rate limit</span>}
+              </p>
               <p className="text-red-700 mt-0.5">{aiConfig.ultimoErro}</p>
               {aiConfig.ultimoErroEm && (
                 <p className="text-red-500 text-xs mt-1">
@@ -155,6 +182,47 @@ function GeneralSettingsTab() {
               )}
               <p className="text-red-700 mt-1">Verifique a chave de API do provedor abaixo — clientes podem não estar recebendo resposta.</p>
             </div>
+          </div>
+        )}
+
+        {aiConfig.enabled && (
+          <div className="mb-6 p-4 bg-ink-50 border border-ink-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-3">
+              <Gauge className="w-4 h-4 text-ink-500" />
+              <p className="text-sm font-medium text-ink-800">Uso do agente</p>
+            </div>
+            {uso ? (
+              <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                <div>
+                  <p className="text-ink-900 font-semibold">{uso.hoje}</p>
+                  <p className="text-xs text-ink-500">mensagens hoje</p>
+                </div>
+                <div>
+                  <p className="text-ink-900 font-semibold">{uso.mes}</p>
+                  <p className="text-xs text-ink-500">mensagens este mês</p>
+                </div>
+                <div>
+                  <p className="text-ink-900 font-semibold">{uso.ultimos30Dias}</p>
+                  <p className="text-xs text-ink-500">últimos 30 dias</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-ink-400">Carregando...</p>
+            )}
+            <p className="text-xs text-ink-500 mt-3">
+              Essa é uma contagem própria do Zybot (quantas vezes o agente chamou a IA) — não é a cota oficial do provedor, já que
+              {' '}{provedorAtual?.label ?? 'o provedor'} não expõe isso pela chave de API comum. Pra ver o consumo/limite exato da sua chave, acesse o painel do provedor.
+            </p>
+            {provedorAtual && (
+              <a
+                href={provedorAtual.ondeVerUso}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 mt-2 text-xs font-medium text-brand-700 hover:underline"
+              >
+                Ver uso real em {provedorAtual.label} <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import { obterConta, obterMetaAccess, listarMensagensPorNumero, criarMensagem, obterConversa, registrarErroAgenteIA } from '@/lib/firestore'
+import { obterConta, obterMetaAccess, listarMensagensPorNumero, criarMensagem, obterConversa, registrarErroAgenteIA, registrarUsoAgenteIA } from '@/lib/firestore'
 import { sendTextMessage } from '@/lib/meta'
 import { runGeminiAgent } from '@/lib/aiProviderGemini'
 import { runOpenAIAgent } from '@/lib/aiProviderOpenAI'
@@ -53,6 +53,9 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
     }
 
     const textoFinal = await executarProvedor(conta.ai.provider, runParams)
+    // Conta a chamada ao provedor mesmo que o texto volte vazio — a cota já
+    // foi consumida nesse momento, independente do envio pro WhatsApp adiante.
+    await registrarUsoAgenteIA(contaId).catch(() => {})
     if (!textoFinal) return
 
     const envio = await sendTextMessage(metaAccess.phoneNumberId, metaAccess.businessToken, telefoneCliente, textoFinal)
