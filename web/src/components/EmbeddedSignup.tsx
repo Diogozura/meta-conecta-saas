@@ -185,7 +185,10 @@ export default function EmbeddedSignup({ onSuccess }: EmbeddedSignupProps) {
         override_default_response_type: true,
         extras: {
           setup: {},
-          featureType: '',
+          // Sem isso, a Meta trata um número já ativo no WhatsApp Business
+          // App como um simples conflito ("já registrado em outra conta") em
+          // vez de oferecer a opção de Coexistência.
+          featureType: 'whatsapp_business_app_onboarding',
           sessionInfoVersion: '3',
         },
       },
