@@ -1,6 +1,6 @@
 import { createHmac } from 'crypto'
 import { after } from 'next/server'
-import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem } from '@/lib/firestore'
+import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem, atualizarMetaAccess } from '@/lib/firestore'
 import { processarMensagemComIA } from '@/lib/aiAgent'
 
 /* ─── GET: verificação do endpoint pelo Meta ─────────────────────────────── */
@@ -65,9 +65,11 @@ export async function POST(request: Request) {
     // isso como falha de entrega e, depois de falhas repetidas, desativa o
     // webhook. Loga o erro e segue tratando como "conta não encontrada".
     let contaId: string | undefined
+    let metaAccessId: string | undefined
     try {
       const result = await obterMetaAccessPorWabaId(wabaId)
       contaId = result?.contaId
+      metaAccessId = result?.metaAccess.id
     } catch (error) {
       console.error('❌ Erro ao buscar conta pelo WABA (verifique env vars, ex: CREDENTIALS_ENCRYPTION_KEY):', error)
     }
@@ -77,9 +79,26 @@ export async function POST(request: Request) {
     } else {
       console.log('✅ Conta encontrada:', contaId)
     }
-    
+
     for (const change of entry.changes ?? []) {
       const value = change.value
+
+      // Conta desconectada direto pelo celular (modo Coexistence) — o dono
+      // removeu a integração pelo app, então marca como desconectada em vez
+      // de deixar o painel achando que ainda está tudo certo.
+      if (value.event === 'PARTNER_REMOVED') {
+        console.warn('[Webhook] Conta desconectada pelo WhatsApp Business App (PARTNER_REMOVED):', {
+          contaId,
+          disconnection_info: value.disconnection_info,
+        })
+        if (contaId && metaAccessId) {
+          try {
+            await atualizarMetaAccess(contaId, metaAccessId, { desconectadoEm: new Date() })
+          } catch (error) {
+            console.error('❌ Erro ao marcar conta como desconectada:', error)
+          }
+        }
+      }
 
       // Mensagens recebidas
       for (const msg of value.messages ?? []) {
@@ -157,6 +176,73 @@ export async function POST(request: Request) {
           console.error('❌ Erro ao atualizar status no Firebase:', error)
         }
       }
+
+      // Histórico de mensagens sincronizado (modo Coexistence — número
+      // também em uso no app do celular). Só grava; não aciona o agente de
+      // IA nem encaminha pro backend novo, porque são mensagens antigas, não
+      // uma pergunta nova esperando resposta.
+      for (const chunk of value.history ?? []) {
+        if (chunk.errors?.length) {
+          console.warn('[Webhook] Erro na sincronização de histórico:', chunk.errors)
+          continue
+        }
+        if (!contaId) continue
+
+        const numeroProprio = value.metadata?.display_phone_number?.replace(/\D/g, '')
+        const phoneNumberId = value.metadata?.phone_number_id
+
+        for (const thread of chunk.threads ?? []) {
+          for (const msg of thread.messages ?? []) {
+            const deSaida = !!numeroProprio && msg.from.replace(/\D/g, '') === numeroProprio
+            const numeroCliente = deSaida ? (msg.to ?? thread.id) : msg.from
+
+            try {
+              await criarMensagem({
+                id: msg.id,
+                contaId,
+                from: deSaida ? (phoneNumberId ?? numeroCliente) : numeroCliente,
+                ...(deSaida ? { to: numeroCliente } : {}),
+                text: msg.text?.body ?? '(mídia)',
+                timestamp: parseInt(msg.timestamp),
+                tipo: deSaida ? 'enviada' : 'recebida',
+                historico: true,
+              })
+            } catch (error) {
+              console.error('❌ Erro ao salvar mensagem de histórico no Firebase:', error)
+            }
+          }
+        }
+      }
+
+      // Mensagens enviadas direto pelo app do celular ou um dispositivo
+      // vinculado (modo Coexistence) — espelha no painel do Zybot pra manter
+      // a conversa completa dos dois lados, do mesmo jeito que uma mensagem
+      // enviada pelo próprio painel.
+      for (const echo of value.message_echoes ?? []) {
+        if (!contaId) continue
+
+        // Edição/revogação de mensagem já enviada — não tem um equivalente
+        // direto no formato atual de mensagem (que não versiona edições).
+        // Loga por enquanto; tratar isso é um passo separado.
+        if (echo.type === 'revoke' || echo.type === 'edit') {
+          console.log('[Webhook] Echo de edição/revogação recebido (ainda não tratado):', { contaId, type: echo.type, id: echo.id })
+          continue
+        }
+
+        try {
+          await criarMensagem({
+            id: echo.id,
+            contaId,
+            from: value.metadata?.phone_number_id ?? echo.from,
+            to: echo.to,
+            text: echo.text?.body ?? '(mídia)',
+            timestamp: parseInt(echo.timestamp),
+            tipo: 'enviada',
+          })
+        } catch (error) {
+          console.error('❌ Erro ao salvar mensagem espelhada (app do celular) no Firebase:', error)
+        }
+      }
     }
   }
 
@@ -212,7 +298,9 @@ interface WebhookPayload {
     changes: Array<{
       value: {
         messaging_product: string
-        metadata: { display_phone_number: string; phone_number_id: string }
+        // Ausente em alguns eventos de conta (ex: account_update), por isso
+        // opcional — nem toda notificação é sobre um número específico.
+        metadata?: { display_phone_number: string; phone_number_id: string }
         contacts?: Array<{ profile: { name: string }; wa_id: string }>
         messages?: Array<{
           from: string
@@ -228,6 +316,37 @@ interface WebhookPayload {
           recipient_id: string
           errors?: Array<{ code: number; title?: string; message?: string }>
         }>
+        // Sincronização de histórico (modo Coexistence) — chega em vários
+        // "chunks", cada um com uma leva de threads/mensagens antigas.
+        history?: Array<{
+          metadata?: { phase?: string; chunk_order?: number; progress?: string }
+          threads?: Array<{
+            id: string
+            messages?: Array<{
+              from: string
+              to?: string
+              id: string
+              timestamp: string
+              type: string
+              text?: { body: string }
+            }>
+          }>
+          errors?: Array<{ code: number; title?: string; message?: string }>
+        }>
+        // Mensagens enviadas pelo app do celular ou um dispositivo vinculado
+        // (modo Coexistence).
+        message_echoes?: Array<{
+          from: string
+          to?: string
+          id: string
+          timestamp: string
+          type: string
+          text?: { body: string }
+        }>
+        // Eventos de conta (ex: account_update com PARTNER_REMOVED, quando o
+        // dono desconecta a integração direto pelo celular).
+        event?: string
+        disconnection_info?: { reason?: string; initiated_by?: string }
       }
       field: string
     }>

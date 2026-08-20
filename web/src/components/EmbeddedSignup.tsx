@@ -25,7 +25,7 @@ interface OnboardingStep {
 }
 
 interface EmbeddedSignupProps {
-  onSuccess?: (data: { wabaId: string; phoneNumberId: string; accessToken: string }) => void
+  onSuccess?: (data: { wabaId: string; phoneNumberId: string; accessToken: string; coexistence: boolean }) => void
 }
 
 export default function EmbeddedSignup({ onSuccess }: EmbeddedSignupProps) {
@@ -39,6 +39,10 @@ export default function EmbeddedSignup({ onSuccess }: EmbeddedSignupProps) {
 
   const wabaIdRef = useRef<string>('')
   const phoneNumberIdRef = useRef<string>('')
+  // true = a conta escolheu conectar um número que já está em uso no app
+  // WhatsApp Business do celular (Coexistence) — nesse caso a Meta não deixa
+  // (e não é preciso) chamar o registro de número na Cloud API.
+  const isCoexistenceRef = useRef(false)
 
   function setStep(index: number, patch: Partial<OnboardingStep>) {
     setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)))
@@ -76,9 +80,13 @@ export default function EmbeddedSignup({ onSuccess }: EmbeddedSignupProps) {
       if (event.origin !== 'https://www.facebook.com') return
       try {
         const data = JSON.parse(event.data as string)
-        if (data.type === 'WA_EMBEDDED_SIGNUP' && data.event === 'FINISH') {
+        if (
+          data.type === 'WA_EMBEDDED_SIGNUP' &&
+          (data.event === 'FINISH' || data.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING')
+        ) {
           wabaIdRef.current = data.data?.waba_id ?? ''
           phoneNumberIdRef.current = data.data?.phone_number_id ?? ''
+          isCoexistenceRef.current = data.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'
         }
       } catch {
         // ignora payloads não-JSON
@@ -91,6 +99,7 @@ export default function EmbeddedSignup({ onSuccess }: EmbeddedSignupProps) {
   async function handleLaunchSignup() {
     if (!window.FB) return
 
+    isCoexistenceRef.current = false
     setSteps([
       { label: 'Autenticação via Facebook', status: 'loading' },
       { label: 'Troca de token de acesso', status: 'idle' },
@@ -127,21 +136,27 @@ export default function EmbeddedSignup({ onSuccess }: EmbeddedSignupProps) {
             return
           }
 
-          // Passo 2: registrar número
-          setStep(2, { status: 'loading' })
+          // Passo 2: registrar número — pulado em modo Coexistence, porque o
+          // número já está registrado (em uso no app do celular)
           const phoneNumberId = phoneNumberIdRef.current
-          try {
-            const res = await fetch('/api/meta/register-phone', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ phoneNumberId, accessToken }),
-            })
-            const json = await res.json()
-            if (!res.ok) throw new Error(json.error)
-            setStep(2, { status: 'done', detail: `Número registrado (ID: ${phoneNumberId}).` })
-          } catch (err) {
-            setStep(2, { status: 'error', detail: String(err) })
-            return
+          const coexistence = isCoexistenceRef.current
+          if (coexistence) {
+            setStep(2, { status: 'done', detail: 'Não necessário — o número já está registrado no WhatsApp Business App.' })
+          } else {
+            setStep(2, { status: 'loading' })
+            try {
+              const res = await fetch('/api/meta/register-phone', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phoneNumberId, accessToken }),
+              })
+              const json = await res.json()
+              if (!res.ok) throw new Error(json.error)
+              setStep(2, { status: 'done', detail: `Número registrado (ID: ${phoneNumberId}).` })
+            } catch (err) {
+              setStep(2, { status: 'error', detail: String(err) })
+              return
+            }
           }
 
           // Passo 3: assinar webhooks
@@ -161,7 +176,7 @@ export default function EmbeddedSignup({ onSuccess }: EmbeddedSignupProps) {
             return
           }
 
-          onSuccess?.({ wabaId, phoneNumberId, accessToken })
+          onSuccess?.({ wabaId, phoneNumberId, accessToken, coexistence })
         })()
       },
       {

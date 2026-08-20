@@ -95,6 +95,15 @@ export interface MetaAccess {
   // legado, mantido só pra não quebrar leitura de documentos antigos.
   webhookVerifyToken?: string
   embeddedSignupConfigId?: string   // Config ID do Embedded Signup (opcional)
+  // true = número conectado no modo Coexistence (também segue em uso no app
+  // WhatsApp Business do celular). Por conta — outras contas continuam no
+  // fluxo normal (só Cloud API) sem nenhum impacto.
+  coexistence?: boolean
+  // Preenchido quando a Meta avisa (webhook account_update, evento
+  // PARTNER_REMOVED) que o dono desconectou a integração direto pelo
+  // celular — nesse caso a conta continua salva, mas precisa reconectar.
+  // Limpo (null) automaticamente na próxima conexão bem-sucedida.
+  desconectadoEm?: Date | null
   dataAtualizacao: Date
 }
 
@@ -148,6 +157,7 @@ export interface Mensagem {
   text: string                  // Conteúdo da mensagem
   timestamp: number             // Unix timestamp em segundos (do Meta)
   tipo: 'recebida' | 'enviada'  // Direção da mensagem
+  historico?: boolean           // true = importada via sincronização de histórico (Coexistence), não uma mensagem nova
   status?: 'enviada' | 'entregue' | 'lida' | 'falhou'  // Status (para mensagens enviadas)
   // Motivo da falha, quando status === 'falhou' — vem do webhook de status
   // da Meta (ex: código 131047 = janela de 24h expirada, precisa de template).

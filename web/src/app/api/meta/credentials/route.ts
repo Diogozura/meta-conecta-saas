@@ -33,6 +33,8 @@ export async function GET() {
         appSecret: metaAccess.appSecret,
         webhookVerifyToken: metaAccess.webhookVerifyToken,
         embeddedSignupConfigId: metaAccess.embeddedSignupConfigId,
+        coexistence: metaAccess.coexistence ?? false,
+        desconectado: !!metaAccess.desconectadoEm,
       }
     })
   } catch (error) {
@@ -91,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { wabaId, phoneNumberId, businessToken, appId, appSecret, webhookVerifyToken, embeddedSignupConfigId } = body
+    const { wabaId, phoneNumberId, businessToken, appId, appSecret, webhookVerifyToken, embeddedSignupConfigId, coexistence } = body
 
     // Validações básicas — webhookVerifyToken não é mais preenchido pela UI:
     // o app usa um único webhook (META_WEBHOOK_VERIFY_TOKEN, env var global),
@@ -105,7 +107,8 @@ export async function POST(request: NextRequest) {
     const existing = await obterMetaAccess(contaId)
 
     if (existing) {
-      // Atualizar
+      // Atualizar — limpa "desconectadoEm" sempre que uma conexão nova é
+      // salva com sucesso (ex: depois de uma desconexão via PARTNER_REMOVED).
       await atualizarMetaAccess(contaId, existing.id, {
         wabaId,
         phoneNumberId,
@@ -114,6 +117,8 @@ export async function POST(request: NextRequest) {
         appSecret,
         webhookVerifyToken,
         embeddedSignupConfigId,
+        coexistence: !!coexistence,
+        desconectadoEm: null,
       })
     } else {
       // Criar novo
@@ -125,6 +130,7 @@ export async function POST(request: NextRequest) {
         appSecret,
         webhookVerifyToken,
         embeddedSignupConfigId,
+        coexistence: !!coexistence,
       })
     }
 

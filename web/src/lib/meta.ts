@@ -61,6 +61,32 @@ export async function registerPhoneNumber(phoneNumberId: string, accessToken: st
   return res.json()
 }
 
+/**
+ * Dispara a sincronização de dados do app WhatsApp Business (modo
+ * Coexistence) — contatos (`smb_app_state_sync`) ou histórico de mensagens
+ * (`history`). É assíncrono: o resultado chega depois via webhook, essa
+ * chamada só inicia o processo (a Meta responde com um `request_id`).
+ */
+export async function syncSmbAppData(
+  phoneNumberId: string,
+  accessToken: string,
+  syncType: 'smb_app_state_sync' | 'history',
+): Promise<{ request_id?: string }> {
+  const res = await fetch(`${GRAPH_API}/${phoneNumberId}/smb_app_data`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ messaging_product: 'whatsapp', sync_type: syncType }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err?.error?.message ?? `Falha ao sincronizar (${syncType})`)
+  }
+  return res.json()
+}
+
 /** Inscreve o app nos webhooks de um WABA. */
 export async function subscribeToWebhooks(wabaId: string, accessToken: string) {
   const res = await fetch(`${GRAPH_API}/${wabaId}/subscribed_apps`, {
