@@ -18,6 +18,18 @@ export interface Intervalo {
   fim: Date
 }
 
+/** Monta um link "Adicionar à agenda" do Google Calendar — funciona sem o cliente logar em nada, só clicar. */
+export function buildAddToCalendarLink(params: { titulo: string; descricao?: string; inicio: Date; fim: Date }): string {
+  const paraUtcCompacto = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+  const query = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: params.titulo,
+    dates: `${paraUtcCompacto(params.inicio)}/${paraUtcCompacto(params.fim)}`,
+  })
+  if (params.descricao) query.set('details', params.descricao)
+  return `https://calendar.google.com/calendar/render?${query.toString()}`
+}
+
 /** Junta intervalos sobrepostos/adjacentes numa lista mínima e ordenada. */
 function mesclarIntervalos(intervalos: Intervalo[]): Intervalo[] {
   if (intervalos.length === 0) return []

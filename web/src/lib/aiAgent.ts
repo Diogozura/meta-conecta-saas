@@ -4,6 +4,7 @@ import { runGeminiAgent } from '@/lib/aiProviderGemini'
 import { runOpenAIAgent } from '@/lib/aiProviderOpenAI'
 import { runAnthropicAgent } from '@/lib/aiProviderAnthropic'
 import { AgentRunParams, humanizarErroAgente } from '@/lib/aiAgentTypes'
+import { contextoDataAtual } from '@/lib/aiAgentTools'
 
 /**
  * Processa uma mensagem recebida no WhatsApp com o agente de IA: monta o
@@ -38,9 +39,16 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
     const ultima = ordenadas.pop()
     if (!ultima) return // nada pra responder
 
-    const systemPrompt = conta.ai.informacoesNegocio
-      ? `${conta.ai.prompt}\n\n--- Informações do negócio ---\n${conta.ai.informacoesNegocio}`
-      : conta.ai.prompt
+    // O contexto de data/hora é recalculado a cada mensagem (não pode ser
+    // cacheado) — cada request pega o "agora" real no momento em que o
+    // cliente escreveu, senão "amanhã" fica errado com o tempo.
+    const systemPrompt = [
+      conta.ai.prompt,
+      contextoDataAtual(),
+      conta.ai.informacoesNegocio ? `--- Informações do negócio ---\n${conta.ai.informacoesNegocio}` : null,
+    ]
+      .filter((parte): parte is string => !!parte)
+      .join('\n\n')
 
     const runParams: AgentRunParams = {
       contaId,

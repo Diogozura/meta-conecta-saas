@@ -1234,9 +1234,6 @@ const STATUS_PILL_ATIVO: Record<Agendamento['status'], string> = {
   cancelado: 'bg-red-600 text-white',
   concluido: 'bg-ink-700 text-white',
 }
-const LIMITE_LISTA_SEM_PERIODO = 50
-const LIMITE_LISTA_INLINE = 6
-
 function toWeekStartKey(d: Date) {
   const inicio = new Date(d)
   inicio.setDate(d.getDate() - d.getDay())
@@ -1282,10 +1279,11 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
     return { ano: hoje.getFullYear(), mes: hoje.getMonth() }
   })
   const [semanaSelecionada, setSemanaSelecionada] = useState<string | null>(null)
-  const [forcarListaCompleta, setForcarListaCompleta] = useState(false)
+  const [mesInteiroAberto, setMesInteiroAberto] = useState(false)
   const [listaVisivel, setListaVisivel] = useState(true)
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
   const [ocultosManualmente, setOcultosManualmente] = useState<Set<string>>(new Set())
+  const [periodosSelecionados, setPeriodosSelecionados] = useState<Set<string>>(new Set())
   const { confirm, ConfirmDialogElement } = useConfirmDialog()
 
   // Busca só o mês que está sendo exibido no calendário — evita carregar o
@@ -1316,9 +1314,10 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
     setSemanaSelecionada(null)
-    setForcarListaCompleta(false)
+    setMesInteiroAberto(false)
     setSelecionados(new Set())
     setOcultosManualmente(new Set())
+    setPeriodosSelecionados(new Set())
   }, [mesVisivel, profissionalId])
 
   function toggleSelecionado(id: string) {
@@ -1337,6 +1336,30 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
 
   function mostrarOcultos() {
     setOcultosManualmente(new Set())
+  }
+
+  function togglePeriodoSelecionado(key: string) {
+    setPeriodosSelecionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  /** 'mes' = todos os agendamentos filtrados do mês; qualquer outra chave = os dessa semana. */
+  function idsDoPeriodo(key: string): string[] {
+    if (key === 'mes') return agendamentosFiltrados.map((a) => a.id)
+    return agendamentosFiltrados.filter((a) => toWeekStartKey(new Date(a.inicio)) === key).map((a) => a.id)
+  }
+
+  function ocultarPeriodosSelecionados() {
+    const ids = new Set<string>()
+    for (const key of periodosSelecionados) {
+      for (const id of idsDoPeriodo(key)) ids.add(id)
+    }
+    setOcultosManualmente((prev) => new Set([...prev, ...ids]))
+    setPeriodosSelecionados(new Set())
   }
 
   function toggleStatusVisivel(s: Agendamento['status']) {
@@ -1385,10 +1408,7 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
     return c
   }, [agendamentos])
 
-  const agendamentosFiltrados = useMemo(
-    () => agendamentos.filter((a) => statusVisiveis.has(a.status) && !ocultosManualmente.has(a.id)),
-    [agendamentos, statusVisiveis, ocultosManualmente]
-  )
+  const agendamentosFiltrados = agendamentos.filter((a) => statusVisiveis.has(a.status) && !ocultosManualmente.has(a.id))
 
   // Agrupa o mês filtrado em semanas (dom–sáb) — permite reduzir a lista a um
   // recorte menor antes de renderizar tudo, quando o mês tem muitos agendamentos.
@@ -1416,9 +1436,6 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
       }))
   }, [agendamentosFiltrados])
 
-  const semPeriodoEscolhido = !selectedDate && !semanaSelecionada
-  const listaGrandeDemais = semPeriodoEscolhido && agendamentosFiltrados.length > LIMITE_LISTA_SEM_PERIODO && !forcarListaCompleta
-
   const agendamentosDoDia = useMemo(() => {
     if (selectedDate) return agendamentosFiltrados.filter((a) => toDateKey(new Date(a.inicio)) === selectedDate)
     if (semanaSelecionada) return agendamentosFiltrados.filter((a) => toWeekStartKey(new Date(a.inicio)) === semanaSelecionada)
@@ -1436,11 +1453,11 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
     : semanaSelecionada
       ? `Semana de ${semanas.find((s) => s.key === semanaSelecionada)?.label ?? ''}`
       : mesLabel
-  const mostrarLista = listaVisivel && !listaGrandeDemais
-  // Lista curta cabe embaixo do calendário; lista longa abre em overlay pra não
-  // esticar o layout e desalinhar o espaçamento das outras abas/seções.
-  const listaEmOverlay = mostrarLista && agendamentosDoDia.length > LIMITE_LISTA_INLINE
-  const listaInline = mostrarLista && !listaEmOverlay
+  // Em repouso, o lugar da lista mostra só cards de período (mês inteiro +
+  // semanas) — nenhum agendamento aparece até o usuário clicar num card ou
+  // num dia do calendário, que aí abre os detalhes numa janela separada.
+  const periodoAberto = !!selectedDate || !!semanaSelecionada || mesInteiroAberto
+  const mostrarGrid = listaVisivel && !periodoAberto
 
   // Conteúdo da lista em si — reaproveitado tanto no card inline (lista curta)
   // quanto dentro do Modal (lista longa), pra não duplicar a renderização dos itens.
@@ -1478,10 +1495,10 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
                 className="mt-1 w-3.5 h-3.5 shrink-0 rounded border-gray-300 text-brand-600 focus:ring-brand-400"
               />
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-ink-900 break-words">{a.clienteNome} <span className="font-normal text-ink-400">· {a.clienteTelefone}</span></p>
-                <p className="text-xs text-ink-500 break-words">
-                  {servico?.nome ?? 'Serviço removido'} com {profissional?.nome ?? 'profissional removido'} · {formatDateTime(a.inicio)}
+                <p className="text-sm font-semibold text-ink-900 break-words">
+                  {toTimeInputValue(a.inicio)} <span className="font-normal text-ink-400">· {servico?.nome ?? 'Serviço removido'} com {profissional?.nome ?? 'profissional removido'}</span>
                 </p>
+                <p className="text-xs text-ink-500 break-words">{a.clienteNome} · {a.clienteTelefone}</p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -1501,49 +1518,19 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
   return (
     <div className="space-y-3">
       {ConfirmDialogElement}
-      <div className="flex items-end justify-between gap-2 flex-wrap">
-        <div>
-          <label className="block text-xs font-medium text-ink-600 mb-1">Profissional</label>
-          <select value={profissionalId} onChange={(e) => setProfissionalId(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm">
-            <option value="">Todos</option>
-            {profissionais.map((p) => (
-              <option key={p.id} value={p.id}>{p.nome}</option>
-            ))}
-          </select>
-        </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Novo agendamento
-        </button>
-      </div>
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-medium text-ink-600 mb-1">Profissional</label>
+            <select value={profissionalId} onChange={(e) => setProfissionalId(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm">
+              <option value="">Todos</option>
+              {profissionais.map((p) => (
+                <option key={p.id} value={p.id}>{p.nome}</option>
+              ))}
+            </select>
+          </div>
 
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="Novo agendamento" widthClass="max-w-lg">
-        <NovoAgendamentoForm
-          profissionais={profissionais}
-          servicos={servicos}
-          onCreated={() => {
-            setShowForm(false)
-            carregar()
-          }}
-        />
-      </Modal>
-
-      <div className="grid md:grid-cols-[320px_1fr] gap-4 items-start">
-        <div className="md:sticky md:top-4">
-          <AgendaCalendar
-            marks={marks}
-            selected={selectedDate}
-            onSelect={(key) => setSelectedDate((prev) => (prev === key ? null : key))}
-            onMonthChange={(ano, mes) => setMesVisivel((prev) => (prev.ano === ano && prev.mes === mes ? prev : { ano, mes }))}
-            legend={{ booked: 'Dia com agendamento' }}
-          />
-        </div>
-
-        <div className="space-y-3 min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5 pb-0.5">
             <button
               type="button"
               onClick={() => setStatusVisiveis(new Set(TODOS_STATUS))}
@@ -1576,92 +1563,146 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
               )
             })}
           </div>
+        </div>
 
-          {!selectedDate && semanas.length > 1 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-ink-400">Semana:</span>
-              <button
-                type="button"
-                onClick={() => setSemanaSelecionada(null)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
-                  !semanaSelecionada ? 'bg-ink-800 text-white' : 'bg-white border border-ink-200 text-ink-600 hover:bg-ink-50'
-                }`}
-              >
-                Mês inteiro
-              </button>
-              {semanas.map((s) => (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => setSemanaSelecionada((prev) => (prev === s.key ? null : s.key))}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
-                    semanaSelecionada === s.key ? 'bg-ink-800 text-white' : 'bg-white border border-ink-200 text-ink-600 hover:bg-ink-50'
-                  }`}
-                >
-                  {s.label} ({s.count})
-                </button>
-              ))}
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Novo agendamento
+        </button>
+      </div>
+
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Novo agendamento" widthClass="max-w-lg">
+        <NovoAgendamentoForm
+          profissionais={profissionais}
+          servicos={servicos}
+          onCreated={() => {
+            setShowForm(false)
+            carregar()
+          }}
+        />
+      </Modal>
+
+      <div className="grid md:grid-cols-[320px_1fr] gap-4 items-start">
+        <div className="md:sticky md:top-4">
+          <AgendaCalendar
+            marks={marks}
+            selected={selectedDate}
+            onSelect={(key) => setSelectedDate((prev) => (prev === key ? null : key))}
+            onMonthChange={(ano, mes) => setMesVisivel((prev) => (prev.ano === ano && prev.mes === mes ? prev : { ano, mes }))}
+            legend={{ booked: 'Dia com agendamento' }}
+          />
+        </div>
+
+        <div className="space-y-3 min-w-0">
+          {ocultosManualmente.size > 0 && (
+            <div className="flex items-center gap-2 bg-ink-50 border border-ink-200 rounded-lg px-3 py-1.5">
+              <span className="text-xs text-ink-500">
+                {ocultosManualmente.size} agendamento(s) oculto(s) manualmente ·{' '}
+                <button type="button" onClick={mostrarOcultos} className="font-medium text-brand-700 hover:underline">mostrar</button>
+              </span>
             </div>
           )}
 
-          {(selecionados.size > 0 || ocultosManualmente.size > 0) && (
-            <div className="flex flex-wrap items-center gap-2 bg-ink-50 border border-ink-200 rounded-lg px-3 py-1.5">
-              {selecionados.size > 0 && (
+          {mostrarGrid && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-ink-500 capitalize">{mesLabel}</p>
+                <button
+                  type="button"
+                  onClick={() => setListaVisivel(false)}
+                  className="flex items-center gap-1 text-xs font-medium text-ink-500 hover:text-ink-700"
+                >
+                  <EyeOff className="w-3.5 h-3.5" />
+                  Ocultar
+                </button>
+              </div>
+
+              {agendamentosFiltrados.length === 0 ? (
+                <div className="bg-white rounded-xl border border-ink-200 p-6 text-center text-sm text-ink-400">
+                  {statusVisiveis.size < TODOS_STATUS.length ? 'Nenhum agendamento visível com os filtros atuais.' : `Nenhum agendamento em ${mesLabel}.`}
+                </div>
+              ) : (
                 <>
+                  {periodosSelecionados.size > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 bg-ink-50 border border-ink-200 rounded-lg px-3 py-1.5">
+                      <span className="text-xs text-ink-600">{periodosSelecionados.size} período(s) selecionado(s)</span>
+                      <button type="button" onClick={ocultarPeriodosSelecionados} className="text-xs font-medium text-red-600 hover:underline">Ocultar selecionados</button>
+                      <button type="button" onClick={() => setPeriodosSelecionados(new Set())} className="text-xs font-medium text-ink-500 hover:underline">Limpar seleção</button>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    <div className="relative bg-white border border-ink-200 rounded-xl hover:border-brand-300 hover:bg-brand-50/40 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={periodosSelecionados.has('mes')}
+                        onChange={() => togglePeriodoSelecionado('mes')}
+                        title="Selecionar pra ocultar"
+                        className="absolute top-2.5 right-2.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-600 focus:ring-brand-400"
+                      />
+                      <button type="button" onClick={() => setMesInteiroAberto(true)} className="w-full text-left p-3 pr-7">
+                        <p className="text-sm font-semibold text-ink-900">Mês inteiro</p>
+                        <p className="text-xs text-ink-500 mt-0.5">{agendamentosFiltrados.length} agendamento(s)</p>
+                      </button>
+                    </div>
+                    {semanas.length > 1 &&
+                      semanas.map((s) => (
+                        <div key={s.key} className="relative bg-white border border-ink-200 rounded-xl hover:border-brand-300 hover:bg-brand-50/40 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={periodosSelecionados.has(s.key)}
+                            onChange={() => togglePeriodoSelecionado(s.key)}
+                            title="Selecionar pra ocultar"
+                            className="absolute top-2.5 right-2.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-600 focus:ring-brand-400"
+                          />
+                          <button type="button" onClick={() => setSemanaSelecionada(s.key)} className="w-full text-left p-3 pr-7">
+                            <p className="text-sm font-semibold text-ink-900">{s.label}</p>
+                            <p className="text-xs text-ink-500 mt-0.5">{s.count} agendamento(s)</p>
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {!listaVisivel && !periodoAberto && (
+            <button
+              type="button"
+              onClick={() => setListaVisivel(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-ink-500 hover:text-ink-700"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Mostrar agendamentos
+            </button>
+          )}
+
+          <Modal
+            open={periodoAberto}
+            onClose={() => {
+              // Fechar sempre volta pros cards de período — nunca deixa a tela em
+              // branco esperando o usuário achar um botão "mostrar" escondido.
+              setSelectedDate(null)
+              setSemanaSelecionada(null)
+              setMesInteiroAberto(false)
+            }}
+            title={periodoLabel}
+            widthClass="max-w-2xl"
+          >
+            <div className="space-y-3">
+              {selecionados.size > 0 && (
+                <div className="flex flex-wrap items-center gap-2 bg-ink-50 border border-ink-200 rounded-lg px-3 py-1.5">
                   <span className="text-xs text-ink-600">{selecionados.size} agendamento(s) selecionado(s)</span>
                   <button type="button" onClick={ocultarSelecionados} className="text-xs font-medium text-red-600 hover:underline">Ocultar selecionados</button>
                   <button type="button" onClick={() => setSelecionados(new Set())} className="text-xs font-medium text-ink-500 hover:underline">Limpar seleção</button>
-                </>
+                </div>
               )}
-              {ocultosManualmente.size > 0 && (
-                <span className="text-xs text-ink-500 ml-auto">
-                  {ocultosManualmente.size} agendamento(s) oculto(s) manualmente ·{' '}
-                  <button type="button" onClick={mostrarOcultos} className="font-medium text-brand-700 hover:underline">mostrar</button>
-                </span>
-              )}
+              <div className="border border-ink-200 rounded-xl divide-y divide-ink-100">{conteudoLista}</div>
             </div>
-          )}
-
-          <div className="flex items-center justify-between flex-wrap gap-1">
-            <p className="text-xs text-ink-500 capitalize">{periodoLabel}</p>
-            <div className="flex items-center gap-3">
-              {selectedDate && (
-                <button onClick={() => setSelectedDate(null)} className="text-xs font-medium text-brand-700 hover:underline">Ver o mês inteiro</button>
-              )}
-              {!listaGrandeDemais && (
-                <button
-                  type="button"
-                  onClick={() => setListaVisivel((v) => !v)}
-                  className="flex items-center gap-1 text-xs font-medium text-ink-500 hover:text-ink-700"
-                >
-                  {listaVisivel ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  {listaVisivel ? 'Ocultar lista' : 'Mostrar lista'}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {listaGrandeDemais && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center space-y-2">
-              <p className="text-sm text-ink-700">
-                {agendamentosFiltrados.length} agendamentos em {mesLabel} — escolha uma semana acima ou um dia no calendário pra ver a lista sem poluição.
-              </p>
-              <button type="button" onClick={() => setForcarListaCompleta(true)} className="text-xs font-medium text-brand-700 hover:underline">
-                Mostrar o mês inteiro mesmo assim
-              </button>
-            </div>
-          )}
-
-          {listaEmOverlay && (
-            <div className="bg-white rounded-xl border border-ink-200 p-4 text-center">
-              <p className="text-sm text-ink-500">{agendamentosDoDia.length} agendamento(s) nesse período — exibindo em uma janela separada pra não desalinhar a tela.</p>
-            </div>
-          )}
-
-          {listaInline && <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100">{conteudoLista}</div>}
-
-          <Modal open={listaEmOverlay} onClose={() => setListaVisivel(false)} title={periodoLabel} widthClass="max-w-2xl">
-            <div className="border border-ink-200 rounded-xl divide-y divide-ink-100">{conteudoLista}</div>
           </Modal>
         </div>
       </div>

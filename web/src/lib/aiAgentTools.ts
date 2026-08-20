@@ -96,6 +96,31 @@ function formatarHora(iso: string): string {
   return `${String(Math.floor(minutosNoDia / 60)).padStart(2, '0')}:${String(minutosNoDia % 60).padStart(2, '0')}`
 }
 
+/**
+ * Bloco de contexto com a data/hora atual em Brasília, pra injetar no prompt
+ * do sistema — sem isso o modelo não tem como saber "hoje" ou "amanhã" (ele
+ * não sabe a data real, e o servidor roda em UTC), então uma mensagem como
+ * "quero marcar pra amanhã" ficava sem base pra virar uma data de verdade.
+ */
+export function contextoDataAtual(): string {
+  const agora = new Date()
+  const dataPorExtenso = agora.toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
+  const hora = agora.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
+  const isoHoje = agora.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) // YYYY-MM-DD
+  return (
+    `Contexto de data/hora: agora é ${dataPorExtenso}, ${hora} (horário de Brasília, GMT-3). ` +
+    `Hoje no formato YYYY-MM-DD é ${isoHoje}. Use isso pra calcular datas relativas que o cliente mencionar ` +
+    `("hoje", "amanhã", "depois de amanhã", "sexta que vem", "semana que vem" etc.) antes de chamar qualquer ` +
+    `ferramenta que peça uma data — nunca pergunte a data exata se o cliente já disse algo relativo como esses.`
+  )
+}
+
 /** Executa uma chamada de função pedida pelo modelo (qualquer provedor) e devolve o resultado. */
 export async function executarFuncaoAgente(
   contaId: string,

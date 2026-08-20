@@ -3,11 +3,13 @@ import {
   criarAgendamento,
   listarAgendamentos,
   listarDisponibilidades,
+  obterMetaAccess,
   obterProfissional,
   obterServico,
 } from '@/lib/firestore'
-import { calcularHorariosLivres, Intervalo } from '@/lib/agendaHelpers'
+import { buildAddToCalendarLink, calcularHorariosLivres, Intervalo } from '@/lib/agendaHelpers'
 import { createCalendarEvent, getFreeBusy } from '@/lib/googleCalendar'
+import { sendTextMessage } from '@/lib/meta'
 import { Agendamento } from '@/types/database'
 
 // Lógica de negócio da agenda compartilhada entre as rotas HTTP
@@ -144,6 +146,33 @@ export async function criarAgendamentoInterno(contaId: string, params: CriarAgen
       await atualizarAgendamento(contaId, agendamento.id, { googleSyncError: mensagemErro.slice(0, 500) }).catch(() => {})
       agendamento.googleSyncError = mensagemErro
     }
+  }
+
+  // Manda pro cliente um link de "adicionar à agenda" (Google Calendar) por
+  // WhatsApp — o cliente não loga em nada, só clica. Best-effort: se a conta
+  // não tem WhatsApp conectado ou o envio falha, o agendamento já confirmado
+  // não deve ser desfeito por causa disso.
+  try {
+    const metaAccess = await obterMetaAccess(contaId)
+    if (metaAccess) {
+      const link = buildAddToCalendarLink({
+        titulo: `${servico.nome} — ${profissional.nome}`,
+        descricao: `Agendamento com ${profissional.nome}.`,
+        inicio,
+        fim,
+      })
+      const dataHora = inicio.toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      const mensagem = `✅ Agendamento confirmado!\n\n${servico.nome} com ${profissional.nome}\n📅 ${dataHora}\n\nAdicione à sua agenda: ${link}`
+      await sendTextMessage(metaAccess.phoneNumberId, metaAccess.businessToken, clienteTelefone, mensagem)
+    }
+  } catch (error) {
+    console.error('Erro ao enviar link de agenda pro cliente via WhatsApp (agendamento já foi salvo):', error)
   }
 
   return agendamento
