@@ -3,6 +3,7 @@
 import { adminAuth, adminDb } from './firebase-admin'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { obterIndiceUsuarioPorUid, salvarIndiceUsuarioPorUid, obterUsuario, atualizarUsuario } from './firestore'
 import { isFirestoreQuotaExceededError, FirestoreQuotaExceededError } from './firestoreErrors'
@@ -30,10 +31,37 @@ function isPlatformAdminEmail(email: string | null | undefined): boolean {
   return PLATFORM_ADMIN_EMAILS.includes(email.toLowerCase())
 }
 
-/** Sessão + flag de admin de plataforma, para gates de página/layout/API routes. */
+/**
+ * Cookie que deixa um admin de plataforma se ver como um cliente comum (menu,
+ * quick links e rotas /dashboard/clientes e /api/empresas/** somem), pra
+ * testar a visão do cliente sem logar em outra conta. Só tem efeito pra quem
+ * já é admin de plataforma de verdade — ver getSessionWithPlatformAdmin.
+ */
+const VIEW_AS_CLIENT_COOKIE = 'zybot_view_as_client'
+
+/** Sessão + flags de admin de plataforma, para gates de página/layout/API routes. */
 export async function getSessionWithPlatformAdmin() {
   const session = await getSession()
-  return { session, isPlatformAdmin: isPlatformAdminEmail(session?.email) }
+  const isRealPlatformAdmin = isPlatformAdminEmail(session?.email)
+  const cookieStore = await cookies()
+  const viewingAsClient = isRealPlatformAdmin && cookieStore.get(VIEW_AS_CLIENT_COOKIE)?.value === '1'
+  return { session, isPlatformAdmin: isRealPlatformAdmin && !viewingAsClient, isRealPlatformAdmin, viewingAsClient }
+}
+
+/** Liga o modo "ver como cliente" (só faz efeito pra admin de plataforma). */
+export async function enableViewAsClient() {
+  const { isRealPlatformAdmin } = await getSessionWithPlatformAdmin()
+  if (!isRealPlatformAdmin) return
+  const cookieStore = await cookies()
+  cookieStore.set(VIEW_AS_CLIENT_COOKIE, '1', { path: '/', maxAge: 60 * 60 * 24 })
+  revalidatePath('/', 'layout')
+}
+
+/** Desliga o modo "ver como cliente", voltando à visão normal de admin master. */
+export async function disableViewAsClient() {
+  const cookieStore = await cookies()
+  cookieStore.delete(VIEW_AS_CLIENT_COOKIE)
+  revalidatePath('/', 'layout')
 }
 
 /**

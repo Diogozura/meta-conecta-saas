@@ -2,7 +2,11 @@ import { getSessionWithPlatformAdmin } from '@/lib/auth'
 import DashboardShell from './DashboardShell'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { isPlatformAdmin } = await getSessionWithPlatformAdmin()
+  const { isPlatformAdmin, isRealPlatformAdmin, viewingAsClient } = await getSessionWithPlatformAdmin()
 
-  return <DashboardShell isPlatformAdmin={isPlatformAdmin}>{children}</DashboardShell>
+  return (
+    <DashboardShell isPlatformAdmin={isPlatformAdmin} isRealPlatformAdmin={isRealPlatformAdmin} viewingAsClient={viewingAsClient}>
+      {children}
+    </DashboardShell>
+  )
 }

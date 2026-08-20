@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { logout } from '@/lib/auth'
+import { logout, enableViewAsClient, disableViewAsClient } from '@/lib/auth'
 import {
   Building2,
   LayoutDashboard,
@@ -16,6 +16,7 @@ import {
   RotateCcw,
   Sparkles,
   ShieldCheck,
+  Eye,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Toaster } from 'sonner'
@@ -46,23 +47,33 @@ const TOUR_SEEN_KEY = 'zybot_tour_seen_global'
 
 export default function DashboardShell({
   isPlatformAdmin,
+  isRealPlatformAdmin,
+  viewingAsClient,
   children,
 }: {
   isPlatformAdmin: boolean
+  isRealPlatformAdmin: boolean
+  viewingAsClient: boolean
   children: React.ReactNode
 }) {
   return (
     <TourProvider>
-      <DashboardShellInner isPlatformAdmin={isPlatformAdmin}>{children}</DashboardShellInner>
+      <DashboardShellInner isPlatformAdmin={isPlatformAdmin} isRealPlatformAdmin={isRealPlatformAdmin} viewingAsClient={viewingAsClient}>
+        {children}
+      </DashboardShellInner>
     </TourProvider>
   )
 }
 
 function DashboardShellInner({
   isPlatformAdmin,
+  isRealPlatformAdmin,
+  viewingAsClient,
   children,
 }: {
   isPlatformAdmin: boolean
+  isRealPlatformAdmin: boolean
+  viewingAsClient: boolean
   children: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -235,6 +246,22 @@ function DashboardShellInner({
                   <ShieldCheck className="w-3 h-3" />
                   Admin master
                 </span>
+              )}
+              {isRealPlatformAdmin && (
+                <form action={viewingAsClient ? disableViewAsClient : enableViewAsClient}>
+                  <button
+                    type="submit"
+                    title={viewingAsClient ? 'Voltar para a visão de admin master' : 'Pré-visualizar como um cliente vê o sistema'}
+                    className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+                      viewingAsClient
+                        ? 'bg-brand-50 text-brand-700 hover:bg-brand-100'
+                        : 'border border-ink-200 text-ink-500 hover:bg-ink-50'
+                    }`}
+                  >
+                    <Eye className="w-3 h-3" />
+                    {viewingAsClient ? 'Voltar ao admin' : 'Ver como cliente'}
+                  </button>
+                </form>
               )}
               <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center">
                 <span className="text-xs font-bold text-brand-700">U</span>
