@@ -7,7 +7,12 @@ import { criarInstagramAccess, obterInstagramAccess, atualizarInstagramAccess } 
 // pelos tokens (curta → longa duração), busca o perfil e salva na conta
 // logada. Depois manda de volta pra tela de conexão com o resultado.
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
+  const url = new URL(request.url)
+  // O "code" da Meta às vezes vem com "+" sem escapar (parte de um base64
+  // "cru") — URLSearchParams trata "+" como espaço (regra do
+  // application/x-www-form-urlencoded), corrompendo o código silenciosamente.
+  // Escapa antes de deixar o URLSearchParams processar.
+  const searchParams = new URLSearchParams(url.search.replace(/\+/g, '%2B'))
   const code = searchParams.get('code')
   const errorDescription = searchParams.get('error_description')
   const destino = new URL('/dashboard/instagram', request.url)
@@ -20,6 +25,11 @@ export async function GET(request: NextRequest) {
     destino.searchParams.set('erro', 'Código de autorização ausente')
     return NextResponse.redirect(destino)
   }
+
+  // Log temporário de diagnóstico — confirma se a query string bruta trazia
+  // um "+" sem escapar (indício de que o code estava sendo corrompido antes
+  // do fix acima).
+  console.log('[Instagram] Callback recebido. query bruta contém "+"?', url.search.includes('+'), '| tamanho do code:', code.length)
 
   const session = await auth()
   if (!session?.user?.contaId) {
