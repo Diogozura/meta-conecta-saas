@@ -23,6 +23,7 @@ const SCOPES = [
 /** Monta a URL de autorização — usada num link/botão simples, sem SDK. */
 export function getInstagramAuthorizeUrl(state: string): string {
   const url = new URL('https://www.instagram.com/oauth/authorize')
+  url.searchParams.set('force_reauth', 'true')
   url.searchParams.set('client_id', process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? '')
   url.searchParams.set('redirect_uri', getRedirectUri())
   url.searchParams.set('response_type', 'code')

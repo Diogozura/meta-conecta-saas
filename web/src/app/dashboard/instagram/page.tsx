@@ -107,6 +107,7 @@ function InstagramPageInner() {
 
   const authorizeUrl = (() => {
     const url = new URL('https://www.instagram.com/oauth/authorize')
+    url.searchParams.set('force_reauth', 'true')
     url.searchParams.set('client_id', appId ?? '')
     url.searchParams.set('redirect_uri', redirectUri)
     url.searchParams.set('response_type', 'code')
@@ -114,6 +115,10 @@ function InstagramPageInner() {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       url.searchParams.set('state', crypto.randomUUID())
     }
+    // Log temporário pra comparar com o "redirect_uri enviado" que o
+    // servidor loga no exchange — se os dois baterem, o problema não é
+    // divergência client/server de env var.
+    console.log('[Instagram] redirect_uri usado no /authorize:', JSON.stringify(redirectUri))
     return url.toString()
   })()
 
