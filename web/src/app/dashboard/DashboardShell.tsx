@@ -24,7 +24,7 @@ import { Toaster } from 'sonner'
 import { RealtimeListeners } from '@/components/RealtimeListeners'
 import { ConnectWabaPrompt } from '@/components/ConnectWabaPrompt'
 import { Logo } from '@/components/Logo'
-import { WhatsAppGlyph /*, InstagramGlyph, FacebookGlyph */ } from '@/components/BrandIcons'
+import { WhatsAppGlyph, InstagramGlyph /*, FacebookGlyph */ } from '@/components/BrandIcons'
 import { TourProvider, useTour } from '@/lib/tour/TourContext'
 import { getGlobalTourSteps, getPageTourSteps } from '@/lib/tour/steps'
 
@@ -225,8 +225,12 @@ function DashboardShellInner({
               active={pathname.startsWith('/dashboard/conversas')}
               onNavigate={() => setSidebarOpen(false)}
             />
-            {/* Instagram/Facebook pausados sem previsão — reativar quando entrarem em desenvolvimento de novo. */}
-            {/* <ComingSoonRow icon={InstagramGlyph} label="Instagram" /> */}
+            <NavLink
+              item={{ href: '/dashboard/instagram', label: 'Instagram', icon: InstagramGlyph, tour: 'nav-instagram' }}
+              active={pathname.startsWith('/dashboard/instagram')}
+              onNavigate={() => setSidebarOpen(false)}
+            />
+            {/* Facebook (Página) segue pausado sem previsão — reativar quando entrar em desenvolvimento. */}
             {/* <ComingSoonRow icon={FacebookGlyph} label="Facebook" /> */}
           </NavSection>
 

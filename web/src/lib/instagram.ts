@@ -1,0 +1,97 @@
+/**
+ * Integração com "Business Login for Instagram" — OAuth direto com a conta
+ * profissional do Instagram, sem precisar de Página do Facebook no meio
+ * (diferente do Embedded Signup do WhatsApp, que usa o SDK do Facebook).
+ */
+
+const IG_GRAPH_API = 'https://graph.instagram.com'
+
+function getRedirectUri() {
+  // Precisa bater EXATAMENTE com a URL cadastrada em "Login do Instagram
+  // para Empresas" no App Dashboard (Redirect URIs).
+  return process.env.NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI ?? 'https://www.zybot.com.br/api/instagram/callback'
+}
+
+const SCOPES = [
+  'instagram_business_basic',
+  'instagram_business_manage_messages',
+  'instagram_business_manage_comments',
+  'instagram_business_content_publish',
+  'instagram_business_manage_insights',
+].join(',')
+
+/** Monta a URL de autorização — usada num link/botão simples, sem SDK. */
+export function getInstagramAuthorizeUrl(state: string): string {
+  const url = new URL('https://www.instagram.com/oauth/authorize')
+  url.searchParams.set('client_id', process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? '')
+  url.searchParams.set('redirect_uri', getRedirectUri())
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('scope', SCOPES)
+  url.searchParams.set('state', state)
+  return url.toString()
+}
+
+/** Troca o código de autorização (válido por 1h, uso único) por um token de curta duração. */
+export async function exchangeCodeForShortLivedToken(code: string): Promise<{ access_token: string; user_id: string }> {
+  const res = await fetch('https://api.instagram.com/oauth/access_token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? '',
+      client_secret: process.env.INSTAGRAM_APP_SECRET ?? '',
+      grant_type: 'authorization_code',
+      redirect_uri: getRedirectUri(),
+      code,
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err?.error_message ?? 'Falha ao trocar o código de autorização')
+  }
+  return res.json()
+}
+
+/** Troca o token de curta duração por um long-lived token (60 dias). */
+export async function exchangeForLongLivedToken(shortLivedToken: string): Promise<{ access_token: string; expires_in: number }> {
+  const url = new URL(`${IG_GRAPH_API}/access_token`)
+  url.searchParams.set('grant_type', 'ig_exchange_token')
+  url.searchParams.set('client_secret', process.env.INSTAGRAM_APP_SECRET ?? '')
+  url.searchParams.set('access_token', shortLivedToken)
+
+  const res = await fetch(url.toString())
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err?.error?.message ?? 'Falha ao gerar o token de longa duração')
+  }
+  return res.json()
+}
+
+/** Renova um long-lived token que já tenha pelo menos 24h (bom rodar via cron antes dos 60 dias vencerem). */
+export async function refreshLongLivedToken(longLivedToken: string): Promise<{ access_token: string; expires_in: number }> {
+  const url = new URL(`${IG_GRAPH_API}/refresh_access_token`)
+  url.searchParams.set('grant_type', 'ig_refresh_token')
+  url.searchParams.set('access_token', longLivedToken)
+
+  const res = await fetch(url.toString())
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err?.error?.message ?? 'Falha ao renovar o token')
+  }
+  return res.json()
+}
+
+/** Busca os dados básicos da conta profissional conectada. */
+export async function getInstagramProfile(
+  accessToken: string,
+): Promise<{ id: string; username: string; account_type?: string; profile_picture_url?: string }> {
+  const url = new URL(`${IG_GRAPH_API}/me`)
+  url.searchParams.set('fields', 'id,username,account_type,profile_picture_url')
+  url.searchParams.set('access_token', accessToken)
+
+  const res = await fetch(url.toString())
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err?.error?.message ?? 'Falha ao buscar o perfil do Instagram')
+  }
+  return res.json()
+}

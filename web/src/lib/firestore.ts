@@ -5,7 +5,7 @@
 
 import { getFirestore, Timestamp, Query, Filter, FieldValue } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, ContaAiConfig, Usuario, MetaAccess, ContaVinculada, Cliente, Mensagem, Profissional, Servico, Disponibilidade, Agendamento, Conversa } from '@/types/database'
+import { Conta, ContaAiConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, Profissional, Servico, Disponibilidade, Agendamento, Conversa } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -323,6 +323,68 @@ export async function atualizarMetaAccess(contaId: string, accessId: string, dat
     ...encryptMetaAccessSecrets(data),
     dataAtualizacao: Timestamp.now(),
   })
+}
+
+// ─────────────────────────────────────────
+// INSTAGRAM ACCESS — mesmo padrão do MetaAccess (accessToken sempre
+// criptografado antes de gravar, descriptografado só na leitura).
+// ─────────────────────────────────────────
+
+function encryptInstagramSecrets<T extends { accessToken?: string }>(data: T): T {
+  return { ...data, ...(data.accessToken ? { accessToken: encrypt(data.accessToken) } : {}) }
+}
+
+function decryptInstagramSecrets(data: InstagramAccess): InstagramAccess {
+  return { ...data, accessToken: data.accessToken ? decrypt(data.accessToken) : data.accessToken }
+}
+
+export async function criarInstagramAccess(contaId: string, data: Omit<InstagramAccess, 'id' | 'dataAtualizacao'>): Promise<InstagramAccess> {
+  const db = getDb()
+  const docRef = await db.collection('contas').doc(contaId).collection('instagramAccess').add({
+    ...encryptInstagramSecrets(data),
+    dataAtualizacao: Timestamp.now(),
+  })
+  return { id: docRef.id, ...data, dataAtualizacao: new Date() }
+}
+
+export async function obterInstagramAccess(contaId: string): Promise<InstagramAccess | null> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('instagramAccess').limit(1).get()
+  if (snapshot.empty) return null
+  const doc = snapshot.docs[0]
+  return decryptInstagramSecrets({ id: doc.id, ...convertTimestamps(doc.data()) } as InstagramAccess)
+}
+
+export async function atualizarInstagramAccess(contaId: string, accessId: string, data: Partial<Omit<InstagramAccess, 'id'>>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('instagramAccess').doc(accessId).update({
+    ...encryptInstagramSecrets(data),
+    dataAtualizacao: Timestamp.now(),
+  })
+}
+
+export async function excluirInstagramAccess(contaId: string, accessId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('instagramAccess').doc(accessId).delete()
+}
+
+/** Busca InstagramAccess pelo ID da conta no Instagram (usado no webhook). */
+export async function obterInstagramAccessPorIgUserId(igUserId: string): Promise<{ instagramAccess: InstagramAccess; contaId: string } | null> {
+  const db = getDb()
+  try {
+    const rapida = await db.collectionGroup('instagramAccess').where('igUserId', '==', igUserId).limit(1).get()
+    if (!rapida.empty) {
+      const doc = rapida.docs[0]
+      const contaId = doc.ref.parent.parent?.id
+      if (contaId) {
+        return { instagramAccess: decryptInstagramSecrets({ id: doc.id, ...doc.data() } as InstagramAccess), contaId }
+      }
+    }
+    return null
+  } catch (error) {
+    console.warn('collectionGroup em instagramAccess falhou (provavelmente falta criar o índice — veja o link no erro):', error)
+    return null
+  }
 }
 
 // ─────────────────────────────────────────

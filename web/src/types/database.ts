@@ -108,6 +108,24 @@ export interface MetaAccess {
 }
 
 // ─────────────────────────────────────────
+// InstagramAccess (Subcoleção: contas/{contaId}/instagramAccess)
+// Credenciais de integração com a conta profissional do Instagram —
+// conectada via "Business Login for Instagram" (OAuth direto, sem precisar
+// de Página do Facebook no meio, diferente do fluxo do WhatsApp).
+// ─────────────────────────────────────────
+export interface InstagramAccess {
+  id: string
+  igUserId: string           // ID da conta no Instagram (Instagram-scoped user ID)
+  username: string
+  accountType?: string       // BUSINESS | CREATOR
+  profilePictureUrl?: string
+  accessToken: string        // Long-lived token (60 dias) — sempre criptografado antes de gravar
+  tokenExpiraEm?: Date       // Quando o long-lived token vence (renovável a partir de 24h antes)
+  desconectadoEm?: Date | null
+  dataAtualizacao: Date
+}
+
+// ─────────────────────────────────────────
 // ContaVinculada (Subcoleção: contas/{contaId}/contasVinculadas)
 // Para gerenciar contas "filhas" ou parceiros
 // ─────────────────────────────────────────

@@ -15,11 +15,22 @@ export function WhatsAppGlyph({ className = 'w-5 h-5' }: { className?: string })
 }
 
 export function InstagramGlyph({ className = 'w-4 h-4' }: { className?: string }) {
+  const gradientId = 'instagram-gradient'
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="2.5" y="2.5" width="19" height="19" rx="5.5" stroke="currentColor" strokeWidth="1.8" />
-      <circle cx="12" cy="12" r="4.3" stroke="currentColor" strokeWidth="1.8" />
-      <circle cx="17.3" cy="6.7" r="1.1" fill="currentColor" />
+    <svg viewBox="0 0 32 32" className={className} xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id={gradientId} x1="2" y1="30" x2="30" y2="2" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FFDC80" />
+          <stop offset="25%" stopColor="#F56040" />
+          <stop offset="50%" stopColor="#C13584" />
+          <stop offset="75%" stopColor="#833AB4" />
+          <stop offset="100%" stopColor="#5851DB" />
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="9" fill={`url(#${gradientId})`} />
+      <rect x="8.5" y="8.5" width="15" height="15" rx="4.2" stroke="#fff" strokeWidth="1.7" />
+      <circle cx="16" cy="16" r="3.6" stroke="#fff" strokeWidth="1.7" />
+      <circle cx="20.6" cy="11.4" r="0.95" fill="#fff" />
     </svg>
   )
 }

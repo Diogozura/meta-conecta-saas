@@ -1,6 +1,6 @@
 import { createHmac } from 'crypto'
 import { after } from 'next/server'
-import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem, atualizarMetaAccess } from '@/lib/firestore'
+import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem, atualizarMetaAccess, obterInstagramAccessPorIgUserId } from '@/lib/firestore'
 import { processarMensagemComIA } from '@/lib/aiAgent'
 
 /* ─── GET: verificação do endpoint pelo Meta ─────────────────────────────── */
@@ -43,16 +43,27 @@ export async function POST(request: Request) {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  let payload: WebhookPayload
+  let raw: { object?: string }
   try {
-    payload = JSON.parse(rawBody)
+    raw = JSON.parse(rawBody)
   } catch {
     return new Response('Bad Request', { status: 400 })
   }
 
-  if (payload.object !== 'whatsapp_business_account') {
+  // Instagram (mensagens/comentários) — infraestrutura só, ainda não
+  // processa: as telas de mensagens/comentários do Instagram no Zybot ainda
+  // não existem, então por enquanto só loga e reconhece o recebimento (fail
+  // silencioso e seguro em vez de derrubar o webhook por engano).
+  if (raw.object === 'instagram') {
+    after(() => logWebhookInstagram(raw as InstagramWebhookPayload))
     return new Response('OK', { status: 200 })
   }
+
+  if (raw.object !== 'whatsapp_business_account') {
+    return new Response('OK', { status: 200 })
+  }
+
+  const payload = raw as WebhookPayload
 
   for (const entry of payload.entry ?? []) {
     // Buscar conta pelo WABA ID (vem no entry.id, não no metadata)
@@ -250,6 +261,28 @@ export async function POST(request: Request) {
 }
 
 /**
+ * Loga a estrutura de um webhook do Instagram — placeholder até as telas de
+ * mensagens/comentários existirem no Zybot. Também tenta identificar a conta
+ * (via `obterInstagramAccessPorIgUserId`) só pra confirmar que o vínculo
+ * conta ↔ igUserId está funcionando antes de depender disso de verdade.
+ */
+async function logWebhookInstagram(payload: InstagramWebhookPayload) {
+  for (const entry of payload.entry ?? []) {
+    const campos = entry.changes?.map((c) => c.field) ?? (entry.messaging ? ['messaging'] : [])
+    console.log('[Webhook] Instagram — evento recebido:', { igUserId: entry.id, campos })
+
+    try {
+      const result = await obterInstagramAccessPorIgUserId(entry.id)
+      if (!result) {
+        console.warn('⚠️ Instagram: igUserId não encontrado em nenhuma conta:', entry.id)
+      }
+    } catch (error) {
+      console.error('❌ Erro ao buscar conta pelo igUserId:', error)
+    }
+  }
+}
+
+/**
  * Encaminha uma mensagem recebida pro backend novo (backend/app, FastAPI) —
  * usado quando o WABA não é de nenhuma conta do sistema legado, ou seja, é
  * provavelmente uma empresa cadastrada no CRM novo (aba "Meta" + aba "IA").
@@ -291,6 +324,19 @@ async function encaminharParaBackendNovo(params: {
 }
 
 /* ─── Tipos ──────────────────────────────────────────────────────────────── */
+
+// Estrutura ainda não confirmada contra payload real (nenhuma conta conectada
+// até agora) — só o suficiente pra logar sem quebrar. Revisitar quando as
+// mensagens/comentários do Instagram forem implementados de verdade.
+interface InstagramWebhookPayload {
+  object: 'instagram'
+  entry?: Array<{
+    id: string
+    changes?: Array<{ field: string }>
+    messaging?: unknown[]
+  }>
+}
+
 interface WebhookPayload {
   object: string
   entry: Array<{
