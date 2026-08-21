@@ -71,6 +71,7 @@ export async function exchangeForLongLivedToken(shortLivedToken: string): Promis
   const res = await fetch(url.toString())
   if (!res.ok) {
     const err = await res.json()
+    console.error('[Instagram] Erro ao trocar por token de longa duração:', JSON.stringify(err))
     throw new Error(err?.error?.message ?? 'Falha ao gerar o token de longa duração')
   }
   return res.json()
@@ -101,6 +102,7 @@ export async function getInstagramProfile(
   const res = await fetch(url.toString())
   if (!res.ok) {
     const err = await res.json()
+    console.error('[Instagram] Erro ao buscar perfil:', JSON.stringify(err))
     throw new Error(err?.error?.message ?? 'Falha ao buscar o perfil do Instagram')
   }
   return res.json()
