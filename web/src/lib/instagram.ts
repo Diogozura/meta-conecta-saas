@@ -58,7 +58,17 @@ export async function exchangeCodeForShortLivedToken(code: string): Promise<{ ac
     console.error('[Instagram] Erro completo da Meta na troca de token:', JSON.stringify(err))
     throw new Error(err?.error_message ?? 'Falha ao trocar o código de autorização')
   }
-  return res.json()
+
+  // A resposta vem embrulhada em { data: [{ access_token, user_id, permissions }] },
+  // não como objeto plano — sem isso, access_token fica undefined e a troca
+  // pelo token de longa duração falha com um erro genérico da Graph API.
+  const json = await res.json()
+  const short = Array.isArray(json?.data) ? json.data[0] : json
+  if (!short?.access_token) {
+    console.error('[Instagram] Resposta inesperada da Meta na troca de token:', JSON.stringify(json))
+    throw new Error('Resposta inesperada da Meta ao trocar o código de autorização')
+  }
+  return short
 }
 
 /** Troca o token de curta duração por um long-lived token (60 dias). */
