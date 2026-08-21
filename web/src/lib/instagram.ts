@@ -38,16 +38,19 @@ export async function exchangeCodeForShortLivedToken(code: string): Promise<{ ac
   // pra comparar caractere a caractere com o que a Meta recebeu no /authorize.
   console.log('[Instagram] Trocando código por token. redirect_uri enviado:', JSON.stringify(redirectUri))
 
+  // multipart/form-data, não urlencoded — é o formato que o exemplo oficial
+  // da Meta usa (curl -F); o fetch monta o boundary sozinho a partir do
+  // FormData, então não seta Content-Type manualmente aqui.
+  const form = new FormData()
+  form.set('client_id', process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? '')
+  form.set('client_secret', process.env.INSTAGRAM_APP_SECRET ?? '')
+  form.set('grant_type', 'authorization_code')
+  form.set('redirect_uri', redirectUri)
+  form.set('code', code)
+
   const res = await fetch('https://api.instagram.com/oauth/access_token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? '',
-      client_secret: process.env.INSTAGRAM_APP_SECRET ?? '',
-      grant_type: 'authorization_code',
-      redirect_uri: redirectUri,
-      code,
-    }),
+    body: form,
   })
   if (!res.ok) {
     const err = await res.json()
