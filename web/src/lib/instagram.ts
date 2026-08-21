@@ -64,6 +64,13 @@ export async function exchangeCodeForShortLivedToken(code: string): Promise<{ ac
   // pelo token de longa duração falha com um erro genérico da Graph API.
   const json = await res.json()
   const short = Array.isArray(json?.data) ? json.data[0] : json
+  // Log temporário — token mascarado (só tamanho e prefixo), pra confirmar
+  // que o valor que vamos usar na próxima chamada é mesmo um token válido.
+  console.log(
+    '[Instagram] Resposta bruta do short-lived token. chaves:', JSON.stringify(Object.keys(json)),
+    '| shape:', Array.isArray(json?.data) ? 'wrapped em data[]' : 'plano',
+    '| access_token:', short?.access_token ? `${String(short.access_token).slice(0, 8)}... (len ${String(short.access_token).length})` : 'AUSENTE',
+  )
   if (!short?.access_token) {
     console.error('[Instagram] Resposta inesperada da Meta na troca de token:', JSON.stringify(json))
     throw new Error('Resposta inesperada da Meta ao trocar o código de autorização')
@@ -77,6 +84,14 @@ export async function exchangeForLongLivedToken(shortLivedToken: string): Promis
   url.searchParams.set('grant_type', 'ig_exchange_token')
   url.searchParams.set('client_secret', process.env.INSTAGRAM_APP_SECRET ?? '')
   url.searchParams.set('access_token', shortLivedToken)
+
+  // Log temporário — confirma exatamente o que está sendo enviado (token
+  // mascarado) nessa chamada que está falhando.
+  console.log(
+    '[Instagram] Trocando por token de longa duração. access_token recebido:',
+    shortLivedToken ? `${shortLivedToken.slice(0, 8)}... (len ${shortLivedToken.length})` : 'AUSENTE/UNDEFINED',
+    '| URL (sem secret):', url.toString().replace(/client_secret=[^&]+/, 'client_secret=REDACTED'),
+  )
 
   const res = await fetch(url.toString())
   if (!res.ok) {
