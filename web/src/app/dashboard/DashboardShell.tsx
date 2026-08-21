@@ -17,12 +17,14 @@ import {
   Sparkles,
   ShieldCheck,
   Eye,
+  Loader2,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Toaster } from 'sonner'
 import { RealtimeListeners } from '@/components/RealtimeListeners'
+import { ConnectWabaPrompt } from '@/components/ConnectWabaPrompt'
 import { Logo } from '@/components/Logo'
-import { WhatsAppGlyph, InstagramGlyph, FacebookGlyph } from '@/components/BrandIcons'
+import { WhatsAppGlyph /*, InstagramGlyph, FacebookGlyph */ } from '@/components/BrandIcons'
 import { TourProvider, useTour } from '@/lib/tour/TourContext'
 import { getGlobalTourSteps, getPageTourSteps } from '@/lib/tour/steps'
 
@@ -44,6 +46,7 @@ const manageNavItems: (NavItem & { platformAdminOnly: boolean })[] = [
 ]
 
 const TOUR_SEEN_KEY = 'zybot_tour_seen_global'
+const WABA_SKIP_PATH_PREFIXES = ['/dashboard/onboarding', '/dashboard/configuracoes']
 
 export default function DashboardShell({
   isPlatformAdmin,
@@ -82,6 +85,45 @@ function DashboardShellInner({
   const helpRef = useRef<HTMLDivElement>(null)
   const { active, steps, index, start } = useTour()
 
+  // Gate que roda ANTES de liberar o dashboard (e antes do tour): checa se
+  // essa conta já tem WhatsApp conectado. Roda de novo a cada login/recarga
+  // da página (o estado é só do componente, não fica salvo) — "Agora não"
+  // libera a tela dessa vez, mas o aviso volta no próximo acesso, até a
+  // conta realmente conectar um número.
+  const [wabaGate, setWabaGate] = useState<'checking' | 'blocked' | 'clear'>('checking')
+
+  useEffect(() => {
+    const enabled = !isPlatformAdmin || viewingAsClient
+    const onSkipPath = WABA_SKIP_PATH_PREFIXES.some((p) => pathname.startsWith(p))
+
+    if (!enabled || onSkipPath) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- decide síncrono se a checagem se aplica antes de disparar o fetch
+      setWabaGate('clear')
+      return
+    }
+
+    let cancelled = false
+    fetch('/api/meta/credentials')
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return
+        const conectado = !!(data.credentials?.wabaId && data.credentials?.phoneNumberId)
+        setWabaGate(conectado ? 'clear' : 'blocked')
+      })
+      .catch(() => {
+        // Falha na checagem não pode travar o dashboard pra sempre.
+        if (!cancelled) setWabaGate('clear')
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- roda só uma vez por sessão, não a cada navegação interna
+  }, [])
+
+  function dismissWabaGate() {
+    setWabaGate('clear')
+  }
+
   // "Clientes" (Empresas) é uma tela de admin de plataforma — vê/gerencia
   // TODAS as empresas. Usuários comuns de uma empresa (mesmo Administrador
   // daquela empresa) nunca veem esse item no menu.
@@ -93,6 +135,9 @@ function DashboardShellInner({
   ]
 
   useEffect(() => {
+    // Não inicia o tour enquanto a checagem de conexão ainda não terminou —
+    // evita os dois popups disputando a tela ao mesmo tempo.
+    if (wabaGate === 'checking') return
     const seen = window.localStorage.getItem(TOUR_SEEN_KEY)
     if (!seen) {
       const timer = setTimeout(() => {
@@ -101,7 +146,7 @@ function DashboardShellInner({
       }, 500)
       return () => clearTimeout(timer)
     }
-  }, [isPlatformAdmin, start])
+  }, [isPlatformAdmin, start, wabaGate])
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -130,6 +175,20 @@ function DashboardShellInner({
   }, [active])
 
   const pageTourSteps = getPageTourSteps(pathname)
+
+  // Não libera nada da tela (nem o menu) até saber se precisa mostrar o
+  // aviso de conexão — evita o flash do dashboard "vazio" e a disputa com
+  // o tour guiado, que só começa depois que esse gate resolve.
+  if (wabaGate === 'checking') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-ink-50">
+        <div className="flex flex-col items-center gap-4">
+          <Logo markClassName="w-10 h-10 animate-pulse" textClassName="hidden" />
+          <Loader2 className="w-5 h-5 text-brand-500 animate-spin" />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen bg-ink-50 overflow-hidden">
@@ -166,8 +225,9 @@ function DashboardShellInner({
               active={pathname.startsWith('/dashboard/conversas')}
               onNavigate={() => setSidebarOpen(false)}
             />
-            <ComingSoonRow icon={InstagramGlyph} label="Instagram" />
-            <ComingSoonRow icon={FacebookGlyph} label="Facebook" />
+            {/* Instagram/Facebook pausados sem previsão — reativar quando entrarem em desenvolvimento de novo. */}
+            {/* <ComingSoonRow icon={InstagramGlyph} label="Instagram" /> */}
+            {/* <ComingSoonRow icon={FacebookGlyph} label="Facebook" /> */}
           </NavSection>
 
           <NavSection label="Administração">
@@ -279,6 +339,7 @@ function DashboardShellInner({
       {/* Alertas bonitinhos e Listeners de Webhooks em tempo real */}
       <Toaster richColors />
       <RealtimeListeners />
+      <ConnectWabaPrompt open={wabaGate === 'blocked'} onDismiss={dismissWabaGate} />
     </div>
   )
 }

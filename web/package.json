@@ -10,6 +10,7 @@
     "setup-admin": "tsx scripts/setup-admin.ts",
     "setup-admin-quick": "tsx scripts/setup-admin-quick.ts",
     "setup-manual": "tsx scripts/setup-manual.ts",
+    "criar-conta-teste": "tsx scripts/criar-conta-teste.ts",
     "diagnose": "tsx scripts/diagnose-firebase.ts",
     "test-firestore": "tsx scripts/test-firestore-write.ts",
     "test-credentials": "tsx scripts/test-credentials.ts"
