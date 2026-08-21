@@ -33,6 +33,11 @@ export function getInstagramAuthorizeUrl(state: string): string {
 
 /** Troca o código de autorização (válido por 1h, uso único) por um token de curta duração. */
 export async function exchangeCodeForShortLivedToken(code: string): Promise<{ access_token: string; user_id: string }> {
+  const redirectUri = getRedirectUri()
+  // Log temporário pra diagnosticar o erro "redirect_uri is identical" — dá
+  // pra comparar caractere a caractere com o que a Meta recebeu no /authorize.
+  console.log('[Instagram] Trocando código por token. redirect_uri enviado:', JSON.stringify(redirectUri))
+
   const res = await fetch('https://api.instagram.com/oauth/access_token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -40,12 +45,13 @@ export async function exchangeCodeForShortLivedToken(code: string): Promise<{ ac
       client_id: process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? '',
       client_secret: process.env.INSTAGRAM_APP_SECRET ?? '',
       grant_type: 'authorization_code',
-      redirect_uri: getRedirectUri(),
+      redirect_uri: redirectUri,
       code,
     }),
   })
   if (!res.ok) {
     const err = await res.json()
+    console.error('[Instagram] Erro completo da Meta na troca de token:', JSON.stringify(err))
     throw new Error(err?.error_message ?? 'Falha ao trocar o código de autorização')
   }
   return res.json()
