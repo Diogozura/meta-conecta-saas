@@ -17,6 +17,13 @@ export interface AgentRunParams {
   /** Histórico da conversa, em ordem cronológica, sem a mensagem atual. */
   history: HistoricoMensagem[]
   mensagemAtual: string
+  /**
+   * Áudio da mensagem atual (nota de voz), quando ela for uma — só
+   * preenchido pro provedor Gemini (único com suporte nativo a áudio nos 3
+   * adaptadores hoje). Os outros adaptadores ignoram esse campo e continuam
+   * recebendo só o rótulo genérico em `mensagemAtual`.
+   */
+  audioInline?: { data: string; mimeType: string }
 }
 
 export type AgentProvider = 'gemini' | 'openai' | 'anthropic'

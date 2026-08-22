@@ -64,6 +64,11 @@ type Conversation = {
 
 const STORAGE_KEY = 'meta-conversas'
 
+// Mesmos rótulos gerados no webhook (api/webhook/route.ts) pra mídia sem
+// legenda — usado só pra saber quando ESCONDER o texto da bolha (a mídia já
+// aparece visualmente, mostrar "📷 Imagem" embaixo de uma imagem é redundante).
+const RETULOS_MIDIA_PADRAO_CLIENTE = ['📷 Imagem', '🎥 Vídeo', '🎤 Áudio', '📎 Documento', '🩹 Figurinha']
+
 type HistoryMessage = {
   id: string
   from: string
@@ -1308,6 +1313,10 @@ function ConversasInner() {
                 // ID — os bytes são buscados na hora, direto da Meta, por
                 // esse proxy autenticado (ver api/whatsapp/midia/[mediaId]).
                 const midiaSrc = msg.mediaId ? `/api/whatsapp/midia/${msg.mediaId}` : undefined
+                // Sem legenda de verdade, o texto é só o rótulo genérico que
+                // a gente mesmo gerou (ex: "📷 Imagem") — redundante quando a
+                // mídia já aparece visualmente na bolha, então esconde.
+                const textoEhRotuloPadraoDeMidia = !!midiaSrc && RETULOS_MIDIA_PADRAO_CLIENTE.includes(msg.text)
                 return (
                 <div key={msg.id} className={`flex ${msg.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
                   <div
@@ -1346,7 +1355,7 @@ function ConversasInner() {
                     {msg.mediaType === 'sticker' && midiaSrc && (
                       <img src={midiaSrc} alt="Figurinha" className="w-24 h-24 mb-1" />
                     )}
-                    {msg.text && <p className="leading-snug">{msg.text}</p>}
+                    {msg.text && !textoEhRotuloPadraoDeMidia && <p className="leading-snug">{msg.text}</p>}
                     {msg.failReason && (
                       <p className="flex items-center gap-1 text-[11px] mt-1 font-medium text-red-700">
                         <AlertCircle className="w-3 h-3 shrink-0" />

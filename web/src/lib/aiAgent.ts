@@ -1,5 +1,5 @@
 import { obterConta, obterMetaAccess, listarMensagensPorNumero, criarMensagem, obterConversa, registrarErroAgenteIA, registrarUsoAgenteIA, marcarConversaEmAndamento } from '@/lib/firestore'
-import { sendTextMessage } from '@/lib/meta'
+import { sendTextMessage, getMediaInfo, downloadMedia } from '@/lib/meta'
 import { resolverPhoneNumberId } from '@/lib/canalWhatsapp'
 import { runGeminiAgent } from '@/lib/aiProviderGemini'
 import { runOpenAIAgent } from '@/lib/aiProviderOpenAI'
@@ -71,6 +71,22 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
       .filter((parte): parte is string => !!parte)
       .join('\n\n')
 
+    // Nota de voz: o Gemini entende áudio nativamente — busca os bytes na
+    // Meta (a mensagem só guarda o mediaId) e manda pro modelo de verdade,
+    // em vez do cliente ficar sem resposta útil pro que ele realmente
+    // perguntou. Só faz sentido pro provedor Gemini; nos outros, a IA
+    // continua vendo só o rótulo genérico ("🎤 Áudio") em `mensagemAtual`.
+    let audioInline: AgentRunParams['audioInline']
+    if (conta.ai.provider === 'gemini' && ultima.mediaType === 'audio' && ultima.mediaId) {
+      try {
+        const info = await getMediaInfo(ultima.mediaId, metaAccess.businessToken)
+        const { buffer, mimeType } = await downloadMedia(info.url, metaAccess.businessToken)
+        audioInline = { data: buffer.toString('base64'), mimeType }
+      } catch (error) {
+        console.error('Erro ao baixar áudio pra transcrição pela IA (segue sem o áudio):', error)
+      }
+    }
+
     const runParams: AgentRunParams = {
       contaId,
       telefoneCliente,
@@ -78,7 +94,8 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
       model: conta.ai.model,
       apiKey: conta.ai.apiKey,
       history: ordenadas.map((m) => ({ role: m.tipo === 'recebida' ? 'user' as const : 'model' as const, text: m.text })),
-      mensagemAtual: ultima.text,
+      mensagemAtual: audioInline ? 'O cliente mandou uma nota de voz — ouça o áudio anexado e responda ao que ele disse.' : ultima.text,
+      audioInline,
     }
 
     const textoFinal = await executarProvedor(conta.ai.provider, runParams)

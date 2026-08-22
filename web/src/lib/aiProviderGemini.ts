@@ -47,7 +47,14 @@ export async function runGeminiAgent(params: AgentRunParams): Promise<string> {
     history,
   })
 
-  let result = await comRetentativa(() => chat.sendMessage({ message: params.mensagemAtual }))
+  // Nota de voz: manda o áudio de verdade pro modelo (Gemini entende áudio
+  // nativamente), não só o rótulo genérico ("🎤 Áudio") que teria ido no
+  // texto — o agente consegue responder o que o cliente realmente perguntou.
+  const primeiraMensagem: string | Part[] = params.audioInline
+    ? [{ text: params.mensagemAtual }, { inlineData: { mimeType: params.audioInline.mimeType, data: params.audioInline.data } }]
+    : params.mensagemAtual
+
+  let result = await comRetentativa(() => chat.sendMessage({ message: primeiraMensagem }))
 
   for (let i = 0; i < MAX_ITERACOES_AGENTE; i++) {
     const chamadas = result.functionCalls
