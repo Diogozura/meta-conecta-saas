@@ -15,6 +15,7 @@ export async function GET() {
 
   return NextResponse.json({
     credentials: {
+      igUserId: instagramAccess.igUserId,
       username: instagramAccess.username,
       accountType: instagramAccess.accountType,
       profilePictureUrl: instagramAccess.profilePictureUrl,

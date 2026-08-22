@@ -4,7 +4,11 @@
  * (diferente do Embedded Signup do WhatsApp, que usa o SDK do Facebook).
  */
 
+import { auth } from '@/lib/auth'
+import { obterInstagramAccess } from '@/lib/firestore'
+
 const IG_GRAPH_API = 'https://graph.instagram.com'
+const IG_GRAPH_API_VERSION = 'v21.0'
 
 function getRedirectUri() {
   // Precisa bater EXATAMENTE com a URL cadastrada em "Login do Instagram
@@ -131,4 +135,228 @@ export async function getInstagramProfile(
     throw new Error(err?.error?.message ?? 'Falha ao buscar o perfil do Instagram')
   }
   return res.json()
+}
+
+/** Busca a conta + token do Instagram do usuário logado — mesmo padrão de getMetaCredentials(). */
+export async function getInstagramCredentials() {
+  const session = await auth()
+  if (!session?.user?.contaId) {
+    throw new Error('Usuário não autenticado')
+  }
+
+  const instagramAccess = await obterInstagramAccess(session.user.contaId)
+  if (!instagramAccess) {
+    throw new Error('Conta do Instagram não conectada. Acesse a página do Instagram para conectar.')
+  }
+
+  return instagramAccess
+}
+
+export class InstagramApiError extends Error {
+  code?: number
+  constructor(message: string, code?: number) {
+    super(message)
+    this.name = 'InstagramApiError'
+    this.code = code
+  }
+}
+
+async function igFetch<T>(path: string, accessToken: string, init?: RequestInit): Promise<T> {
+  const url = new URL(`${IG_GRAPH_API}/${IG_GRAPH_API_VERSION}/${path}`)
+  const res = await fetch(url.toString(), {
+    ...init,
+    headers: { ...init?.headers, Authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => null)
+    throw new InstagramApiError(err?.error?.message ?? `Falha na chamada à API do Instagram (${path})`, err?.error?.code)
+  }
+  return res.json()
+}
+
+/* ─── Mensagens (DMs) ────────────────────────────────────────────────────── */
+
+export interface InstagramConversationSummary {
+  id: string
+  updated_time?: string
+  participants?: { data: Array<{ id: string; username?: string }> }
+}
+
+/** Lista as conversas (threads de DM) da conta conectada. */
+export async function listConversations(accessToken: string): Promise<InstagramConversationSummary[]> {
+  const data = await igFetch<{ data: InstagramConversationSummary[] }>(
+    'me/conversations?platform=instagram&fields=id,updated_time,participants{id,username}',
+    accessToken,
+  )
+  return data.data ?? []
+}
+
+export interface InstagramMessage {
+  id: string
+  from?: { id: string; username?: string }
+  to?: { data: Array<{ id: string; username?: string }> }
+  message?: string
+  created_time?: string
+}
+
+/** Lista as mensagens de uma conversa específica. */
+export async function listConversationMessages(accessToken: string, conversationId: string): Promise<InstagramMessage[]> {
+  const data = await igFetch<{ messages: { data: InstagramMessage[] } }>(
+    `${conversationId}?fields=messages.limit(50){id,from{id,username},to{id,username},message,created_time}`,
+    accessToken,
+  )
+  return data.messages?.data ?? []
+}
+
+/** Envia uma DM de texto para um usuário do Instagram (Instagram-scoped ID). */
+export async function sendDirectMessage(accessToken: string, recipientId: string, text: string): Promise<{ recipient_id: string; message_id: string }> {
+  return igFetch('me/messages', accessToken, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipient: { id: recipientId }, message: { text } }),
+  })
+}
+
+/* ─── Publicações e comentários ──────────────────────────────────────────── */
+
+export interface InstagramMedia {
+  id: string
+  caption?: string
+  media_type?: string
+  media_url?: string
+  thumbnail_url?: string
+  permalink?: string
+  timestamp?: string
+  comments_count?: number
+  like_count?: number
+}
+
+/** Lista as publicações mais recentes da conta (para a aba de comentários, o histórico e a atividade recente). */
+export async function listRecentMedia(accessToken: string, igUserId: string, limit = 25): Promise<InstagramMedia[]> {
+  const data = await igFetch<{ data: InstagramMedia[] }>(
+    `${igUserId}/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=${limit}`,
+    accessToken,
+  )
+  return data.data ?? []
+}
+
+export interface InstagramComment {
+  id: string
+  text: string
+  username?: string
+  timestamp?: string
+}
+
+/** Lista os comentários de uma publicação. */
+export async function listMediaComments(accessToken: string, mediaId: string): Promise<InstagramComment[]> {
+  const data = await igFetch<{ data: InstagramComment[] }>(
+    `${mediaId}/comments?fields=id,text,username,timestamp`,
+    accessToken,
+  )
+  return data.data ?? []
+}
+
+/** Responde um comentário. */
+export async function replyToComment(accessToken: string, commentId: string, message: string): Promise<{ id: string }> {
+  return igFetch(`${commentId}/replies`, accessToken, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  })
+}
+
+/* ─── Publicação de conteúdo (posts, reels, vídeos, stories) ───────────────── */
+
+export interface CreateMediaContainerParams {
+  imageUrl?: string
+  videoUrl?: string
+  caption?: string
+  mediaType: 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES'
+}
+
+/** Cria o container de mídia — primeiro passo da publicação (a segunda etapa é publishContainer). */
+export async function createMediaContainer(accessToken: string, igUserId: string, params: CreateMediaContainerParams): Promise<{ id: string }> {
+  const body: Record<string, string> = {}
+  if (params.imageUrl) body.image_url = params.imageUrl
+  if (params.videoUrl) body.video_url = params.videoUrl
+  if (params.caption) body.caption = params.caption
+  if (params.mediaType !== 'IMAGE') body.media_type = params.mediaType
+
+  return igFetch(`${igUserId}/media`, accessToken, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+/** Consulta o status de processamento de um container (vídeo/reels processam de forma assíncrona). */
+export async function getContainerStatus(accessToken: string, containerId: string): Promise<{ status_code: 'IN_PROGRESS' | 'FINISHED' | 'ERROR' | 'EXPIRED' | 'PUBLISHED' }> {
+  return igFetch(`${containerId}?fields=status_code`, accessToken)
+}
+
+/** Publica um container já pronto (status_code === 'FINISHED'). */
+export async function publishContainer(accessToken: string, igUserId: string, containerId: string): Promise<{ id: string }> {
+  return igFetch(`${igUserId}/media_publish`, accessToken, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ creation_id: containerId }),
+  })
+}
+
+/* ─── Menções (@usuário em comentário ou legenda) ───────────────────────── */
+// A Graph API não tem um endpoint pra "listar menções" — só é possível saber
+// de uma menção quando o webhook (field "mentions") avisa, e então buscar o
+// detalhe (comentário ou mídia) pelo ID que o webhook informou.
+
+export interface MentionedComment {
+  id: string
+  text?: string
+  username?: string
+  timestamp?: string
+  media?: { id: string }
+}
+
+/** Busca o texto/autor de um comentário que mencionou a conta (a partir do webhook de menção). */
+export async function getMentionedComment(accessToken: string, igUserId: string, commentId: string): Promise<MentionedComment> {
+  const data = await igFetch<{ mentioned_comment: MentionedComment }>(
+    `${igUserId}?fields=mentioned_comment.comment_id(${commentId}){id,text,username,timestamp,media}`,
+    accessToken,
+  )
+  return data.mentioned_comment
+}
+
+export interface MentionedMedia {
+  id: string
+  caption?: string
+  media_url?: string
+  thumbnail_url?: string
+  timestamp?: string
+  username?: string
+}
+
+/** Busca os dados de uma publicação que mencionou a conta na legenda (a partir do webhook de menção). */
+export async function getMentionedMedia(accessToken: string, igUserId: string, mediaId: string): Promise<MentionedMedia> {
+  const data = await igFetch<{ mentioned_media: MentionedMedia }>(
+    `${igUserId}?fields=mentioned_media.media_id(${mediaId}){id,caption,media_url,thumbnail_url,timestamp,username}`,
+    accessToken,
+  )
+  return data.mentioned_media
+}
+
+/* ─── Insights (métricas) ───────────────────────────────────────────────── */
+
+export interface InstagramInsightValue {
+  name: string
+  period: string
+  values: Array<{ value: number; end_time?: string }>
+  title?: string
+}
+
+/** Métricas de conta (ex: reach, impressions, profile_views) num período (day/week/days_28). */
+export async function getAccountInsights(accessToken: string, igUserId: string, metrics: string[], period = 'day'): Promise<InstagramInsightValue[]> {
+  const data = await igFetch<{ data: InstagramInsightValue[] }>(
+    `${igUserId}/insights?metric=${metrics.join(',')}&period=${period}`,
+    accessToken,
+  )
+  return data.data ?? []
 }

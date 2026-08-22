@@ -23,6 +23,7 @@ if (!getApps().length && process.env.FIREBASE_PROJECT_ID) {
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
         privateKey: cleanKey,
       }),
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET ?? process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
     })
     
     // Configurar Firestore - conectar ao database específico "zybot-data"

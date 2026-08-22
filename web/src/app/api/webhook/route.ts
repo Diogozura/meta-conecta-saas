@@ -1,7 +1,8 @@
 import { createHmac } from 'crypto'
 import { after } from 'next/server'
-import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem, atualizarMetaAccess, obterInstagramAccessPorIgUserId } from '@/lib/firestore'
+import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem, atualizarMetaAccess, obterInstagramAccessPorIgUserId, criarMensagemInstagram, criarComentarioInstagram, criarMencaoInstagram } from '@/lib/firestore'
 import { processarMensagemComIA } from '@/lib/aiAgent'
+import { getMentionedComment, getMentionedMedia } from '@/lib/instagram'
 
 /* ─── GET: verificação do endpoint pelo Meta ─────────────────────────────── */
 export async function GET(request: Request) {
@@ -50,12 +51,10 @@ export async function POST(request: Request) {
     return new Response('Bad Request', { status: 400 })
   }
 
-  // Instagram (mensagens/comentários) — infraestrutura só, ainda não
-  // processa: as telas de mensagens/comentários do Instagram no Zybot ainda
-  // não existem, então por enquanto só loga e reconhece o recebimento (fail
-  // silencioso e seguro em vez de derrubar o webhook por engano).
+  // Instagram (DMs e comentários) — mesmo padrão de sempre responder 200 OK
+  // mesmo se o processamento falhar, pra Meta não desativar o webhook.
   if (raw.object === 'instagram') {
-    after(() => logWebhookInstagram(raw as InstagramWebhookPayload))
+    after(() => processarWebhookInstagram(raw as InstagramWebhookPayload))
     return new Response('OK', { status: 200 })
   }
 
@@ -261,23 +260,103 @@ export async function POST(request: Request) {
 }
 
 /**
- * Loga a estrutura de um webhook do Instagram — placeholder até as telas de
- * mensagens/comentários existirem no Zybot. Também tenta identificar a conta
- * (via `obterInstagramAccessPorIgUserId`) só pra confirmar que o vínculo
- * conta ↔ igUserId está funcionando antes de depender disso de verdade.
+ * Processa os eventos de um webhook do Instagram: DMs (`entry.messaging`) e
+ * comentários (`entry.changes` com `field === 'comments'`). Roda depois da
+ * resposta 200 OK (via `after()`, chamado no POST acima) — mesmo motivo do
+ * WhatsApp: a Meta não pode esperar o processamento pra considerar o webhook entregue.
  */
-async function logWebhookInstagram(payload: InstagramWebhookPayload) {
+async function processarWebhookInstagram(payload: InstagramWebhookPayload) {
   for (const entry of payload.entry ?? []) {
-    const campos = entry.changes?.map((c) => c.field) ?? (entry.messaging ? ['messaging'] : [])
-    console.log('[Webhook] Instagram — evento recebido:', { igUserId: entry.id, campos })
-
+    const igUserId = entry.id
+    let contaId: string | undefined
+    let accessToken: string | undefined
     try {
-      const result = await obterInstagramAccessPorIgUserId(entry.id)
-      if (!result) {
-        console.warn('⚠️ Instagram: igUserId não encontrado em nenhuma conta:', entry.id)
-      }
+      const result = await obterInstagramAccessPorIgUserId(igUserId)
+      contaId = result?.contaId
+      accessToken = result?.instagramAccess.accessToken
     } catch (error) {
       console.error('❌ Erro ao buscar conta pelo igUserId:', error)
+    }
+
+    if (!contaId) {
+      console.warn('⚠️ Instagram: igUserId não encontrado em nenhuma conta:', igUserId)
+      continue
+    }
+
+    for (const evento of entry.messaging ?? []) {
+      if (!evento.message?.text || !evento.message.mid) continue
+      // Eco da própria mensagem enviada pelo painel/Meta — já foi persistida
+      // na hora do envio (ver POST /api/instagram/messages), evita duplicar.
+      if (evento.message.is_echo) continue
+
+      try {
+        await criarMensagemInstagram({
+          id: evento.message.mid,
+          contaId,
+          conversationId: evento.sender.id,
+          from: evento.sender.id,
+          to: evento.recipient?.id,
+          text: evento.message.text,
+          timestamp: evento.timestamp ? Math.floor(evento.timestamp / 1000) : Math.floor(Date.now() / 1000),
+          tipo: 'recebida',
+        })
+      } catch (error) {
+        console.error('❌ Erro ao salvar DM do Instagram no Firebase:', error)
+      }
+    }
+
+    for (const change of entry.changes ?? []) {
+      if (change.field === 'comments' && change.value) {
+        const comentario = change.value
+        try {
+          await criarComentarioInstagram({
+            id: comentario.id,
+            contaId,
+            mediaId: comentario.media?.id ?? '',
+            from: comentario.from?.username ?? comentario.from?.id ?? 'desconhecido',
+            fromId: comentario.from?.id,
+            text: comentario.text ?? '',
+            timestamp: Math.floor(Date.now() / 1000),
+          })
+        } catch (error) {
+          console.error('❌ Erro ao salvar comentário do Instagram no Firebase:', error)
+        }
+        continue
+      }
+
+      // Menção (@conta) num comentário ou na legenda de uma publicação de terceiros — a Graph
+      // API só avisa por webhook (sem endpoint pra buscar menções antigas), então é preciso
+      // buscar o detalhe (texto/mídia) na hora, usando o ID que o webhook informou.
+      if (change.field === 'mentions' && change.value && accessToken) {
+        const mencao = change.value
+        try {
+          if (mencao.comment_id) {
+            const comentario = await getMentionedComment(accessToken, igUserId, mencao.comment_id)
+            await criarMencaoInstagram({
+              id: comentario.id,
+              contaId,
+              tipo: 'comentario',
+              mediaId: comentario.media?.id,
+              text: comentario.text,
+              username: comentario.username,
+              timestamp: comentario.timestamp ? Math.floor(new Date(comentario.timestamp).getTime() / 1000) : Math.floor(Date.now() / 1000),
+            })
+          } else if (mencao.media_id) {
+            const media = await getMentionedMedia(accessToken, igUserId, mencao.media_id)
+            await criarMencaoInstagram({
+              id: media.id,
+              contaId,
+              tipo: 'legenda',
+              mediaId: media.id,
+              text: media.caption,
+              username: media.username,
+              timestamp: media.timestamp ? Math.floor(new Date(media.timestamp).getTime() / 1000) : Math.floor(Date.now() / 1000),
+            })
+          }
+        } catch (error) {
+          console.error('❌ Erro ao processar menção do Instagram:', error)
+        }
+      }
     }
   }
 }
@@ -325,15 +404,32 @@ async function encaminharParaBackendNovo(params: {
 
 /* ─── Tipos ──────────────────────────────────────────────────────────────── */
 
-// Estrutura ainda não confirmada contra payload real (nenhuma conta conectada
-// até agora) — só o suficiente pra logar sem quebrar. Revisitar quando as
-// mensagens/comentários do Instagram forem implementados de verdade.
+// Estrutura ainda não confirmada contra um payload real em produção (só
+// testada localmente) — revisar contra os logs quando a primeira conta de
+// cliente de verdade começar a receber DMs/comentários.
 interface InstagramWebhookPayload {
   object: 'instagram'
   entry?: Array<{
     id: string
-    changes?: Array<{ field: string }>
-    messaging?: unknown[]
+    time?: number
+    messaging?: Array<{
+      sender: { id: string }
+      recipient?: { id: string }
+      timestamp?: number
+      message?: { mid: string; text?: string; is_echo?: boolean }
+    }>
+    changes?: Array<{
+      field: string
+      value?: {
+        id: string
+        text?: string
+        from?: { id: string; username?: string }
+        media?: { id: string }
+        // Presentes só em eventos field === 'mentions' — o comentário ou a mídia que mencionou a conta.
+        comment_id?: string
+        media_id?: string
+      }
+    }>
   }>
 }
 

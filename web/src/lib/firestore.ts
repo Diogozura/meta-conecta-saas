@@ -5,7 +5,7 @@
 
 import { getFirestore, Timestamp, Query, Filter, FieldValue } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, ContaAiConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, Profissional, Servico, Disponibilidade, Agendamento, Conversa } from '@/types/database'
+import { Conta, ContaAiConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -888,5 +888,148 @@ export async function atualizarStatusMensagem(
     })
     throw error
   }
+}
+
+// ─────────────────────────────────────────
+// MENSAGENS INSTAGRAM (DMs) — mesmo padrão de MENSAGENS (WhatsApp): coleção
+// global, doc ID = ID da mensagem no Instagram (dedupe), filtro por `since`
+// em memória pra evitar índice composto novo.
+// ─────────────────────────────────────────
+
+export async function criarMensagemInstagram(data: Omit<MensagemInstagram, 'dataCriacao'>): Promise<MensagemInstagram> {
+  const db = getDb()
+  const now = Timestamp.now()
+  await db.collection('mensagensInstagram').doc(data.id).set({
+    ...data,
+    dataCriacao: now,
+  })
+  return { ...data, dataCriacao: now.toDate() }
+}
+
+export async function listarMensagensInstagram(contaId: string, limit = 100): Promise<MensagemInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('mensagensInstagram')
+    .where('contaId', '==', contaId)
+    .orderBy('timestamp', 'desc')
+    .limit(limit)
+    .get()
+  return snapshot.docs.map((doc) => ({ ...doc.data() } as MensagemInstagram))
+}
+
+export async function listarMensagensInstagramPorConversa(contaId: string, conversationId: string, limit = 100): Promise<MensagemInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('mensagensInstagram')
+    .where('contaId', '==', contaId)
+    .where('conversationId', '==', conversationId)
+    .orderBy('timestamp', 'desc')
+    .limit(limit)
+    .get()
+  return snapshot.docs.map((doc) => ({ ...doc.data() } as MensagemInstagram))
+}
+
+/** Mensagens recebidas depois de um instante — usado pelo polling do painel (mesma lógica de listarMensagensRecebidasDesde). */
+export async function listarMensagensInstagramRecebidasDesde(contaId: string, sinceMs: number, limit = 15): Promise<MensagemInstagram[]> {
+  const recentes = await listarMensagensInstagram(contaId, limit)
+  return recentes
+    .filter((m) => m.tipo === 'recebida' && (m.dataCriacao as unknown as Timestamp).toMillis() > sinceMs)
+    .sort((a, b) => (a.dataCriacao as unknown as Timestamp).toMillis() - (b.dataCriacao as unknown as Timestamp).toMillis())
+}
+
+// ─────────────────────────────────────────
+// COMENTÁRIOS INSTAGRAM
+// ─────────────────────────────────────────
+
+export async function criarComentarioInstagram(data: Omit<ComentarioInstagram, 'dataCriacao'>): Promise<ComentarioInstagram> {
+  const db = getDb()
+  const now = Timestamp.now()
+  await db.collection('comentariosInstagram').doc(data.id).set({
+    ...data,
+    dataCriacao: now,
+  })
+  return { ...data, dataCriacao: now.toDate() }
+}
+
+export async function listarComentariosPorMedia(contaId: string, mediaId: string): Promise<ComentarioInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('comentariosInstagram')
+    .where('contaId', '==', contaId)
+    .where('mediaId', '==', mediaId)
+    .orderBy('timestamp', 'desc')
+    .get()
+  return snapshot.docs.map((doc) => ({ ...doc.data() } as ComentarioInstagram))
+}
+
+/**
+ * Marca um comentário como respondido — usa `set` com merge (não `update`)
+ * porque o comentário pode nunca ter sido persistido via webhook (ex:
+ * comentário antigo, de antes da integração), então o doc pode não existir ainda.
+ */
+export async function marcarComentarioRespondido(contaId: string, mediaId: string, comentarioId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('comentariosInstagram').doc(comentarioId).set(
+    { contaId, mediaId, respondido: true },
+    { merge: true },
+  )
+}
+
+// ─────────────────────────────────────────
+// MENÇÕES INSTAGRAM — só existem a partir do primeiro webhook recebido
+// (a Graph API não permite buscar menções antigas).
+// ─────────────────────────────────────────
+
+export async function criarMencaoInstagram(data: Omit<MencaoInstagram, 'dataCriacao'>): Promise<MencaoInstagram> {
+  const db = getDb()
+  const now = Timestamp.now()
+  await db.collection('mencoesInstagram').doc(data.id).set({
+    ...data,
+    dataCriacao: now,
+  })
+  return { ...data, dataCriacao: now.toDate() }
+}
+
+export async function listarMencoesRecentes(contaId: string, limit = 10): Promise<MencaoInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('mencoesInstagram')
+    .where('contaId', '==', contaId)
+    .orderBy('timestamp', 'desc')
+    .limit(limit)
+    .get()
+  return snapshot.docs.map((doc) => ({ ...doc.data() } as MencaoInstagram))
+}
+
+// ─────────────────────────────────────────
+// PUBLICAÇÕES INSTAGRAM (Subcoleção: contas/{contaId}/publicacoesInstagram)
+// ─────────────────────────────────────────
+
+export async function criarPublicacaoInstagram(contaId: string, data: Omit<PublicacaoInstagram, 'id' | 'contaId' | 'dataCriacao'>): Promise<PublicacaoInstagram> {
+  const db = getDb()
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('publicacoesInstagram').add({
+    ...data,
+    contaId,
+    dataCriacao: now,
+  })
+  return { id: docRef.id, contaId, ...data, dataCriacao: now.toDate() }
+}
+
+export async function atualizarPublicacaoInstagram(contaId: string, publicacaoId: string, data: Partial<Omit<PublicacaoInstagram, 'id' | 'contaId' | 'dataCriacao'>>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('publicacoesInstagram').doc(publicacaoId).update(data)
+}
+
+export async function obterPublicacaoInstagram(contaId: string, publicacaoId: string): Promise<PublicacaoInstagram | null> {
+  const db = getDb()
+  const docSnap = await db.collection('contas').doc(contaId).collection('publicacoesInstagram').doc(publicacaoId).get()
+  if (!docSnap.exists) return null
+  return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as PublicacaoInstagram
+}
+
+export async function listarPublicacoesInstagram(contaId: string, limit = 30): Promise<PublicacaoInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('publicacoesInstagram')
+    .orderBy('dataCriacao', 'desc')
+    .limit(limit)
+    .get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as PublicacaoInstagram))
 }
 

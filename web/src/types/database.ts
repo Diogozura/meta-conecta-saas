@@ -126,6 +126,76 @@ export interface InstagramAccess {
 }
 
 // ─────────────────────────────────────────
+// Mensagem Instagram (Coleção global: mensagensInstagram)
+// Mesmo formato de Mensagem (WhatsApp), mas para DMs do Instagram — coleção
+// separada em vez de reaproveitar `mensagens` pra não arriscar o caminho
+// estável do WhatsApp (índices, polling, IA) ao mexer nele.
+// ─────────────────────────────────────────
+export interface MensagemInstagram {
+  id: string                    // ID da mensagem no Instagram
+  contaId: string
+  conversationId: string        // ID da conversa (thread) no Instagram
+  from: string                  // Instagram-scoped ID de quem enviou
+  to?: string                   // Instagram-scoped ID do destinatário (mensagens enviadas)
+  nomeContato?: string
+  fotoContato?: string
+  text: string
+  timestamp: number             // Unix timestamp em segundos
+  tipo: 'recebida' | 'enviada'
+  dataCriacao: Date
+}
+
+// ─────────────────────────────────────────
+// Comentário Instagram (Coleção global: comentariosInstagram)
+// ─────────────────────────────────────────
+export interface ComentarioInstagram {
+  id: string                    // ID do comentário no Instagram
+  contaId: string
+  mediaId: string                // ID da publicação comentada
+  from: string                   // username de quem comentou
+  fromId?: string                // Instagram-scoped ID de quem comentou
+  text: string
+  timestamp: number
+  respondido?: boolean
+  dataCriacao: Date
+}
+
+// ─────────────────────────────────────────
+// Menção Instagram (Coleção global: mencoesInstagram)
+// Só existe a partir do momento em que o webhook avisa de uma menção — a
+// Graph API não permite listar menções antigas, então não há histórico
+// anterior à conexão da conta.
+// ─────────────────────────────────────────
+export interface MencaoInstagram {
+  id: string                    // ID do comentário ou da mídia mencionada (dedupe)
+  contaId: string
+  tipo: 'comentario' | 'legenda'
+  mediaId?: string
+  text?: string
+  username?: string
+  timestamp: number
+  dataCriacao: Date
+}
+
+// ─────────────────────────────────────────
+// Publicação Instagram (Subcoleção: contas/{contaId}/publicacoesInstagram)
+// Histórico de posts/reels/vídeos/stories publicados pelo painel.
+// ─────────────────────────────────────────
+export interface PublicacaoInstagram {
+  id: string
+  contaId: string
+  containerId?: string           // ID do container de mídia (Graph API)
+  mediaId?: string                // ID da publicação, depois de publicada
+  tipo: 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES'
+  mediaUrl: string                 // URL pública usada para criar o container
+  caption?: string
+  status: 'enviando' | 'processando' | 'publicado' | 'falhou'
+  erro?: string
+  dataCriacao: Date
+  publicadoEm?: Date
+}
+
+// ─────────────────────────────────────────
 // ContaVinculada (Subcoleção: contas/{contaId}/contasVinculadas)
 // Para gerenciar contas "filhas" ou parceiros
 // ─────────────────────────────────────────

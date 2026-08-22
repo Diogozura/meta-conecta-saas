@@ -1,21 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ComponentType } from 'react'
 import { Save, Eye, EyeOff, AlertCircle, AlertTriangle, Sparkles, SlidersHorizontal, FileText, UserCog, Plug, ExternalLink, Gauge } from 'lucide-react'
 import { toast } from 'sonner'
 import { AGENT_PROVIDERS } from '@/lib/aiAgentTypes'
 import { Skeleton } from '@/components/Skeleton'
+import { InstagramGlyph } from '@/components/BrandIcons'
+import InstagramStatusCard from '@/components/instagram/InstagramStatusCard'
 import TemplatesPage from '../templates/page'
 import UsuariosPage from '../usuarios/page'
 import OnboardingPage from '../onboarding/page'
 
-type ConfigTab = 'geral' | 'templates' | 'usuarios' | 'onboarding'
+type ConfigTab = 'geral' | 'templates' | 'usuarios' | 'onboarding' | 'instagram'
 
-const configTabs: { key: ConfigTab; label: string; icon: typeof SlidersHorizontal }[] = [
+const configTabs: { key: ConfigTab; label: string; icon: ComponentType<{ className?: string }> }[] = [
   { key: 'geral', label: 'Geral', icon: SlidersHorizontal },
   { key: 'templates', label: 'Templates', icon: FileText },
   { key: 'usuarios', label: 'Usuários', icon: UserCog },
   { key: 'onboarding', label: 'Conectar WABA', icon: Plug },
+  { key: 'instagram', label: 'Instagram', icon: InstagramGlyph },
 ]
 
 export default function ConfiguracoesPage() {
@@ -51,6 +54,7 @@ export default function ConfiguracoesPage() {
       {tab === 'templates' && <TemplatesPage />}
       {tab === 'usuarios' && <UsuariosPage />}
       {tab === 'onboarding' && <OnboardingPage />}
+      {tab === 'instagram' && <InstagramStatusCard variant="full" />}
     </div>
   )
 }
