@@ -6,9 +6,6 @@ import { getMentionedComment, getMentionedMedia } from '@/lib/instagram'
 import { processarMensagemComFluxo } from '@/lib/fluxoService'
 import { aplicarPrioridadeAutomatica } from '@/lib/prioridadeConversa'
 import { processarRespostaCsatSeAguardando } from '@/lib/csatService'
-import { getMediaInfo, downloadMedia } from '@/lib/meta'
-import { uploadWhatsappMedia } from '@/lib/storage'
-import { extensaoPorMime } from '@/lib/mediaTipo'
 
 type TipoMidiaRecebida = 'image' | 'audio' | 'video' | 'document' | 'sticker'
 
@@ -102,12 +99,10 @@ export async function POST(request: Request) {
     // webhook. Loga o erro e segue tratando como "conta não encontrada".
     let contaId: string | undefined
     let metaAccessId: string | undefined
-    let metaAccessToken: string | undefined
     try {
       const result = await obterMetaAccessPorWabaId(wabaId)
       contaId = result?.contaId
       metaAccessId = result?.metaAccess.id
-      metaAccessToken = result?.metaAccess.businessToken
     } catch (error) {
       console.error('❌ Erro ao buscar conta pelo WABA (verifique env vars, ex: CREDENTIALS_ENCRYPTION_KEY):', error)
     }
@@ -156,23 +151,11 @@ export async function POST(request: Request) {
         // rótulo da opção no motor do fluxo (fluxoEngine) sem mudar nada lá.
         const textoInterativo = msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title
 
-        // Foto, áudio, vídeo, documento ou figurinha — baixa da Meta (a URL
-        // que ela devolve expira em minutos) e sobe uma cópia permanente no
-        // Firebase Storage. Best-effort: se falhar, a mensagem ainda é salva
-        // com um rótulo padrão em vez de travar o webhook inteiro.
+        // Foto, áudio, vídeo, documento ou figurinha — não baixa nem
+        // hospeda nada aqui (sem Firebase Storage, que exige plano pago); só
+        // guarda o ID da mídia, que continua hospedada na própria Meta. O
+        // painel busca os bytes sob demanda via /api/whatsapp/midia/[mediaId].
         const midia = extrairMidiaDoWebhook(msg)
-        let mediaUrl: string | undefined
-        let mediaMimeType: string | undefined
-        if (midia && contaId && metaAccessToken) {
-          try {
-            const info = await getMediaInfo(midia.mediaId, metaAccessToken)
-            const { buffer, mimeType } = await downloadMedia(info.url, metaAccessToken)
-            mediaMimeType = mimeType
-            mediaUrl = await uploadWhatsappMedia(contaId, buffer, mimeType, extensaoPorMime(mimeType))
-          } catch (error) {
-            console.error('❌ Erro ao baixar/persistir mídia recebida:', error)
-          }
-        }
 
         const corpoTexto = msg.text?.body ?? textoInterativo ?? midia?.caption ?? (midia ? RETULOS_MIDIA_PADRAO[midia.tipo] : undefined)
 
@@ -189,9 +172,7 @@ export async function POST(request: Request) {
               text: corpoTexto ?? '(mídia)',
               timestamp: parseInt(msg.timestamp),
               tipo: 'recebida',
-              ...(midia ? { mediaType: midia.tipo } : {}),
-              ...(mediaUrl ? { mediaUrl } : {}),
-              ...(mediaMimeType ? { mediaMimeType } : {}),
+              ...(midia ? { mediaType: midia.tipo, mediaId: midia.mediaId } : {}),
               ...(midia?.filename ? { mediaFilename: midia.filename } : {}),
             })
 

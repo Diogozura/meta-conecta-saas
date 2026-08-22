@@ -34,9 +34,8 @@ export async function GET(request: Request) {
     nomeContato: m.nomeContato,
     text: m.text,
     timestamp: m.timestamp,
-    mediaUrl: m.mediaUrl,
+    mediaId: m.mediaId,
     mediaType: m.mediaType,
-    mediaMimeType: m.mediaMimeType,
     mediaFilename: m.mediaFilename,
   }))
   // Mensagens ENVIADAS que a Meta aceitou na hora (200 OK) mas depois

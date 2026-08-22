@@ -31,7 +31,7 @@ type Message = {
   // Preenchido quando a Meta rejeitou o envio (ex: janela de 24h expirada) —
   // deixa claro pro atendente que aquela mensagem NÃO chegou no WhatsApp.
   failReason?: string
-  mediaUrl?: string
+  mediaId?: string
   mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker'
   mediaFilename?: string
 }
@@ -72,7 +72,7 @@ type HistoryMessage = {
   text: string
   timestamp: number // unix seconds
   tipo: 'recebida' | 'enviada'
-  mediaUrl?: string
+  mediaId?: string
   mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker'
   mediaFilename?: string
 }
@@ -140,7 +140,7 @@ function buildConversationsFromHistory(mensagens: HistoryMessage[], existingName
       text: m.text,
       direction: m.tipo === 'recebida' ? 'received' : 'sent',
       time: formatTime(m.timestamp),
-      mediaUrl: m.mediaUrl,
+      mediaId: m.mediaId,
       mediaType: m.mediaType,
       mediaFilename: m.mediaFilename,
     }))
@@ -672,7 +672,7 @@ function ConversasInner() {
             nomeContato?: string
             text: string
             timestamp: number
-            mediaUrl?: string
+            mediaId?: string
             mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker'
             mediaFilename?: string
           }[]
@@ -691,7 +691,7 @@ function ConversasInner() {
               text: data.text,
               direction: 'received',
               time: formatTime(data.timestamp),
-              mediaUrl: data.mediaUrl,
+              mediaId: data.mediaId,
               mediaType: data.mediaType,
               mediaFilename: data.mediaFilename,
             }
@@ -856,7 +856,7 @@ function ConversasInner() {
       form.append('assinar', String(assinarMensagens))
 
       const res = await fetch('/api/meta/send-media', { method: 'POST', body: form })
-      const json: { error?: string; code?: number; messages?: { id: string }[]; mediaUrl?: string; mediaType?: Message['mediaType'] } = await res.json()
+      const json: { error?: string; code?: number; messages?: { id: string }[]; mediaId?: string; mediaType?: Message['mediaType'] } = await res.json()
       if (!res.ok) {
         toast.error(json.error ?? friendlySendError(json.code))
         return
@@ -868,7 +868,7 @@ function ConversasInner() {
         text: json.mediaType === 'document' ? file.name : '',
         direction: 'sent',
         time: formatTime(ts),
-        mediaUrl: json.mediaUrl,
+        mediaId: json.mediaId,
         mediaType: json.mediaType,
         mediaFilename: json.mediaType === 'document' ? file.name : undefined,
       }
@@ -1303,7 +1303,12 @@ function ConversasInner() {
               {currentConv.messages.length === 0 && (
                 <div className="text-center text-xs text-ink-400 py-8">Nenhuma mensagem ainda. Envie a primeira!</div>
               )}
-              {currentConv.messages.map((msg) => (
+              {currentConv.messages.map((msg) => {
+                // Sem Firebase Storage: a mídia não fica guardada aqui, só o
+                // ID — os bytes são buscados na hora, direto da Meta, por
+                // esse proxy autenticado (ver api/whatsapp/midia/[mediaId]).
+                const midiaSrc = msg.mediaId ? `/api/whatsapp/midia/${msg.mediaId}` : undefined
+                return (
                 <div key={msg.id} className={`flex ${msg.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm shadow-sm ${
@@ -1314,20 +1319,20 @@ function ConversasInner() {
                         : 'bg-white text-ink-800 rounded-bl-sm'
                     }`}
                   >
-                    {msg.mediaType === 'image' && msg.mediaUrl && (
-                      <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="block mb-1 -mx-1">
-                        <img src={msg.mediaUrl} alt={msg.text || 'Imagem'} className="max-w-full max-h-64 rounded-xl object-cover" />
+                    {msg.mediaType === 'image' && midiaSrc && (
+                      <a href={midiaSrc} target="_blank" rel="noopener noreferrer" className="block mb-1 -mx-1">
+                        <img src={midiaSrc} alt={msg.text || 'Imagem'} className="max-w-full max-h-64 rounded-xl object-cover" />
                       </a>
                     )}
-                    {msg.mediaType === 'video' && msg.mediaUrl && (
-                      <video src={msg.mediaUrl} controls className="max-w-full max-h-64 rounded-xl mb-1" />
+                    {msg.mediaType === 'video' && midiaSrc && (
+                      <video src={midiaSrc} controls className="max-w-full max-h-64 rounded-xl mb-1" />
                     )}
-                    {msg.mediaType === 'audio' && msg.mediaUrl && (
-                      <audio src={msg.mediaUrl} controls className="mb-1 max-w-full" style={{ height: '32px' }} />
+                    {msg.mediaType === 'audio' && midiaSrc && (
+                      <audio src={midiaSrc} controls className="mb-1 max-w-full" style={{ height: '32px' }} />
                     )}
-                    {msg.mediaType === 'document' && msg.mediaUrl && (
+                    {msg.mediaType === 'document' && midiaSrc && (
                       <a
-                        href={msg.mediaUrl}
+                        href={midiaSrc}
                         target="_blank"
                         rel="noopener noreferrer"
                         className={`flex items-center gap-2 mb-1 px-2.5 py-2 rounded-lg text-xs font-medium ${
@@ -1338,8 +1343,8 @@ function ConversasInner() {
                         <span className="truncate">{msg.mediaFilename || 'Documento'}</span>
                       </a>
                     )}
-                    {msg.mediaType === 'sticker' && msg.mediaUrl && (
-                      <img src={msg.mediaUrl} alt="Figurinha" className="w-24 h-24 mb-1" />
+                    {msg.mediaType === 'sticker' && midiaSrc && (
+                      <img src={midiaSrc} alt="Figurinha" className="w-24 h-24 mb-1" />
                     )}
                     {msg.text && <p className="leading-snug">{msg.text}</p>}
                     {msg.failReason && (
@@ -1353,7 +1358,8 @@ function ConversasInner() {
                     </p>
                   </div>
                 </div>
-              ))}
+                )
+              })}
               <div ref={messagesEndRef} />
             </div>
 

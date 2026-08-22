@@ -2,6 +2,25 @@ import { GoogleGenAI, Type, FunctionDeclaration, Content, Part } from '@google/g
 import { FERRAMENTAS_AGENTE, executarFuncaoAgente } from '@/lib/aiAgentTools'
 import { AgentRunParams, MAX_ITERACOES_AGENTE } from '@/lib/aiAgentTypes'
 
+/**
+ * O Gemini às vezes devolve 503/UNAVAILABLE em picos de demanda — a própria
+ * Google recomenda tentar de novo ("usually temporary"). Tenta até 2 vezes
+ * a mais só nesse caso específico, com um intervalo curto — qualquer outro
+ * erro (chave inválida, rate limit, etc.) propaga na primeira tentativa.
+ */
+async function comRetentativa<T>(fn: () => Promise<T>): Promise<T> {
+  const MAX_TENTATIVAS_EXTRA = 2
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      return await fn()
+    } catch (error) {
+      const status = error && typeof error === 'object' ? (error as { status?: unknown }).status : undefined
+      if (status !== 503 || tentativa >= MAX_TENTATIVAS_EXTRA) throw error
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (tentativa + 1)))
+    }
+  }
+}
+
 function paraFerramentasGemini(): FunctionDeclaration[] {
   return FERRAMENTAS_AGENTE.map((t) => ({
     name: t.name,
@@ -28,7 +47,7 @@ export async function runGeminiAgent(params: AgentRunParams): Promise<string> {
     history,
   })
 
-  let result = await chat.sendMessage({ message: params.mensagemAtual })
+  let result = await comRetentativa(() => chat.sendMessage({ message: params.mensagemAtual }))
 
   for (let i = 0; i < MAX_ITERACOES_AGENTE; i++) {
     const chamadas = result.functionCalls
@@ -47,7 +66,7 @@ export async function runGeminiAgent(params: AgentRunParams): Promise<string> {
       )
       respostas.push({ functionResponse: { name: chamada.name, response: { resultado } } })
     }
-    result = await chat.sendMessage({ message: respostas })
+    result = await comRetentativa(() => chat.sendMessage({ message: respostas }))
   }
 
   return (result.text ?? '').trim()

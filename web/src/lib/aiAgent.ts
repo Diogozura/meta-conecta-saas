@@ -7,6 +7,8 @@ import { runAnthropicAgent } from '@/lib/aiProviderAnthropic'
 import { AgentRunParams, humanizarErroAgente } from '@/lib/aiAgentTypes'
 import { contextoDataAtual } from '@/lib/aiAgentTools'
 
+const MENSAGEM_FALLBACK_IA = 'Desculpe, tivemos um problema técnico ao processar sua mensagem. Tente novamente em alguns instantes — se preferir, um atendente humano também pode te ajudar.'
+
 /**
  * Processa uma mensagem recebida no WhatsApp com o agente de IA: monta o
  * histórico da conversa, chama o provedor configurado (Gemini/OpenAI/Anthropic)
@@ -33,6 +35,12 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
   // manualmente), a IA não volta a responder sozinha até alguém reativar.
   const conversa = await obterConversa(contaId, telefoneCliente)
   if (conversa && conversa.iaAtiva === false) return
+
+  // Só manda o aviso de fallback ("tivemos um problema técnico") se a IA
+  // realmente não conseguiu entregar NENHUMA resposta — evita mandar um
+  // pedido de desculpas depois de uma resposta que já foi entregue com
+  // sucesso (ex: erro só na hora de salvar o registro no Firestore).
+  let respondeuComSucesso = false
 
   try {
     const mensagens = await listarMensagensPorNumero(contaId, telefoneCliente, 20)
@@ -82,6 +90,7 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
     const phoneNumberId = resolverPhoneNumberId(metaAccess, conversa?.canalPhoneNumberId)
     const envio = await sendTextMessage(phoneNumberId, metaAccess.businessToken, telefoneCliente, textoFinal)
     const mensagemId = envio?.messages?.[0]?.id
+    respondeuComSucesso = true
 
     if (mensagemId) {
       await criarMensagem({
@@ -108,6 +117,17 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
     // Falha ao registrar o erro não pode gerar outro erro não tratado aqui —
     // essa função já roda em segundo plano via after(), sem ninguém esperando.
     await registrarErroAgenteIA(contaId, mensagemErro.slice(0, 500)).catch(() => {})
+
+    // Cliente não pode ficar sem nenhuma resposta (ex: Gemini sobrecarregado,
+    // 503) — um aviso genérico é melhor que silêncio total.
+    if (!respondeuComSucesso) {
+      try {
+        const phoneNumberId = resolverPhoneNumberId(metaAccess, conversa?.canalPhoneNumberId)
+        await sendTextMessage(phoneNumberId, metaAccess.businessToken, telefoneCliente, MENSAGEM_FALLBACK_IA)
+      } catch (fallbackError) {
+        console.error('Erro ao enviar aviso de indisponibilidade da IA:', fallbackError)
+      }
+    }
   }
 }
 

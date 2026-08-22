@@ -36,6 +36,10 @@ export function humanizarErroAgente(error: unknown): string {
     return 'O agente de IA atingiu o limite de uso (rate limit) do provedor configurado. Aguarde alguns minutos ou verifique o plano/cota da chave de API em uso.'
   }
 
+  if (status === 503 || /unavailable|overloaded|high demand/i.test(mensagem)) {
+    return 'O modelo de IA está temporariamente sobrecarregado no provedor (instabilidade fora do nosso controle) — já tentamos de novo automaticamente algumas vezes. Se persistir, tente de novo em alguns minutos.'
+  }
+
   return mensagem
 }
 

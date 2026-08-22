@@ -455,9 +455,12 @@ export interface Mensagem {
   statusAtualizadoEm?: Date     // Quando `status` mudou pela última vez (webhook de status)
   dataCriacao: Date             // Data de criação no Firebase
   // Mídia (foto, áudio, vídeo, documento, figurinha) — recebida do cliente ou
-  // enviada pelo painel. `mediaUrl` é uma cópia permanente no Firebase
-  // Storage (a URL que a Meta devolve pra mídia recebida expira em minutos).
-  mediaUrl?: string
+  // enviada pelo painel. Sem Firebase Storage (plano gratuito não inclui):
+  // só guarda o ID da mídia na Meta, que fica hospedada lá — o painel busca
+  // os bytes sob demanda via /api/whatsapp/midia/[mediaId] (ver esse route
+  // e lib/meta.ts). Pra mídia enviada PELO painel, o mesmo `mediaId` vem da
+  // resposta do upload direto pra Meta (sem link público nenhum).
+  mediaId?: string
   mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker'
   mediaMimeType?: string
   mediaFilename?: string        // Nome original do arquivo (documentos)

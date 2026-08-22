@@ -1,9 +1,8 @@
-import { getMetaCredentials, MetaApiError, sendMediaMessage } from '@/lib/meta'
+import { getMetaCredentials, MetaApiError, sendMediaMessage, uploadMediaToMeta } from '@/lib/meta'
 import { auth } from '@/lib/auth'
 import { criarMensagem, definirIaAtivaConversa, assumirConversa, marcarConversaEmAndamento, obterConversa } from '@/lib/firestore'
 import { resolverPhoneNumberId } from '@/lib/canalWhatsapp'
-import { uploadWhatsappMedia } from '@/lib/storage'
-import { extensaoPorMime, tipoMidiaPorMime } from '@/lib/mediaTipo'
+import { tipoMidiaPorMime } from '@/lib/mediaTipo'
 
 // Limite da própria Cloud API do WhatsApp por tipo (imagem/áudio 16 MB, vídeo 16 MB, documento 100 MB) — aplica o mais restritivo aqui pra simplificar.
 const TAMANHO_MAXIMO_BYTES = 16 * 1024 * 1024
@@ -42,12 +41,16 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(await file.arrayBuffer())
     const mimeType = file.type || 'application/octet-stream'
     const tipo = tipoMidiaPorMime(mimeType)
-    const mediaUrl = await uploadWhatsappMedia(session.user.contaId, buffer, mimeType, extensaoPorMime(mimeType))
-
-    const legendaFinal = assinar && session.user.name ? `*${session.user.name}:*${caption ? `\n${caption}` : ''}` : caption
     const nomeArquivo = tipo === 'document' ? file.name : undefined
 
-    const result = await sendMediaMessage(phoneNumberId, credentials.businessToken, to, tipo, mediaUrl, { caption: legendaFinal, filename: nomeArquivo })
+    // Sobe direto pra Meta (sem Firebase Storage, que exige plano pago) — a
+    // Cloud API aceita enviar mídia por `media_id` de um upload próprio,
+    // sem precisar de nenhuma URL pública nossa.
+    const { id: mediaId } = await uploadMediaToMeta(phoneNumberId, credentials.businessToken, buffer, mimeType, file.name)
+
+    const legendaFinal = assinar && session.user.name ? `*${session.user.name}:*${caption ? `\n${caption}` : ''}` : caption
+
+    const result = await sendMediaMessage(phoneNumberId, credentials.businessToken, to, tipo, mediaId, { caption: legendaFinal, filename: nomeArquivo })
 
     const messageId: string | undefined = result?.messages?.[0]?.id
     if (messageId) {
@@ -60,7 +63,7 @@ export async function POST(request: Request) {
         timestamp: Math.floor(Date.now() / 1000),
         tipo: 'enviada',
         status: 'enviada',
-        mediaUrl,
+        mediaId,
         mediaType: tipo,
         mediaMimeType: mimeType,
         ...(nomeArquivo ? { mediaFilename: nomeArquivo } : {}),
@@ -75,7 +78,7 @@ export async function POST(request: Request) {
       await marcarConversaEmAndamento(session.user.contaId, to).catch(() => {})
     }
 
-    return Response.json({ ...result, mediaUrl, mediaType: tipo })
+    return Response.json({ ...result, mediaId, mediaType: tipo })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido'
     const code = err instanceof MetaApiError ? err.code : undefined

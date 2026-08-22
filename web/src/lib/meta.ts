@@ -247,16 +247,45 @@ export async function downloadMedia(url: string, accessToken: string): Promise<{
 
 export type TipoMidiaEnvio = 'image' | 'audio' | 'video' | 'document'
 
-/** Envia mídia por URL pública (a mesma cópia que sobe pro Firebase Storage antes de chamar essa função — a Cloud API não aceita upload direto de arquivo nesse fluxo). */
+/**
+ * Sobe um arquivo direto pra Meta (sem precisar de nenhuma URL pública nossa
+ * — não depende de Firebase Storage, que exige o plano pago) e devolve o
+ * `media_id` pra usar em sendMediaMessage. Esse é o jeito nativo da Cloud API
+ * de enviar mídia sem hospedar nada publicamente.
+ */
+export async function uploadMediaToMeta(
+  phoneNumberId: string,
+  accessToken: string,
+  buffer: Buffer,
+  mimeType: string,
+  filename?: string,
+): Promise<{ id: string }> {
+  const form = new FormData()
+  form.append('messaging_product', 'whatsapp')
+  form.append('file', new Blob([new Uint8Array(buffer)], { type: mimeType }), filename || 'arquivo')
+
+  const res = await fetch(`${GRAPH_API}/${phoneNumberId}/media`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form,
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new MetaApiError(err?.error?.message ?? 'Falha ao subir mídia pra Meta', err?.error?.code)
+  }
+  return res.json()
+}
+
+/** Envia mídia já hospedada na Meta (media_id de um upload nosso, ou recebida do próprio cliente) — nunca por URL pública. */
 export async function sendMediaMessage(
   phoneNumberId: string,
   accessToken: string,
   to: string,
   tipo: TipoMidiaEnvio,
-  link: string,
+  mediaId: string,
   opts: { caption?: string; filename?: string } = {},
 ) {
-  const conteudo: Record<string, unknown> = { link }
+  const conteudo: Record<string, unknown> = { id: mediaId }
   if (opts.caption && tipo !== 'audio') conteudo.caption = opts.caption
   if (opts.filename && tipo === 'document') conteudo.filename = opts.filename
 
