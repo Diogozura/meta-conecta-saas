@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { obterIndiceUsuarioPorUid, salvarIndiceUsuarioPorUid, obterUsuario, atualizarUsuario } from './firestore'
 import { isFirestoreQuotaExceededError, FirestoreQuotaExceededError } from './firestoreErrors'
+import { validarCodigoTotp } from './totp'
 
 const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 7 * 1000 // 7 dias em ms
 const SESSION_MAX_AGE_S = SESSION_MAX_AGE_MS / 1000  // 7 dias em segundos
@@ -66,10 +67,32 @@ export async function disableViewAsClient() {
 
 /**
  * Cria uma sessão autenticada a partir de um Firebase ID Token.
- * Chamado pelo cliente após login bem-sucedido.
+ * Chamado pelo cliente após login bem-sucedido (senha ou Google) — a senha
+ * em si já foi validada pelo Firebase Auth no cliente, aqui só se cria o
+ * cookie de sessão httpOnly que o resto do app usa.
+ *
+ * Se o usuário tiver 2FA (TOTP) ativo, essa função vira um portão de dois
+ * passos: sem `totpCode` (ou com um código errado), NENHUMA sessão é criada
+ * e o retorno pede o código pro cliente reenviar essa mesma chamada com ele.
  */
-export async function setSession(idToken: string): Promise<{ success: boolean; error?: string }> {
+export async function setSession(idToken: string, totpCode?: string): Promise<{ success: boolean; error?: string; requiresTotp?: boolean }> {
   try {
+    // Falha em decodificar o token ou resolver o usuário não deve travar o
+    // login de quem não tem 2FA — só pula a checagem (fail-open só nesse
+    // passo extra; a senha em si já foi validada pelo Firebase antes disso).
+    const decoded = await adminAuth.verifyIdToken(idToken).catch(() => null)
+    if (decoded) {
+      const indice = await obterIndiceUsuarioPorUid(decoded.uid).catch(() => null)
+      if (indice) {
+        const usuario = await obterUsuario(indice.contaId, indice.usuarioId)
+        if (usuario?.totpAtivo && usuario.totpSecret) {
+          if (!totpCode || !validarCodigoTotp(usuario.totpSecret, totpCode)) {
+            return { success: false, requiresTotp: true, error: totpCode ? 'Código incorreto' : undefined }
+          }
+        }
+      }
+    }
+
     const sessionCookie = await adminAuth.createSessionCookie(idToken, {
       expiresIn: SESSION_MAX_AGE_MS,
     })

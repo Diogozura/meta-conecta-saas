@@ -67,8 +67,19 @@ export function filaDaConversa(meta: ConversaMeta): FilaConversa {
   return meta.atendenteId ? 'humano' : 'aguardando'
 }
 
-/** A partir de quantos minutos esperando um atendente humano a fila acende o alerta visual (SLA). */
+/** A partir de quantos minutos esperando um atendente humano a fila acende o alerta visual (SLA) — valor usado pra prioridade 'normal' e como referência geral (ex: média por setor). */
 export const SLA_ALERTA_MINUTOS = 15
+
+/** SLA por prioridade — urgente/VIP não pode esperar o mesmo tanto que uma conversa normal. */
+export const SLA_POR_PRIORIDADE: Record<Prioridade, number> = {
+  urgente: 5,
+  alta: 10,
+  normal: SLA_ALERTA_MINUTOS,
+}
+
+export function slaParaPrioridade(prioridade: Prioridade = 'normal'): number {
+  return SLA_POR_PRIORIDADE[prioridade]
+}
 
 /** "há 3 min", "há 1h 20min", "há 2 dias" — tempo decorrido desde uma data, em português. */
 export function formatEspera(desde: Date, agora: Date = new Date()): string {

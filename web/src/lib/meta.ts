@@ -215,6 +215,72 @@ export async function sendListMessage(
   return res.json()
 }
 
+export interface MediaInfo {
+  url: string
+  mimeType: string
+  sha256?: string
+  fileSize?: number
+}
+
+/** Busca a URL temporária (expira em poucos minutos) de um arquivo de mídia recebido — a URL em si também exige o Bearer token pra baixar (ver downloadMedia). */
+export async function getMediaInfo(mediaId: string, accessToken: string): Promise<MediaInfo> {
+  const res = await fetch(`${GRAPH_API}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new MetaApiError(err?.error?.message ?? 'Falha ao buscar informações da mídia', err?.error?.code)
+  }
+  const json = await res.json()
+  return { url: json.url, mimeType: json.mime_type, sha256: json.sha256, fileSize: json.file_size }
+}
+
+/** Baixa os bytes de uma mídia recebida — a URL temporária da Meta exige o mesmo Bearer token do WABA, não é pública. */
+export async function downloadMedia(url: string, accessToken: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+  if (!res.ok) {
+    throw new MetaApiError('Falha ao baixar o arquivo de mídia')
+  }
+  const arrayBuffer = await res.arrayBuffer()
+  return { buffer: Buffer.from(arrayBuffer), mimeType: res.headers.get('content-type') ?? 'application/octet-stream' }
+}
+
+export type TipoMidiaEnvio = 'image' | 'audio' | 'video' | 'document'
+
+/** Envia mídia por URL pública (a mesma cópia que sobe pro Firebase Storage antes de chamar essa função — a Cloud API não aceita upload direto de arquivo nesse fluxo). */
+export async function sendMediaMessage(
+  phoneNumberId: string,
+  accessToken: string,
+  to: string,
+  tipo: TipoMidiaEnvio,
+  link: string,
+  opts: { caption?: string; filename?: string } = {},
+) {
+  const conteudo: Record<string, unknown> = { link }
+  if (opts.caption && tipo !== 'audio') conteudo.caption = opts.caption
+  if (opts.filename && tipo === 'document') conteudo.filename = opts.filename
+
+  const res = await fetch(`${GRAPH_API}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: tipo,
+      [tipo]: conteudo,
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new MetaApiError(err?.error?.message ?? 'Falha ao enviar mídia', err?.error?.code)
+  }
+  return res.json()
+}
+
 /** Envia uma mensagem usando um template aprovado. */
 export async function sendTemplateMessage(
   phoneNumberId: string,

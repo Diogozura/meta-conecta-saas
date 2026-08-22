@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listarContasAtivas, listarConversas, marcarAlertaSlaEnviado } from '@/lib/firestore'
-import { esperaExcedeuSla, SLA_ALERTA_MINUTOS } from '@/lib/conversaStatus'
+import { esperaExcedeuSla, slaParaPrioridade, SLA_ALERTA_MINUTOS } from '@/lib/conversaStatus'
 import { enviarEmail, emailAlertaSla } from '@/lib/notificacoes'
 
 /**
@@ -35,10 +35,10 @@ export async function GET(req: NextRequest) {
 
       for (const c of emEspera) {
         const desde = new Date(c.dataTransferencia!)
-        if (!esperaExcedeuSla(desde, agora)) continue
+        if (!esperaExcedeuSla(desde, agora, slaParaPrioridade(c.prioridade))) continue
 
         const esperaMinutos = Math.round((agora.getTime() - desde.getTime()) / 60000)
-        const { assunto, corpoHtml } = emailAlertaSla({ numero: c.numero, setor: c.setor || 'Fila geral', esperaMinutos })
+        const { assunto, corpoHtml } = emailAlertaSla({ numero: c.numero, setor: c.setor || 'Fila geral', esperaMinutos, prioridade: c.prioridade })
         const enviado = await enviarEmail({ para: conta.email, assunto, corpoHtml })
         if (enviado) {
           await marcarAlertaSlaEnviado(conta.id, c.numero)

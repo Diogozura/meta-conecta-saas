@@ -10,7 +10,7 @@ import {
 } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { setSession } from '@/lib/auth'
-import { MessageSquare, Loader2, Eye, EyeOff } from 'lucide-react'
+import { MessageSquare, Loader2, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 
 const googleProvider = new GoogleAuthProvider()
@@ -20,14 +20,32 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  // Login em 2 passos quando a conta tem 2FA ativo — guarda o idToken já
+  // validado pelo Firebase enquanto espera o código do app autenticador.
+  const [pendingIdToken, setPendingIdToken] = useState<string | null>(null)
+  const [totpCode, setTotpCode] = useState('')
 
-  async function handleSession(idToken: string) {
-    const result = await setSession(idToken)
+  async function handleSession(idToken: string, totpCode?: string) {
+    const result = await setSession(idToken, totpCode)
     if (result.success) {
       router.push('/dashboard')
-    } else {
-      setError(result.error ?? 'Erro ao autenticar.')
+      return
     }
+    if (result.requiresTotp) {
+      setPendingIdToken(idToken)
+      setError(result.error ?? '')
+      return
+    }
+    setError(result.error ?? 'Erro ao autenticar.')
+  }
+
+  async function handleTotpSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!pendingIdToken || totpCode.trim().length !== 6) return
+    setLoading(true)
+    setError('')
+    await handleSession(pendingIdToken, totpCode.trim())
+    setLoading(false)
   }
 
   async function handleEmailLogin(e: React.FormEvent<HTMLFormElement>) {
@@ -106,6 +124,46 @@ export default function LoginPage() {
               </div>
             )}
 
+            {pendingIdToken ? (
+              <form onSubmit={handleTotpSubmit} className="space-y-4">
+                <div className="flex items-center gap-2 text-ink-700">
+                  <ShieldCheck className="w-5 h-5 text-brand-600 shrink-0" />
+                  <p className="text-sm">Abra seu app autenticador e digite o código de 6 dígitos.</p>
+                </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  maxLength={6}
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                  disabled={loading}
+                  className="w-full px-3 py-2.5 border border-ink-300 rounded-lg text-center text-lg tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent transition disabled:opacity-50"
+                  placeholder="000000"
+                />
+                <button
+                  type="submit"
+                  disabled={loading || totpCode.length !== 6}
+                  className="w-full py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Verificar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingIdToken(null)
+                    setTotpCode('')
+                    setError('')
+                  }}
+                  className="w-full text-center text-sm text-ink-500 hover:text-ink-700"
+                >
+                  Voltar
+                </button>
+              </form>
+            ) : (
+              <>
             <form onSubmit={handleEmailLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-ink-700 mb-1">Email</label>
@@ -181,6 +239,8 @@ export default function LoginPage() {
                 Cadastre-se
               </Link>
             </p>
+              </>
+            )}
           </div>
         </div>
       </div>

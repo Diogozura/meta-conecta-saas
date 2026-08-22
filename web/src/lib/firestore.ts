@@ -169,11 +169,23 @@ export async function obterUsoAgenteIA(contaId: string, deChave: string, ateChav
 // USUÁRIOS
 // ─────────────────────────────────────────
 
+// totpSecret (segredo do 2FA) é criptografado antes de gravar e
+// descriptografado só na leitura — mesmo padrão do businessToken da Meta.
+function encryptUsuarioSecrets<T extends { totpSecret?: string }>(data: T): T {
+  if (!data.totpSecret) return data
+  return { ...data, totpSecret: encrypt(data.totpSecret) }
+}
+
+function decryptUsuarioSecrets(usuario: Usuario): Usuario {
+  if (!usuario.totpSecret) return usuario
+  return { ...usuario, totpSecret: decrypt(usuario.totpSecret) }
+}
+
 export async function criarUsuario(contaId: string, data: Omit<Usuario, 'id' | 'dataCadastro' | 'dataAtualizacao'>): Promise<Usuario> {
   const db = getDb()
   const now = Timestamp.now()
   const docRef = await db.collection('contas').doc(contaId).collection('usuarios').add({
-    ...data,
+    ...encryptUsuarioSecrets(data),
     dataCadastro: now,
     dataAtualizacao: now,
   })
@@ -185,22 +197,37 @@ export async function obterUsuario(contaId: string, usuarioId: string): Promise<
   try {
     const docSnap = await db.collection('contas').doc(contaId).collection('usuarios').doc(usuarioId).get()
     if (!docSnap.exists) return null
-    return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Usuario
+    return decryptUsuarioSecrets({ id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Usuario)
   } catch {
     return null
   }
 }
 
+/** Todos os atendentes da conta, SEM o totpSecret (mesmo criptografado, não tem por que sair do servidor) — use obterUsuario quando precisar do segredo pra validar um código. */
 export async function listarUsuarios(contaId: string): Promise<Usuario[]> {
   const db = getDb()
   const snapshot = await db.collection('contas').doc(contaId).collection('usuarios').get()
-  return snapshot.docs.map(doc => ({ id: doc.id, ...convertTimestamps(doc.data()) } as Usuario))
+  return snapshot.docs.map((doc) => {
+    const dados = convertTimestamps(doc.data()) as Record<string, unknown>
+    delete dados.totpSecret
+    return { id: doc.id, ...dados } as Usuario
+  })
 }
 
 export async function atualizarUsuario(contaId: string, usuarioId: string, data: Partial<Omit<Usuario, 'id' | 'dataCadastro'>>): Promise<void> {
   const db = getDb()
   await db.collection('contas').doc(contaId).collection('usuarios').doc(usuarioId).update({
-    ...data,
+    ...encryptUsuarioSecrets(data),
+    dataAtualizacao: Timestamp.now(),
+  })
+}
+
+/** Desativa o 2FA e limpa o segredo — não deixa lixo criptografado parado no banco depois de desligar. */
+export async function desativarTotp(contaId: string, usuarioId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('usuarios').doc(usuarioId).update({
+    totpAtivo: false,
+    totpSecret: FieldValue.delete(),
     dataAtualizacao: Timestamp.now(),
   })
 }
@@ -1231,6 +1258,81 @@ export async function listarAuditoria(contaId: string, limite = 200): Promise<Re
     .limit(limite)
     .get()
   return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as RegistroAuditoria))
+}
+
+// ─────────────────────────────────────────
+// LGPD — exportação e exclusão de todos os dados de um cliente (por número),
+// a pedido do titular dos dados (Lei 13.709/2018, art. 18: portabilidade e
+// eliminação). Ver api/conversas/[numero]/lgpd/{exportar,route}.
+// ─────────────────────────────────────────
+
+/** Todas as mensagens de um número, sem limite de página — só usado pra exportação/exclusão LGPD (o resto do app usa listarMensagensPorNumero, que já limita por ser consumido pela IA/painel). */
+async function listarTodasMensagensPorNumero(contaId: string, numero: string): Promise<Mensagem[]> {
+  const db = getDb()
+  const snapshot = await db.collection('mensagens')
+    .where('contaId', '==', contaId)
+    .where(Filter.or(
+      Filter.where('from', '==', numero),
+      Filter.where('to', '==', numero)
+    ))
+    .get()
+  return snapshot.docs.map((doc) => ({ ...doc.data() } as Mensagem))
+}
+
+export interface ExportacaoDadosCliente {
+  numero: string
+  cliente: Cliente | null
+  conversa: Conversa | null
+  mensagens: Mensagem[]
+  avaliacoesCsat: AvaliacaoCsat[]
+  exportadoEm: string
+}
+
+/** Reúne tudo que a conta guarda sobre um número — usado pro botão "Exportar dados (LGPD)" no painel. */
+export async function exportarDadosCliente(contaId: string, numero: string): Promise<ExportacaoDadosCliente> {
+  const numeroSanitizado = sanitizarNumero(numero)
+  const db = getDb()
+  const [cliente, conversa, mensagens, avaliacoesSnap] = await Promise.all([
+    buscarClientePorNumero(contaId, numeroSanitizado),
+    obterConversa(contaId, numeroSanitizado),
+    listarTodasMensagensPorNumero(contaId, numeroSanitizado),
+    db.collection('contas').doc(contaId).collection('avaliacoesCsat').where('numero', '==', numeroSanitizado).get(),
+  ])
+  const avaliacoesCsat = avaliacoesSnap.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as AvaliacaoCsat))
+  return { numero: numeroSanitizado, cliente, conversa, mensagens, avaliacoesCsat, exportadoEm: new Date().toISOString() }
+}
+
+/** Apaga TODOS os dados de um cliente (mensagens, conversa, avaliações de CSAT, cadastro) — irreversível, a pedido do titular (LGPD). */
+export async function excluirDadosCliente(contaId: string, numero: string): Promise<{ mensagensApagadas: number }> {
+  const numeroSanitizado = sanitizarNumero(numero)
+  const db = getDb()
+
+  const [mensagensSnap, avaliacoesSnap] = await Promise.all([
+    db.collection('mensagens')
+      .where('contaId', '==', contaId)
+      .where(Filter.or(
+        Filter.where('from', '==', numeroSanitizado),
+        Filter.where('to', '==', numeroSanitizado)
+      ))
+      .get(),
+    db.collection('contas').doc(contaId).collection('avaliacoesCsat').where('numero', '==', numeroSanitizado).get(),
+  ])
+
+  const alvos = [...mensagensSnap.docs, ...avaliacoesSnap.docs]
+  for (let i = 0; i < alvos.length; i += 400) {
+    const batch = db.batch()
+    for (const doc of alvos.slice(i, i + 400)) batch.delete(doc.ref)
+    await batch.commit()
+  }
+
+  await db.collection('contas').doc(contaId).collection('conversas').doc(numeroSanitizado).delete().catch(() => {})
+
+  const cliente = await buscarClientePorNumero(contaId, numeroSanitizado)
+  if (cliente) {
+    await db.collection('contas').doc(contaId).collection('clientes').doc(cliente.id).delete().catch(() => {})
+  }
+
+  return { mensagensApagadas: mensagensSnap.docs.length }
 }
 
 // ─────────────────────────────────────────

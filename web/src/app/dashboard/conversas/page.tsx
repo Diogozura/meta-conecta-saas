@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck, Bot, ArrowLeft, Clock, CheckCircle2, RotateCcw, Workflow, BarChart3, Users as UsersIcon, Zap, Trash2, Download, History } from 'lucide-react'
+import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck, Bot, ArrowLeft, Clock, CheckCircle2, RotateCcw, Workflow, BarChart3, Users as UsersIcon, Zap, Trash2, Download, History, Paperclip, MoreVertical, ShieldOff } from 'lucide-react'
 import { Skeleton } from '@/components/Skeleton'
 import { Modal } from '@/components/Modal'
 import {
@@ -18,6 +18,7 @@ import {
   formatEspera,
   esperaExcedeuSla,
   ordenarFilaPorPrioridade,
+  slaParaPrioridade,
   SLA_ALERTA_MINUTOS,
 } from '@/lib/conversaStatus'
 import type { MetricaSetor, MetricaHistoricaSetor, MetricaCsat } from '@/lib/metricasConversas'
@@ -30,6 +31,9 @@ type Message = {
   // Preenchido quando a Meta rejeitou o envio (ex: janela de 24h expirada) —
   // deixa claro pro atendente que aquela mensagem NÃO chegou no WhatsApp.
   failReason?: string
+  mediaUrl?: string
+  mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker'
+  mediaFilename?: string
 }
 
 // Código que a Graph API retorna quando a janela de 24h de atendimento já
@@ -68,6 +72,9 @@ type HistoryMessage = {
   text: string
   timestamp: number // unix seconds
   tipo: 'recebida' | 'enviada'
+  mediaUrl?: string
+  mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker'
+  mediaFilename?: string
 }
 
 function loadFromStorage(): Conversation[] {
@@ -133,6 +140,9 @@ function buildConversationsFromHistory(mensagens: HistoryMessage[], existingName
       text: m.text,
       direction: m.tipo === 'recebida' ? 'received' : 'sent',
       time: formatTime(m.timestamp),
+      mediaUrl: m.mediaUrl,
+      mediaType: m.mediaType,
+      mediaFilename: m.mediaFilename,
     }))
     const lastMsg = sorted[sorted.length - 1]
     // Nome que a pessoa cadastrou no próprio WhatsApp (vem no webhook) é a
@@ -190,6 +200,14 @@ function ConversasInner() {
   const [selectedNumber, setSelectedNumber] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [sendStatus, setSendStatus] = useState<'idle' | 'loading'>('idle')
+  const [enviandoMidia, setEnviandoMidia] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showLgpdMenu, setShowLgpdMenu] = useState(false)
+  const [excluindoDadosLgpd, setExcluindoDadosLgpd] = useState(false)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    setShowLgpdMenu(false)
+  }, [selectedNumber])
   const [search, setSearch] = useState('')
   const [showNewForm, setShowNewForm] = useState(false)
   const [showMetricas, setShowMetricas] = useState(false)
@@ -491,7 +509,7 @@ function ConversasInner() {
   const totalAguardando = conversations.filter((c) => filaDaConversa(conversasMeta.get(c.number) ?? CONVERSA_META_PADRAO) === 'aguardando').length
   const totalSlaEstourado = conversations.filter((c) => {
     const meta = conversasMeta.get(c.number) ?? CONVERSA_META_PADRAO
-    return filaDaConversa(meta) === 'aguardando' && meta.dataTransferencia && esperaExcedeuSla(new Date(meta.dataTransferencia), agora)
+    return filaDaConversa(meta) === 'aguardando' && meta.dataTransferencia && esperaExcedeuSla(new Date(meta.dataTransferencia), agora, slaParaPrioridade(meta.prioridade))
   }).length
 
   const currentConv = selectedNumber !== null ? conversations.find((c) => c.number === selectedNumber) ?? null : null
@@ -648,7 +666,16 @@ function ConversasInner() {
         const res = await fetch(`/api/messages?since=${since}`)
         if (!res.ok) return
         const { messages, failures, serverTime } = await res.json() as {
-          messages: { id: string; from: string; nomeContato?: string; text: string; timestamp: number }[]
+          messages: {
+            id: string
+            from: string
+            nomeContato?: string
+            text: string
+            timestamp: number
+            mediaUrl?: string
+            mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker'
+            mediaFilename?: string
+          }[]
           failures: { id: string; erro?: { codigo?: number; mensagem: string } }[]
           serverTime: number
         }
@@ -664,6 +691,9 @@ function ConversasInner() {
               text: data.text,
               direction: 'received',
               time: formatTime(data.timestamp),
+              mediaUrl: data.mediaUrl,
+              mediaType: data.mediaType,
+              mediaFilename: data.mediaFilename,
             }
             const idx = next.findIndex(
               (c) => c.number.replace(/\D/g, '') === data.from.replace(/\D/g, '')
@@ -810,6 +840,77 @@ function ConversasInner() {
         )
       )
       setSendStatus('idle')
+    }
+  }
+
+  async function handleEnviarMidia(file: File) {
+    if (selectedNumber === null) return
+    const conv = conversations.find((c) => c.number === selectedNumber)
+    if (!conv) return
+
+    setEnviandoMidia(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('to', conv.number.replace(/\D/g, ''))
+      form.append('assinar', String(assinarMensagens))
+
+      const res = await fetch('/api/meta/send-media', { method: 'POST', body: form })
+      const json: { error?: string; code?: number; messages?: { id: string }[]; mediaUrl?: string; mediaType?: Message['mediaType'] } = await res.json()
+      if (!res.ok) {
+        toast.error(json.error ?? friendlySendError(json.code))
+        return
+      }
+
+      const ts = nowUnix()
+      const newMsg: Message = {
+        id: json.messages?.[0]?.id ?? Date.now().toString(),
+        text: json.mediaType === 'document' ? file.name : '',
+        direction: 'sent',
+        time: formatTime(ts),
+        mediaUrl: json.mediaUrl,
+        mediaType: json.mediaType,
+        mediaFilename: json.mediaType === 'document' ? file.name : undefined,
+      }
+      setConversations((prev) =>
+        sortConvs(
+          prev.map((c) =>
+            c.number === selectedNumber
+              ? { ...c, messages: [...c.messages, newMsg], last: newMsg.text || '📎 Arquivo', time: formatListTimestamp(ts), lastTimestamp: ts, status: 'Enviada' }
+              : c
+          )
+        )
+      )
+      void carregarConversasMeta()
+    } catch {
+      toast.error('Erro ao enviar arquivo')
+    } finally {
+      setEnviandoMidia(false)
+    }
+  }
+
+  async function handleExcluirDadosLgpd() {
+    if (!currentConv) return
+    const confirmado = window.confirm(
+      `Isso apaga PERMANENTEMENTE todas as mensagens, o cadastro e as avaliações desse cliente (${currentConv.name} — ${currentConv.number}). Não tem como desfazer. Confirma?`
+    )
+    if (!confirmado) return
+
+    setExcluindoDadosLgpd(true)
+    try {
+      const res = await fetch(`/api/conversas/${currentConv.number}/lgpd`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json.error ?? 'Erro ao excluir dados do cliente')
+      }
+      setConversations((prev) => prev.filter((c) => c.number !== currentConv.number))
+      setSelectedNumber(null)
+      setShowLgpdMenu(false)
+      toast.success('Dados do cliente excluídos.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao excluir dados do cliente')
+    } finally {
+      setExcluindoDadosLgpd(false)
     }
   }
 
@@ -971,7 +1072,7 @@ function ConversasInner() {
                   </div>
                   {meta.status !== 'encerrada' && (() => {
                     const desde = fila === 'aguardando' && meta.dataTransferencia ? new Date(meta.dataTransferencia) : null
-                    const estourouSla = desde ? esperaExcedeuSla(desde, agora) : false
+                    const estourouSla = desde ? esperaExcedeuSla(desde, agora, slaParaPrioridade(meta.prioridade)) : false
                     return (
                       <span
                         title={
@@ -1036,6 +1137,37 @@ function ConversasInner() {
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-ink-900 truncate">{currentConv.name}</p>
                 <p className="text-xs text-ink-500 truncate">{currentConv.number}</p>
+              </div>
+
+              <div className="relative shrink-0">
+                <button
+                  onClick={() => setShowLgpdMenu((v) => !v)}
+                  title="Dados do cliente (LGPD)"
+                  className="p-1.5 rounded-lg text-ink-400 hover:bg-ink-100 transition-colors"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+                {showLgpdMenu && (
+                  <div className="absolute left-0 top-full mt-1 w-56 bg-white border border-ink-200 rounded-xl shadow-lg z-10 py-1 text-sm">
+                    <a
+                      href={`/api/conversas/${currentConv.number}/lgpd/exportar`}
+                      onClick={() => setShowLgpdMenu(false)}
+                      className="flex items-center gap-2 px-3 py-2 text-ink-700 hover:bg-ink-50"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Exportar dados (LGPD)
+                    </a>
+                    <button
+                      type="button"
+                      onClick={handleExcluirDadosLgpd}
+                      disabled={excluindoDadosLgpd}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {excluindoDadosLgpd ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldOff className="w-3.5 h-3.5" />}
+                      Excluir dados (LGPD)
+                    </button>
+                  </div>
+                )}
               </div>
 
               {currentMeta && (
@@ -1135,7 +1267,7 @@ function ConversasInner() {
               ) : (
                 (() => {
                   const desde = currentMeta.dataTransferencia ? new Date(currentMeta.dataTransferencia) : null
-                  const estourouSla = desde ? esperaExcedeuSla(desde, agora) : false
+                  const estourouSla = desde ? esperaExcedeuSla(desde, agora, slaParaPrioridade(currentMeta.prioridade)) : false
                   return (
                     <div className={`px-4 py-2.5 border-b flex items-center justify-between gap-3 ${estourouSla ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
                       <div className={`flex items-center gap-2 text-xs min-w-0 ${estourouSla ? 'text-red-800' : 'text-amber-800'}`}>
@@ -1182,7 +1314,34 @@ function ConversasInner() {
                         : 'bg-white text-ink-800 rounded-bl-sm'
                     }`}
                   >
-                    <p className="leading-snug">{msg.text}</p>
+                    {msg.mediaType === 'image' && msg.mediaUrl && (
+                      <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="block mb-1 -mx-1">
+                        <img src={msg.mediaUrl} alt={msg.text || 'Imagem'} className="max-w-full max-h-64 rounded-xl object-cover" />
+                      </a>
+                    )}
+                    {msg.mediaType === 'video' && msg.mediaUrl && (
+                      <video src={msg.mediaUrl} controls className="max-w-full max-h-64 rounded-xl mb-1" />
+                    )}
+                    {msg.mediaType === 'audio' && msg.mediaUrl && (
+                      <audio src={msg.mediaUrl} controls className="mb-1 max-w-full" style={{ height: '32px' }} />
+                    )}
+                    {msg.mediaType === 'document' && msg.mediaUrl && (
+                      <a
+                        href={msg.mediaUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`flex items-center gap-2 mb-1 px-2.5 py-2 rounded-lg text-xs font-medium ${
+                          msg.direction === 'sent' ? 'bg-brand-700/40 text-white' : 'bg-ink-50 text-ink-700'
+                        }`}
+                      >
+                        <Paperclip className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{msg.mediaFilename || 'Documento'}</span>
+                      </a>
+                    )}
+                    {msg.mediaType === 'sticker' && msg.mediaUrl && (
+                      <img src={msg.mediaUrl} alt="Figurinha" className="w-24 h-24 mb-1" />
+                    )}
+                    {msg.text && <p className="leading-snug">{msg.text}</p>}
                     {msg.failReason && (
                       <p className="flex items-center gap-1 text-[11px] mt-1 font-medium text-red-700">
                         <AlertCircle className="w-3 h-3 shrink-0" />
@@ -1273,6 +1432,26 @@ function ConversasInner() {
                   className={`p-2.5 rounded-full transition-colors shrink-0 ${assinarMensagens ? 'bg-brand-100 text-brand-700' : 'text-ink-400 hover:bg-ink-100'}`}
                 >
                   <UserCheck className="w-4 h-4" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    if (file) void handleEnviarMidia(file)
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={enviandoMidia}
+                  title="Anexar arquivo"
+                  className="p-2.5 rounded-full text-ink-400 hover:bg-ink-100 transition-colors shrink-0 disabled:opacity-50"
+                >
+                  {enviandoMidia ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
                 </button>
                 <textarea
                   value={message}

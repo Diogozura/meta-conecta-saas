@@ -44,14 +44,16 @@ export function emailConviteAtendente(params: { nomeConta: string; nomeConvidado
   }
 }
 
-export function emailAlertaSla(params: { numero: string; setor: string; esperaMinutos: number }): { assunto: string; corpoHtml: string } {
+export function emailAlertaSla(params: { numero: string; setor: string; esperaMinutos: number; prioridade?: 'normal' | 'alta' | 'urgente' }): { assunto: string; corpoHtml: string } {
+  const prioridadeLabel = params.prioridade && params.prioridade !== 'normal' ? ` (prioridade ${params.prioridade})` : ''
   return {
-    assunto: `⚠️ Cliente esperando há ${params.esperaMinutos} min — ${params.setor}`,
+    assunto: `⚠️ Cliente esperando há ${params.esperaMinutos} min — ${params.setor}${prioridadeLabel}`,
     corpoHtml: `
-      <p>Uma conversa está esperando atendimento humano há mais tempo que o limite configurado.</p>
+      <p>Uma conversa está esperando atendimento humano há mais tempo que o limite de SLA da prioridade dela.</p>
       <ul>
         <li><strong>Número:</strong> ${params.numero}</li>
         <li><strong>Setor:</strong> ${params.setor}</li>
+        <li><strong>Prioridade:</strong> ${params.prioridade ?? 'normal'}</li>
         <li><strong>Esperando há:</strong> ${params.esperaMinutos} minutos</li>
       </ul>
       <p>Acesse o painel de conversas pra assumir o atendimento.</p>

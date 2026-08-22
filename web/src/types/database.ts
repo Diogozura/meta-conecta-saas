@@ -216,6 +216,13 @@ export interface Usuario {
   // receber uma conversa encaminhada pra cada setor. Sem setor definido, o
   // usuário não entra em nenhuma rotação automática (só assume manualmente).
   setor?: string | null
+  // Autenticação em dois fatores (TOTP, RFC 6238) — `totpSecret` só existe
+  // criptografado em repouso (mesmo padrão do businessToken da Meta) e NUNCA
+  // deve ser enviado ao cliente já logado; `totpAtivo` é o único campo que a
+  // UI precisa saber. Ver lib/auth.ts (verificação no login) e
+  // api/auth/2fa/**.
+  totpSecret?: string
+  totpAtivo?: boolean
 }
 
 // ─────────────────────────────────────────
@@ -253,7 +260,7 @@ export interface RespostaRapida {
 // (fluxo de atendimento, respostas rápidas, equipe/atendentes). Não cobre
 // TUDO no sistema, só o que afeta como a conta atende os clientes.
 // ─────────────────────────────────────────
-export type AuditoriaEntidade = 'fluxo' | 'resposta_rapida' | 'atendente'
+export type AuditoriaEntidade = 'fluxo' | 'resposta_rapida' | 'atendente' | 'dados_cliente'
 export type AuditoriaAcao = 'criar' | 'atualizar' | 'excluir' | 'ativar' | 'convidar'
 
 export interface RegistroAuditoria {
@@ -447,6 +454,13 @@ export interface Mensagem {
   erro?: { codigo?: number; mensagem: string }
   statusAtualizadoEm?: Date     // Quando `status` mudou pela última vez (webhook de status)
   dataCriacao: Date             // Data de criação no Firebase
+  // Mídia (foto, áudio, vídeo, documento, figurinha) — recebida do cliente ou
+  // enviada pelo painel. `mediaUrl` é uma cópia permanente no Firebase
+  // Storage (a URL que a Meta devolve pra mídia recebida expira em minutos).
+  mediaUrl?: string
+  mediaType?: 'image' | 'audio' | 'video' | 'document' | 'sticker'
+  mediaMimeType?: string
+  mediaFilename?: string        // Nome original do arquivo (documentos)
 }
 
 // ─────────────────────────────────────────

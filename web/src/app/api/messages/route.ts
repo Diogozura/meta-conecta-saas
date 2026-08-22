@@ -28,7 +28,17 @@ export async function GET(request: Request) {
     listarMensagensRecebidasDesde(session.user.contaId, since),
     listarFalhasDesde(session.user.contaId, since),
   ])
-  const messages = mensagens.map((m) => ({ id: m.id, from: m.from, nomeContato: m.nomeContato, text: m.text, timestamp: m.timestamp }))
+  const messages = mensagens.map((m) => ({
+    id: m.id,
+    from: m.from,
+    nomeContato: m.nomeContato,
+    text: m.text,
+    timestamp: m.timestamp,
+    mediaUrl: m.mediaUrl,
+    mediaType: m.mediaType,
+    mediaMimeType: m.mediaMimeType,
+    mediaFilename: m.mediaFilename,
+  }))
   // Mensagens ENVIADAS que a Meta aceitou na hora (200 OK) mas depois
   // rejeitou de fato (ex: janela de 24h) — reportado assíncrono, via webhook.
   const failures = falhas.map((m) => ({ id: m.id, erro: m.erro }))

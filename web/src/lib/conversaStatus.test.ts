@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CONVERSA_META_PADRAO, esperaExcedeuSla, filaDaConversa, formatEspera, ordenarFilaPorPrioridade, SLA_ALERTA_MINUTOS } from './conversaStatus'
+import { CONVERSA_META_PADRAO, esperaExcedeuSla, filaDaConversa, formatEspera, ordenarFilaPorPrioridade, slaParaPrioridade, SLA_ALERTA_MINUTOS } from './conversaStatus'
 
 describe('filaDaConversa', () => {
   it('é "ia" quando a IA está ativa, mesmo que haja atendente registrado de uma reivindicação anterior', () => {
@@ -95,5 +95,17 @@ describe('ordenarFilaPorPrioridade', () => {
     const resultado = ordenarFilaPorPrioridade(original)
     expect(resultado.map((i) => i.id)).toEqual(['b', 'a'])
     expect(original.map((i) => i.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('slaParaPrioridade', () => {
+  it('urgente tem o SLA mais curto, alta intermediário, normal o padrão geral', () => {
+    expect(slaParaPrioridade('urgente')).toBe(5)
+    expect(slaParaPrioridade('alta')).toBe(10)
+    expect(slaParaPrioridade('normal')).toBe(SLA_ALERTA_MINUTOS)
+  })
+
+  it('sem prioridade informada, cai pro SLA normal', () => {
+    expect(slaParaPrioridade()).toBe(SLA_ALERTA_MINUTOS)
   })
 })

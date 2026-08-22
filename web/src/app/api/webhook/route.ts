@@ -6,6 +6,29 @@ import { getMentionedComment, getMentionedMedia } from '@/lib/instagram'
 import { processarMensagemComFluxo } from '@/lib/fluxoService'
 import { aplicarPrioridadeAutomatica } from '@/lib/prioridadeConversa'
 import { processarRespostaCsatSeAguardando } from '@/lib/csatService'
+import { getMediaInfo, downloadMedia } from '@/lib/meta'
+import { uploadWhatsappMedia } from '@/lib/storage'
+import { extensaoPorMime } from '@/lib/mediaTipo'
+
+type TipoMidiaRecebida = 'image' | 'audio' | 'video' | 'document' | 'sticker'
+
+const RETULOS_MIDIA_PADRAO: Record<TipoMidiaRecebida, string> = {
+  image: '📷 Imagem',
+  audio: '🎤 Áudio',
+  video: '🎥 Vídeo',
+  document: '📎 Documento',
+  sticker: '🩹 Figurinha',
+}
+
+/** Extrai o id/legenda da mídia de uma mensagem recebida (mensagens de texto não têm nenhum desses campos). */
+function extrairMidiaDoWebhook(msg: WebhookMessage): { tipo: TipoMidiaRecebida; mediaId: string; filename?: string; caption?: string } | null {
+  if (msg.image) return { tipo: 'image', mediaId: msg.image.id, caption: msg.image.caption }
+  if (msg.video) return { tipo: 'video', mediaId: msg.video.id, caption: msg.video.caption }
+  if (msg.document) return { tipo: 'document', mediaId: msg.document.id, filename: msg.document.filename, caption: msg.document.caption }
+  if (msg.audio) return { tipo: 'audio', mediaId: msg.audio.id }
+  if (msg.sticker) return { tipo: 'sticker', mediaId: msg.sticker.id }
+  return null
+}
 
 /* ─── GET: verificação do endpoint pelo Meta ─────────────────────────────── */
 export async function GET(request: Request) {
@@ -79,10 +102,12 @@ export async function POST(request: Request) {
     // webhook. Loga o erro e segue tratando como "conta não encontrada".
     let contaId: string | undefined
     let metaAccessId: string | undefined
+    let metaAccessToken: string | undefined
     try {
       const result = await obterMetaAccessPorWabaId(wabaId)
       contaId = result?.contaId
       metaAccessId = result?.metaAccess.id
+      metaAccessToken = result?.metaAccess.businessToken
     } catch (error) {
       console.error('❌ Erro ao buscar conta pelo WABA (verifique env vars, ex: CREDENTIALS_ENCRYPTION_KEY):', error)
     }
@@ -130,7 +155,26 @@ export async function POST(request: Request) {
         // título escolhido como se fosse o texto digitado, pra casar com o
         // rótulo da opção no motor do fluxo (fluxoEngine) sem mudar nada lá.
         const textoInterativo = msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title
-        const corpoTexto = msg.text?.body ?? textoInterativo
+
+        // Foto, áudio, vídeo, documento ou figurinha — baixa da Meta (a URL
+        // que ela devolve expira em minutos) e sobe uma cópia permanente no
+        // Firebase Storage. Best-effort: se falhar, a mensagem ainda é salva
+        // com um rótulo padrão em vez de travar o webhook inteiro.
+        const midia = extrairMidiaDoWebhook(msg)
+        let mediaUrl: string | undefined
+        let mediaMimeType: string | undefined
+        if (midia && contaId && metaAccessToken) {
+          try {
+            const info = await getMediaInfo(midia.mediaId, metaAccessToken)
+            const { buffer, mimeType } = await downloadMedia(info.url, metaAccessToken)
+            mediaMimeType = mimeType
+            mediaUrl = await uploadWhatsappMedia(contaId, buffer, mimeType, extensaoPorMime(mimeType))
+          } catch (error) {
+            console.error('❌ Erro ao baixar/persistir mídia recebida:', error)
+          }
+        }
+
+        const corpoTexto = msg.text?.body ?? textoInterativo ?? midia?.caption ?? (midia ? RETULOS_MIDIA_PADRAO[midia.tipo] : undefined)
 
         // Salva no Firebase (persistência — também é a fonte do polling do painel)
         if (contaId) {
@@ -145,6 +189,10 @@ export async function POST(request: Request) {
               text: corpoTexto ?? '(mídia)',
               timestamp: parseInt(msg.timestamp),
               tipo: 'recebida',
+              ...(midia ? { mediaType: midia.tipo } : {}),
+              ...(mediaUrl ? { mediaUrl } : {}),
+              ...(mediaMimeType ? { mediaMimeType } : {}),
+              ...(midia?.filename ? { mediaFilename: midia.filename } : {}),
             })
 
             // Cria a conversa (status 'aberta') se for a primeira mensagem
@@ -479,6 +527,35 @@ interface InstagramWebhookPayload {
   }>
 }
 
+// Uma mensagem recebida — id/mime_type presentes em qualquer tipo de mídia;
+// `caption` só em image/video/document, `filename` só em document.
+interface WebhookMediaField {
+  id: string
+  mime_type?: string
+  sha256?: string
+  caption?: string
+  filename?: string
+}
+
+interface WebhookMessage {
+  from: string
+  id: string
+  timestamp: string
+  type: string
+  text?: { body: string }
+  // Resposta a um botão/lista nativos (mensagens type "interactive").
+  interactive?: {
+    type: 'button_reply' | 'list_reply'
+    button_reply?: { id: string; title: string }
+    list_reply?: { id: string; title: string; description?: string }
+  }
+  image?: WebhookMediaField
+  video?: WebhookMediaField
+  audio?: WebhookMediaField
+  document?: WebhookMediaField
+  sticker?: WebhookMediaField
+}
+
 interface WebhookPayload {
   object: string
   entry: Array<{
@@ -490,19 +567,7 @@ interface WebhookPayload {
         // opcional — nem toda notificação é sobre um número específico.
         metadata?: { display_phone_number: string; phone_number_id: string }
         contacts?: Array<{ profile: { name: string }; wa_id: string }>
-        messages?: Array<{
-          from: string
-          id: string
-          timestamp: string
-          type: string
-          text?: { body: string }
-          // Resposta a um botão/lista nativos (mensagens type "interactive").
-          interactive?: {
-            type: 'button_reply' | 'list_reply'
-            button_reply?: { id: string; title: string }
-            list_reply?: { id: string; title: string; description?: string }
-          }
-        }>
+        messages?: WebhookMessage[]
         statuses?: Array<{
           id: string
           status: string

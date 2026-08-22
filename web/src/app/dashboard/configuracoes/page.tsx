@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, type ComponentType } from 'react'
-import { Save, Eye, EyeOff, AlertCircle, AlertTriangle, Sparkles, SlidersHorizontal, FileText, UserCog, Plug, ExternalLink, Gauge } from 'lucide-react'
+import { Save, Eye, EyeOff, AlertCircle, AlertTriangle, Sparkles, SlidersHorizontal, FileText, UserCog, Plug, ExternalLink, Gauge, ShieldCheck, Loader2, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AGENT_PROVIDERS } from '@/lib/aiAgentTypes'
 import { Skeleton } from '@/components/Skeleton'
@@ -11,7 +11,7 @@ import TemplatesPage from '../templates/page'
 import UsuariosPage from '../usuarios/page'
 import OnboardingPage from '../onboarding/page'
 
-type ConfigTab = 'geral' | 'templates' | 'usuarios' | 'onboarding' | 'instagram'
+type ConfigTab = 'geral' | 'templates' | 'usuarios' | 'onboarding' | 'instagram' | 'seguranca'
 
 const configTabs: { key: ConfigTab; label: string; icon: ComponentType<{ className?: string }> }[] = [
   { key: 'geral', label: 'Geral', icon: SlidersHorizontal },
@@ -19,6 +19,7 @@ const configTabs: { key: ConfigTab; label: string; icon: ComponentType<{ classNa
   { key: 'usuarios', label: 'Usuários', icon: UserCog },
   { key: 'onboarding', label: 'Conectar WABA', icon: Plug },
   { key: 'instagram', label: 'Instagram', icon: InstagramGlyph },
+  { key: 'seguranca', label: 'Segurança', icon: ShieldCheck },
 ]
 
 export default function ConfiguracoesPage() {
@@ -55,6 +56,182 @@ export default function ConfiguracoesPage() {
       {tab === 'usuarios' && <UsuariosPage />}
       {tab === 'onboarding' && <OnboardingPage />}
       {tab === 'instagram' && <InstagramStatusCard variant="full" />}
+      {tab === 'seguranca' && <SecurityTab />}
+    </div>
+  )
+}
+
+function SecurityTab() {
+  const [carregando, setCarregando] = useState(true)
+  const [ativo, setAtivo] = useState(false)
+  const [setup, setSetup] = useState<{ secret: string; qrCodeDataUrl: string } | null>(null)
+  const [codigo, setCodigo] = useState('')
+  const [processando, setProcessando] = useState(false)
+
+  async function carregarEstado() {
+    try {
+      const res = await fetch('/api/auth/2fa')
+      const data = await res.json()
+      setAtivo(!!data.ativo)
+    } catch {
+      toast.error('Erro ao verificar o estado do 2FA')
+    } finally {
+      setCarregando(false)
+    }
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    carregarEstado()
+  }, [])
+
+  async function handleIniciarSetup() {
+    setProcessando(true)
+    try {
+      const res = await fetch('/api/auth/2fa/setup', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Erro ao gerar o QR code')
+      setSetup({ secret: data.secret, qrCodeDataUrl: data.qrCodeDataUrl })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao iniciar o cadastro do 2FA')
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  async function handleConfirmarSetup(e: React.FormEvent) {
+    e.preventDefault()
+    if (codigo.trim().length !== 6) return
+    setProcessando(true)
+    try {
+      const res = await fetch('/api/auth/2fa/verificar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigo: codigo.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Código incorreto')
+      setAtivo(true)
+      setSetup(null)
+      setCodigo('')
+      toast.success('2FA ativado! Da próxima vez que entrar, vai pedir o código.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Código incorreto')
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  async function handleDesativar(e: React.FormEvent) {
+    e.preventDefault()
+    if (codigo.trim().length !== 6) return
+    setProcessando(true)
+    try {
+      const res = await fetch('/api/auth/2fa/desativar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigo: codigo.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Código incorreto')
+      setAtivo(false)
+      setCodigo('')
+      toast.success('2FA desativado.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Código incorreto')
+    } finally {
+      setProcessando(false)
+    }
+  }
+
+  if (carregando) {
+    return (
+      <div className="max-w-lg space-y-4">
+        <Skeleton className="h-5 w-56" />
+        <Skeleton className="h-32 w-full rounded-xl" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-lg space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-ink-900">Autenticação em dois fatores (2FA)</h2>
+        <p className="text-sm text-ink-500 mt-1">
+          Além da senha, exige um código de 6 dígitos do seu app autenticador (Google Authenticator, Authy, etc.) a cada login por
+          e-mail/senha. Login com Google já é protegido pelo 2FA da sua própria conta Google, se você tiver um configurado lá.
+        </p>
+      </div>
+
+      {ativo && !setup ? (
+        <div className="bg-brand-50 border border-brand-200 rounded-xl p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-brand-600" />
+            <h3 className="font-semibold text-brand-800">2FA ativado</h3>
+          </div>
+          <p className="text-sm text-brand-700">Sua conta está protegida com um segundo fator. Pra desativar, confirme com o código atual do seu app.</p>
+          <form onSubmit={handleDesativar} className="flex flex-wrap items-end gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))}
+              placeholder="000000"
+              className="px-3 py-2 border border-ink-300 rounded-lg text-sm text-center tracking-widest w-32"
+            />
+            <button
+              type="submit"
+              disabled={processando || codigo.length !== 6}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors flex items-center gap-2"
+            >
+              {processando && <Loader2 className="w-4 h-4 animate-spin" />}
+              Desativar 2FA
+            </button>
+          </form>
+        </div>
+      ) : setup ? (
+        <div className="bg-white rounded-xl border border-ink-200 p-6 space-y-4">
+          <p className="text-sm text-ink-600">Escaneie o QR code com seu app autenticador (ou digite o código manualmente) e confirme com o código de 6 dígitos gerado.</p>
+          {/* eslint-disable-next-line @next/next/no-img-element -- imagem gerada em memória (data URL), não faz sentido pro next/image */}
+          <img src={setup.qrCodeDataUrl} alt="QR code do 2FA" className="w-48 h-48 border border-ink-200 rounded-lg" />
+          <div className="bg-ink-50 rounded-lg p-3">
+            <p className="text-[11px] font-semibold text-ink-500 uppercase tracking-wide">Código manual</p>
+            <p className="text-sm font-mono text-ink-800 break-all mt-0.5">{setup.secret}</p>
+          </div>
+          <form onSubmit={handleConfirmarSetup} className="flex flex-wrap items-end gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))}
+              placeholder="000000"
+              className="px-3 py-2 border border-ink-300 rounded-lg text-sm text-center tracking-widest w-32"
+            />
+            <button
+              type="submit"
+              disabled={processando || codigo.length !== 6}
+              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors flex items-center gap-2"
+            >
+              {processando && <Loader2 className="w-4 h-4 animate-spin" />}
+              Confirmar e ativar
+            </button>
+            <button type="button" onClick={() => { setSetup(null); setCodigo('') }} className="px-3 py-2 text-sm text-ink-500 hover:text-ink-700">
+              Cancelar
+            </button>
+          </form>
+        </div>
+      ) : (
+        <button
+          onClick={handleIniciarSetup}
+          disabled={processando}
+          className="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors flex items-center gap-2"
+        >
+          {processando && <Loader2 className="w-4 h-4 animate-spin" />}
+          Ativar 2FA
+        </button>
+      )}
     </div>
   )
 }
