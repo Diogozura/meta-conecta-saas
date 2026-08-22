@@ -27,6 +27,7 @@ import { Logo } from '@/components/Logo'
 import { WhatsAppGlyph, InstagramGlyph /*, FacebookGlyph */ } from '@/components/BrandIcons'
 import { TourProvider, useTour } from '@/lib/tour/TourContext'
 import { getGlobalTourSteps, getPageTourSteps } from '@/lib/tour/steps'
+import type { ServicosContratados } from '@/types/database'
 
 type NavItem = {
   href: string
@@ -35,13 +36,9 @@ type NavItem = {
   tour?: string
 }
 
-const mainNavItems: NavItem[] = [
-  { href: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard, tour: 'nav-visao-geral' },
-  { href: '/dashboard/agenda', label: 'Agenda', icon: Calendar, tour: 'nav-agenda' },
-]
-
 const manageNavItems: (NavItem & { platformAdminOnly: boolean })[] = [
   { href: '/dashboard/clientes', label: 'Clientes', icon: Building2, platformAdminOnly: true, tour: 'nav-clientes' },
+  { href: '/dashboard/servicos', label: 'Serviços por conta', icon: ShieldCheck, platformAdminOnly: true },
   { href: '/dashboard/configuracoes', label: 'Configurações', icon: Settings, platformAdminOnly: false, tour: 'nav-configuracoes' },
 ]
 
@@ -52,16 +49,23 @@ export default function DashboardShell({
   isPlatformAdmin,
   isRealPlatformAdmin,
   viewingAsClient,
+  servicosContratados,
   children,
 }: {
   isPlatformAdmin: boolean
   isRealPlatformAdmin: boolean
   viewingAsClient: boolean
+  servicosContratados: ServicosContratados
   children: React.ReactNode
 }) {
   return (
     <TourProvider>
-      <DashboardShellInner isPlatformAdmin={isPlatformAdmin} isRealPlatformAdmin={isRealPlatformAdmin} viewingAsClient={viewingAsClient}>
+      <DashboardShellInner
+        isPlatformAdmin={isPlatformAdmin}
+        isRealPlatformAdmin={isRealPlatformAdmin}
+        viewingAsClient={viewingAsClient}
+        servicosContratados={servicosContratados}
+      >
         {children}
       </DashboardShellInner>
     </TourProvider>
@@ -72,11 +76,13 @@ function DashboardShellInner({
   isPlatformAdmin,
   isRealPlatformAdmin,
   viewingAsClient,
+  servicosContratados,
   children,
 }: {
   isPlatformAdmin: boolean
   isRealPlatformAdmin: boolean
   viewingAsClient: boolean
+  servicosContratados: ServicosContratados
   children: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -93,7 +99,9 @@ function DashboardShellInner({
   const [wabaGate, setWabaGate] = useState<'checking' | 'blocked' | 'clear'>('checking')
 
   useEffect(() => {
-    const enabled = !isPlatformAdmin || viewingAsClient
+    // Conta sem o serviço "whatsapp" contratado não tem WhatsApp pra
+    // conectar — pedir isso pra ela não faz sentido nenhum.
+    const enabled = (!isPlatformAdmin || viewingAsClient) && servicosContratados.whatsapp
     const onSkipPath = WABA_SKIP_PATH_PREFIXES.some((p) => pathname.startsWith(p))
 
     if (!enabled || onSkipPath) {
@@ -124,13 +132,16 @@ function DashboardShellInner({
     setWabaGate('clear')
   }
 
-  // "Clientes" (Empresas) é uma tela de admin de plataforma — vê/gerencia
-  // TODAS as empresas. Usuários comuns de uma empresa (mesmo Administrador
-  // daquela empresa) nunca veem esse item no menu.
+  // "Clientes" (Empresas) e "Serviços por conta" são telas de admin de
+  // plataforma — vê/gerencia TODAS as contas. Usuários comuns de uma conta
+  // (mesmo Administrador daquela conta) nunca veem esses itens no menu.
   const visibleManageItems = manageNavItems.filter((item) => !item.platformAdminOnly || isPlatformAdmin)
+  const mostraCanaisAtendimento = servicosContratados.whatsapp || servicosContratados.instagram
   const allLabeledItems: { href: string; label: string }[] = [
-    ...mainNavItems,
-    { href: '/dashboard/conversas', label: 'Conversas' },
+    { href: '/dashboard', label: 'Visão Geral' },
+    ...(servicosContratados.agenda ? [{ href: '/dashboard/agenda', label: 'Agenda' }] : []),
+    ...(servicosContratados.whatsapp ? [{ href: '/dashboard/conversas', label: 'Conversas' }] : []),
+    ...(servicosContratados.instagram ? [{ href: '/dashboard/instagram', label: 'Instagram' }] : []),
     ...visibleManageItems,
   ]
 
@@ -214,25 +225,40 @@ function DashboardShellInner({
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto scrollbar-thin">
           <NavSection>
-            {mainNavItems.map((item) => (
-              <NavLink key={item.href} item={item} active={pathname === item.href} onNavigate={() => setSidebarOpen(false)} />
-            ))}
+            <NavLink
+              item={{ href: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard, tour: 'nav-visao-geral' }}
+              active={pathname === '/dashboard'}
+              onNavigate={() => setSidebarOpen(false)}
+            />
+            {servicosContratados.agenda && (
+              <NavLink
+                item={{ href: '/dashboard/agenda', label: 'Agenda', icon: Calendar, tour: 'nav-agenda' }}
+                active={pathname === '/dashboard/agenda'}
+                onNavigate={() => setSidebarOpen(false)}
+              />
+            )}
           </NavSection>
 
-          <NavSection label="Canais de atendimento">
-            <NavLink
-              item={{ href: '/dashboard/conversas', label: 'WhatsApp', icon: WhatsAppGlyph, tour: 'nav-conversas' }}
-              active={pathname.startsWith('/dashboard/conversas')}
-              onNavigate={() => setSidebarOpen(false)}
-            />
-            <NavLink
-              item={{ href: '/dashboard/instagram', label: 'Instagram', icon: InstagramGlyph, tour: 'nav-instagram' }}
-              active={pathname.startsWith('/dashboard/instagram')}
-              onNavigate={() => setSidebarOpen(false)}
-            />
-            {/* Facebook (Página) segue pausado sem previsão — reativar quando entrar em desenvolvimento. */}
-            {/* <ComingSoonRow icon={FacebookGlyph} label="Facebook" /> */}
-          </NavSection>
+          {mostraCanaisAtendimento && (
+            <NavSection label="Canais de atendimento">
+              {servicosContratados.whatsapp && (
+                <NavLink
+                  item={{ href: '/dashboard/conversas', label: 'WhatsApp', icon: WhatsAppGlyph, tour: 'nav-conversas' }}
+                  active={pathname.startsWith('/dashboard/conversas')}
+                  onNavigate={() => setSidebarOpen(false)}
+                />
+              )}
+              {servicosContratados.instagram && (
+                <NavLink
+                  item={{ href: '/dashboard/instagram', label: 'Instagram', icon: InstagramGlyph, tour: 'nav-instagram' }}
+                  active={pathname.startsWith('/dashboard/instagram')}
+                  onNavigate={() => setSidebarOpen(false)}
+                />
+              )}
+              {/* Facebook (Página) segue pausado sem previsão — reativar quando entrar em desenvolvimento. */}
+              {/* <ComingSoonRow icon={FacebookGlyph} label="Facebook" /> */}
+            </NavSection>
+          )}
 
           <NavSection label="Administração">
             {visibleManageItems.map((item) => (

@@ -16,6 +16,18 @@ export interface Conta {
   dataAtualizacao: Date
   status: 'ativo' | 'inativo' | 'suspenso'
   ai?: ContaAiConfig
+  // Quais módulos essa conta pode ver/usar — controlado por um admin de
+  // plataforma em /dashboard/servicos. AUSENTE (não `{}`) = conta legada ou
+  // nunca configurada por um admin, trata como acesso total (não bloqueia
+  // ninguém por padrão); só passa a restringir depois que um admin define
+  // esse campo explicitamente pra essa conta. Ver lib/servicos.ts.
+  servicosContratados?: ServicosContratados
+}
+
+export interface ServicosContratados {
+  whatsapp: boolean
+  agenda: boolean
+  instagram: boolean
 }
 
 // Configuração do agente de IA que responde as mensagens do WhatsApp
