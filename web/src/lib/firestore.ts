@@ -32,11 +32,17 @@ function getDb() {
   return db
 }
 
-// Converte campos Timestamp do Firestore Admin em Date antes de devolver ao front,
-// caso contrário `new Date(timestamp)` no cliente vira "Invalid Date".
+// Converte campos Timestamp do Firestore Admin em Date antes de devolver ao
+// front, caso contrário `new Date(timestamp)` no cliente vira "Invalid Date"
+// (e cálculos com essa data viram NaN, ex: "há NaN dia"). Antes checava só
+// uma lista fixa de nomes de campo (dataCadastro/dataAtualizacao/etc) — toda
+// vez que um campo Date novo era adicionado a algum tipo (dataTransferencia,
+// assumidoEm, criadoEm de eventos/avaliações, ...) e esquecido dessa lista,
+// o bug voltava. Agora converte QUALQUER campo de primeiro nível que pareça
+// um Timestamp (tem `.toDate()`), sem depender do nome.
 function convertTimestamps<T extends Record<string, unknown>>(data: T): T {
   const result: Record<string, unknown> = { ...data }
-  for (const key of ['dataCadastro', 'dataAtualizacao', 'dataCriacao', 'inicio', 'fim']) {
+  for (const key of Object.keys(result)) {
     const value = result[key]
     if (value && typeof value === 'object' && 'toDate' in value && typeof value.toDate === 'function') {
       result[key] = value.toDate()
