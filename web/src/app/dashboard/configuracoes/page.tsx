@@ -13,17 +13,40 @@ import OnboardingPage from '../onboarding/page'
 
 type ConfigTab = 'geral' | 'templates' | 'usuarios' | 'onboarding' | 'instagram' | 'seguranca'
 
-const configTabs: { key: ConfigTab; label: string; icon: ComponentType<{ className?: string }> }[] = [
-  { key: 'geral', label: 'Geral', icon: SlidersHorizontal },
-  { key: 'templates', label: 'Templates', icon: FileText },
-  { key: 'usuarios', label: 'Usuários', icon: UserCog },
-  { key: 'onboarding', label: 'Conectar WABA', icon: Plug },
-  { key: 'instagram', label: 'Instagram', icon: InstagramGlyph },
-  { key: 'seguranca', label: 'Segurança', icon: ShieldCheck },
+// Abas ligadas a um canal específico só aparecem se a conta tiver esse
+// serviço contratado — sem isso, uma conta sem WhatsApp ainda via "Templates"
+// e "Conectar WABA", e uma sem Instagram ainda via a aba Instagram.
+const configTabs: { key: ConfigTab; label: string; icon: ComponentType<{ className?: string }>; servico: 'whatsapp' | 'instagram' | null }[] = [
+  { key: 'geral', label: 'Geral', icon: SlidersHorizontal, servico: null },
+  { key: 'templates', label: 'Templates', icon: FileText, servico: 'whatsapp' },
+  { key: 'usuarios', label: 'Usuários', icon: UserCog, servico: null },
+  { key: 'onboarding', label: 'Conectar WABA', icon: Plug, servico: 'whatsapp' },
+  { key: 'instagram', label: 'Instagram', icon: InstagramGlyph, servico: 'instagram' },
+  { key: 'seguranca', label: 'Segurança', icon: ShieldCheck, servico: null },
 ]
 
 export default function ConfiguracoesPage() {
   const [tab, setTab] = useState<ConfigTab>('geral')
+  const [servicos, setServicos] = useState<{ whatsapp: boolean; instagram: boolean } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/conta/servicos')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { servicos?: { whatsapp: boolean; instagram: boolean } } | null) => {
+        if (data?.servicos) setServicos(data.servicos)
+      })
+      .catch(() => {})
+  }, [])
+
+  const visibleTabs = configTabs.filter((t) => t.servico === null || servicos === null || servicos[t.servico])
+
+  useEffect(() => {
+    if (servicos && !visibleTabs.some((t) => t.key === tab)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+      setTab('geral')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só precisa reagir quando `servicos` chega, não a cada render de visibleTabs
+  }, [servicos])
 
   return (
     <div className="max-w-5xl">
@@ -33,7 +56,7 @@ export default function ConfiguracoesPage() {
       </div>
 
       <div data-tour="config-tabs" className="flex items-center gap-1 border-b border-ink-200 mb-6 mt-4 overflow-x-auto overflow-y-hidden scrollbar-thin">
-        {configTabs.map((t) => {
+        {visibleTabs.map((t) => {
           const Icon = t.icon
           const active = tab === t.key
           return (
