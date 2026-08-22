@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { obterConversa, definirIaAtivaConversa } from '@/lib/firestore'
 
-// GET /api/conversas/[numero]/ia - Estado da IA nessa conversa (ativa ou transferida pra humano)
+// GET /api/conversas/[numero]/ia - Estado da conversa (IA, status, atendente)
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ numero: string }> }) {
   const session = await auth()
   if (!session?.user?.contaId) {
@@ -11,7 +11,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ num
 
   const { numero } = await params
   const conversa = await obterConversa(session.user.contaId, numero)
-  return NextResponse.json({ iaAtiva: conversa?.iaAtiva ?? true, motivoTransferencia: conversa?.motivoTransferencia ?? null })
+  return NextResponse.json({
+    iaAtiva: conversa?.iaAtiva ?? true,
+    motivoTransferencia: conversa?.motivoTransferencia ?? null,
+    status: conversa?.status ?? 'em_andamento',
+    atendenteId: conversa?.atendenteId ?? null,
+    atendenteNome: conversa?.atendenteNome ?? null,
+    assumidoEm: conversa?.assumidoEm ?? null,
+    setor: conversa?.setor ?? null,
+  })
 }
 
 // PATCH /api/conversas/[numero]/ia - Liga/desliga a IA pra essa conversa (ex: reativar depois de um atendente assumir)

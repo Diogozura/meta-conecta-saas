@@ -15,7 +15,12 @@ export async function GET(req: NextRequest) {
     const profissionalId = searchParams.get('profissionalId') ?? undefined
     const de = searchParams.get('de') ? new Date(searchParams.get('de')!) : undefined
     const ate = searchParams.get('ate') ? new Date(searchParams.get('ate')!) : undefined
-    const status = (searchParams.get('status') as 'confirmado' | 'cancelado' | 'concluido' | null) ?? undefined
+    const statusParam = searchParams.get('status')
+    const statusValidos = ['confirmado', 'cancelado', 'concluido'] as const
+    if (statusParam && !statusValidos.includes(statusParam as (typeof statusValidos)[number])) {
+      return NextResponse.json({ error: "status deve ser 'confirmado', 'cancelado' ou 'concluido'" }, { status: 400 })
+    }
+    const status = (statusParam as 'confirmado' | 'cancelado' | 'concluido' | null) ?? undefined
 
     const agendamentos = await listarAgendamentos(session.user.contaId, { profissionalId, de, ate, status: status ?? undefined })
     return NextResponse.json({ agendamentos })

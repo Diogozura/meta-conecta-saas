@@ -45,6 +45,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   }
 
   const { id } = await params
+  const existing = await obterDisponibilidade(session.user.contaId, id)
+  if (!existing) {
+    return NextResponse.json({ error: 'Disponibilidade não encontrada' }, { status: 404 })
+  }
+
   try {
     await deletarDisponibilidade(session.user.contaId, id)
     return NextResponse.json({ ok: true })

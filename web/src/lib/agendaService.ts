@@ -1,6 +1,7 @@
 import {
+  AgendamentoConflitoError,
   atualizarAgendamento,
-  criarAgendamento,
+  criarAgendamentoSeLivre,
   listarAgendamentos,
   listarDisponibilidades,
   obterMetaAccess,
@@ -42,6 +43,11 @@ export async function buscarHorariosLivres(
 
   if (!profissional) throw new AgendaServiceError('Profissional não encontrado', 404)
   if (!servico) throw new AgendaServiceError('Serviço não encontrado', 404)
+  if (!profissional.ativo) throw new AgendaServiceError('Profissional inativo', 400)
+  if (!servico.ativo) throw new AgendaServiceError('Serviço inativo', 400)
+  if (servico.profissionalIds?.length && !servico.profissionalIds.includes(profissionalId)) {
+    throw new AgendaServiceError('Esse profissional não atende esse serviço', 400)
+  }
 
   const [disponibilidades, agendamentos] = await Promise.all([
     listarDisponibilidades(contaId, profissionalId, de, ate),
@@ -90,14 +96,13 @@ export async function criarAgendamentoInterno(contaId: string, params: CriarAgen
   ])
   if (!profissional) throw new AgendaServiceError('Profissional não encontrado', 404)
   if (!servico) throw new AgendaServiceError('Serviço não encontrado', 404)
+  if (!profissional.ativo) throw new AgendaServiceError('Profissional inativo', 400)
+  if (!servico.ativo) throw new AgendaServiceError('Serviço inativo', 400)
+  if (servico.profissionalIds?.length && !servico.profissionalIds.includes(profissionalId)) {
+    throw new AgendaServiceError('Esse profissional não atende esse serviço', 400)
+  }
 
   const fim = new Date(inicio.getTime() + servico.duracaoMinutos * 60 * 1000)
-
-  const conflitantes = await listarAgendamentos(contaId, { profissionalId, status: 'confirmado' })
-  const temConflito = conflitantes.some((a) => a.inicio < fim && a.fim > inicio)
-  if (temConflito) {
-    throw new AgendaServiceError('Esse horário acabou de ser reservado. Escolha outro.', 409)
-  }
 
   if (profissional.google?.conectado) {
     try {
@@ -112,18 +117,24 @@ export async function criarAgendamentoInterno(contaId: string, params: CriarAgen
     }
   }
 
-  const agendamento = await criarAgendamento(contaId, {
-    contaId,
-    profissionalId,
-    servicoId,
-    clienteNome,
-    clienteTelefone,
-    inicio,
-    fim,
-    status: 'confirmado',
-    origem,
-    observacoes,
-  })
+  let agendamento: Agendamento
+  try {
+    agendamento = await criarAgendamentoSeLivre(contaId, {
+      contaId,
+      profissionalId,
+      servicoId,
+      clienteNome,
+      clienteTelefone,
+      inicio,
+      fim,
+      status: 'confirmado',
+      origem,
+      observacoes,
+    })
+  } catch (error) {
+    if (error instanceof AgendamentoConflitoError) throw new AgendaServiceError(error.message, 409)
+    throw error
+  }
 
   if (profissional.google?.conectado) {
     try {

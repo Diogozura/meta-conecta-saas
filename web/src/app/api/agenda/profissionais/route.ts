@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       ativo: true,
     })
 
-    return NextResponse.json({ profissional }, { status: 201 })
+    return NextResponse.json({ profissional: sanitizeProfissional(profissional) }, { status: 201 })
   } catch (error) {
     console.error('Erro ao criar profissional:', error)
     return NextResponse.json({ error: 'Erro ao criar profissional' }, { status: 500 })

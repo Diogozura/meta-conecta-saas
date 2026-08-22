@@ -1,5 +1,6 @@
-import { obterConta, obterMetaAccess, listarMensagensPorNumero, criarMensagem, obterConversa, registrarErroAgenteIA, registrarUsoAgenteIA } from '@/lib/firestore'
+import { obterConta, obterMetaAccess, listarMensagensPorNumero, criarMensagem, obterConversa, registrarErroAgenteIA, registrarUsoAgenteIA, marcarConversaEmAndamento } from '@/lib/firestore'
 import { sendTextMessage } from '@/lib/meta'
+import { resolverPhoneNumberId } from '@/lib/canalWhatsapp'
 import { runGeminiAgent } from '@/lib/aiProviderGemini'
 import { runOpenAIAgent } from '@/lib/aiProviderOpenAI'
 import { runAnthropicAgent } from '@/lib/aiProviderAnthropic'
@@ -42,10 +43,22 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
     // O contexto de data/hora é recalculado a cada mensagem (não pode ser
     // cacheado) — cada request pega o "agora" real no momento em que o
     // cliente escreveu, senão "amanhã" fica errado com o tempo.
+    // Dados que o Fluxo de atendimento coletou antes de entregar essa
+    // conversa pra IA (ex: CPF, protocolo) — evita pedir de novo o que o
+    // cliente já informou no menu.
+    const dadosColetados = conversa?.dadosColetados
+    const contextoColeta =
+      dadosColetados && Object.keys(dadosColetados).length > 0
+        ? `--- Dados já informados pelo cliente antes ---\n${Object.entries(dadosColetados)
+            .map(([chave, valor]) => `${chave}: ${valor}`)
+            .join('\n')}`
+        : null
+
     const systemPrompt = [
       conta.ai.prompt,
       contextoDataAtual(),
       conta.ai.informacoesNegocio ? `--- Informações do negócio ---\n${conta.ai.informacoesNegocio}` : null,
+      contextoColeta,
     ]
       .filter((parte): parte is string => !!parte)
       .join('\n\n')
@@ -66,14 +79,15 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
     await registrarUsoAgenteIA(contaId).catch(() => {})
     if (!textoFinal) return
 
-    const envio = await sendTextMessage(metaAccess.phoneNumberId, metaAccess.businessToken, telefoneCliente, textoFinal)
+    const phoneNumberId = resolverPhoneNumberId(metaAccess, conversa?.canalPhoneNumberId)
+    const envio = await sendTextMessage(phoneNumberId, metaAccess.businessToken, telefoneCliente, textoFinal)
     const mensagemId = envio?.messages?.[0]?.id
 
     if (mensagemId) {
       await criarMensagem({
         id: mensagemId,
         contaId,
-        from: metaAccess.phoneNumberId,
+        from: phoneNumberId,
         to: telefoneCliente,
         text: textoFinal,
         timestamp: Math.floor(Date.now() / 1000),
@@ -81,6 +95,8 @@ export async function processarMensagemComIA(contaId: string, telefoneCliente: s
         status: 'enviada',
       })
     }
+
+    await marcarConversaEmAndamento(contaId, telefoneCliente).catch(() => {})
 
     // Sucesso — limpa qualquer erro anterior pra não deixar aviso obsoleto no painel.
     if (conta.ai.ultimoErro) {

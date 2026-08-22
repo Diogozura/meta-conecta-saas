@@ -41,9 +41,41 @@ async function tratarRespostaComErro(res: Response) {
   } catch {}
 }
 
+/**
+ * "Push-lite": notificação de desktop via Notification API do navegador —
+ * não é Web Push de verdade (não funciona com o navegador fechado, exigiria
+ * Service Worker + VAPID), mas funciona com essa aba em segundo plano numa
+ * outra janela/app, que é onde o toast (só dentro da própria aba) não ajuda.
+ * Só dispara quando a aba não está em foco — se está, o toast já é visível,
+ * duplicar viraria ruído.
+ */
+function notificarDesktop(titulo: string, opcoes?: NotificationOptions & { aoClicar?: () => void }) {
+  if (typeof window === 'undefined' || typeof Notification === 'undefined') return
+  if (Notification.permission !== 'granted' || document.hasFocus()) return
+  try {
+    const notificacao = new Notification(titulo, opcoes)
+    if (opcoes?.aoClicar) {
+      notificacao.onclick = () => {
+        window.focus()
+        opcoes.aoClicar!()
+        notificacao.close()
+      }
+    }
+  } catch {
+    // Notification pode falhar silenciosamente em alguns navegadores/contextos (ex: iframe) — não é crítico.
+  }
+}
+
 export function RealtimeListeners() {
   const pathname = usePathname()
   const router = useRouter()
+
+  // Pede permissão de notificação de desktop uma vez — se o usuário já
+  // decidiu antes (concedeu ou negou), o navegador nem mostra o prompt de novo.
+  useEffect(() => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'default') return
+    Notification.requestPermission().catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (pathname === '/dashboard/conversas') return
@@ -123,6 +155,11 @@ export function RealtimeListeners() {
               label: 'Abrir',
               onClick: () => router.push(`/dashboard/conversas?from=${evt.numero}`),
             },
+          })
+          notificarDesktop('Atendimento humano necessário', {
+            body: `${evt.numero} — ${evt.motivo}`,
+            tag: `handoff-${evt.numero}`, // mesma tag substitui a notificação anterior desse número em vez de empilhar
+            aoClicar: () => router.push(`/dashboard/conversas?from=${evt.numero}`),
           })
         }
       } catch {}

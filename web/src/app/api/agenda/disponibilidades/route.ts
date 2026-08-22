@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { criarDisponibilidade, listarDisponibilidades, obterProfissional } from '@/lib/firestore'
+import { criarDisponibilidadesEmLote, listarDisponibilidades, obterProfissional } from '@/lib/firestore'
 
 const MAX_REPETICOES = 52 // limite de segurança pro atalho "repetir por N semanas"
 
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
     if (!session?.user?.contaId) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
+    const contaId = session.user.contaId
 
     const body = await req.json()
     const { profissionalId, inicio, fim, repetirSemanas } = body
@@ -51,24 +52,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Intervalo de data/hora inválido' }, { status: 400 })
     }
 
-    const profissional = await obterProfissional(session.user.contaId, profissionalId)
+    const profissional = await obterProfissional(contaId, profissionalId)
     if (!profissional) {
       return NextResponse.json({ error: 'Profissional não encontrado' }, { status: 404 })
     }
 
     const repeticoes = Math.min(Math.max(Number(repetirSemanas) || 0, 0), MAX_REPETICOES)
 
-    const criados = []
-    for (let semana = 0; semana <= repeticoes; semana++) {
+    const itens = Array.from({ length: repeticoes + 1 }, (_, semana) => {
       const offsetMs = semana * 7 * 24 * 60 * 60 * 1000
-      const disponibilidade = await criarDisponibilidade(session.user.contaId, {
-        contaId: session.user.contaId,
+      return {
+        contaId,
         profissionalId,
         inicio: new Date(inicioDate.getTime() + offsetMs),
         fim: new Date(fimDate.getTime() + offsetMs),
-      })
-      criados.push(disponibilidade)
-    }
+      }
+    })
+
+    const criados = await criarDisponibilidadesEmLote(contaId, itens)
 
     return NextResponse.json({ disponibilidades: criados }, { status: 201 })
   } catch (error) {

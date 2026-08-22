@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useState, Suspense, useCallback, useMemo } from 'react'
+import { useEffect, useState, useRef, Suspense, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { Calendar, Plus, Trash2, Link2, CheckCircle2, X, Pencil, Check, Eye, EyeOff } from 'lucide-react'
+import { Calendar, Plus, Trash2, Link2, CheckCircle2, X, Pencil, Check, Eye, EyeOff, Phone, Clock, Users, ChevronDown } from 'lucide-react'
 import { AgendaCalendar, toDateKey, type DayMark } from '@/components/agenda/AgendaCalendar'
 import { Skeleton } from '@/components/Skeleton'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { Modal } from '@/components/Modal'
+import { getInitials, avatarColor } from '@/lib/avatar'
+import { type DuracaoUnidade, unidadeParaMinutos, minutosParaUnidade, formatDuracao } from '@/lib/duracao'
 
 type Profissional = {
   id: string
@@ -236,15 +238,19 @@ function ProfissionaisTab({ profissionais, onChanged }: { profissionais: Profiss
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erro ao criar profissional')
       toast.success('Profissional criado.')
-      setNome('')
-      setTelefone('')
-      setShowForm(false)
+      closeForm()
       onChanged()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao criar profissional')
     } finally {
       setSaving(false)
     }
+  }
+
+  function closeForm() {
+    setShowForm(false)
+    setNome('')
+    setTelefone('')
   }
 
   function startEdit(p: Profissional) {
@@ -289,111 +295,251 @@ function ProfissionaisTab({ profissionais, onChanged }: { profissionais: Profiss
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {ConfirmDialogElement}
-      <button
-        onClick={() => setShowForm((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors"
-      >
-        {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-        Novo profissional
-      </button>
 
-      {showForm && (
-        <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2 bg-white p-3 rounded-xl border border-ink-200">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-ink-500">
+          {profissionais.length === 0
+            ? 'Nenhum profissional cadastrado'
+            : `${profissionais.length} ${profissionais.length === 1 ? 'profissional cadastrado' : 'profissionais cadastrados'}`}
+        </p>
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Novo profissional
+        </button>
+      </div>
+
+      <Modal open={showForm} onClose={closeForm} title="Novo profissional" widthClass="max-w-sm">
+        <form onSubmit={handleCreate} className="space-y-3">
           <div>
             <label className="block text-xs font-medium text-ink-600 mb-1">Nome</label>
-            <input value={nome} onChange={(e) => setNome(e.target.value)} required className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+            <input
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              required
+              autoFocus
+              placeholder="Ex: Maria Silva"
+              className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-ink-600 mb-1">Telefone (opcional)</label>
-            <input value={telefone} onChange={(e) => setTelefone(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+            <input
+              value={telefone}
+              onChange={(e) => setTelefone(e.target.value)}
+              placeholder="Ex: 11999998888"
+              className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+            />
           </div>
-          <button type="submit" disabled={saving} className="px-3 py-1.5 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 disabled:opacity-50">
-            {saving ? 'Salvando...' : 'Salvar'}
-          </button>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button type="button" onClick={closeForm} className="px-3 py-1.5 text-sm text-ink-500 hover:bg-ink-50 rounded-lg transition-colors">
+              Cancelar
+            </button>
+            <button type="submit" disabled={saving} className="px-3 py-1.5 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 disabled:opacity-50">
+              {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+          </div>
         </form>
-      )}
+      </Modal>
 
-      <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100">
-        {profissionais.length === 0 && <p className="p-6 text-center text-sm text-ink-400">Nenhum profissional cadastrado ainda.</p>}
-        {profissionais.map((p) => (
-          <div key={p.id} className="px-4 py-3">
-            {editingId === p.id ? (
-              <div className="flex flex-wrap items-end gap-2">
-                <div>
-                  <label className="block text-xs font-medium text-ink-600 mb-1">Nome</label>
-                  <input value={editNome} onChange={(e) => setEditNome(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+      {profissionais.length === 0 ? (
+        <div className="bg-white rounded-xl border border-ink-200 p-10 text-center">
+          <p className="text-sm text-ink-400">Nenhum profissional cadastrado ainda.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {profissionais.map((p) => (
+            <div key={p.id} className="bg-white rounded-xl border border-ink-200 p-4 flex flex-col gap-3 hover:border-ink-300 transition-colors">
+              {editingId === p.id ? (
+                <div className="flex flex-col gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600 mb-1">Nome</label>
+                    <input value={editNome} onChange={(e) => setEditNome(e.target.value)} className="w-full px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600 mb-1">Telefone</label>
+                    <input value={editTelefone} onChange={(e) => setEditTelefone(e.target.value)} className="w-full px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs text-ink-600">
+                    <input type="checkbox" checked={editAtivo} onChange={(e) => setEditAtivo(e.target.checked)} /> Ativo
+                  </label>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button onClick={() => handleSaveEdit(p.id)} disabled={saving} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-lg transition-colors">
+                      <Check className="w-3.5 h-3.5" /> Salvar
+                    </button>
+                    <button onClick={() => setEditingId(null)} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-ink-500 hover:bg-ink-50 rounded-lg transition-colors">
+                      <X className="w-3.5 h-3.5" /> Cancelar
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-ink-600 mb-1">Telefone</label>
-                  <input value={editTelefone} onChange={(e) => setEditTelefone(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
-                </div>
-                <label className="flex items-center gap-1.5 text-xs text-ink-600 pb-2">
-                  <input type="checkbox" checked={editAtivo} onChange={(e) => setEditAtivo(e.target.checked)} /> Ativo
-                </label>
-                <button onClick={() => handleSaveEdit(p.id)} disabled={saving} className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors" title="Salvar">
-                  <Check className="w-4 h-4" />
-                </button>
-                <button onClick={() => setEditingId(null)} className="p-1.5 text-ink-400 hover:bg-ink-50 rounded-lg transition-colors" title="Cancelar">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-ink-900 break-words">{p.nome}{!p.ativo && <span className="ml-2 text-[10px] text-ink-400 font-normal">inativo</span>}</p>
-                  <p className="text-xs text-ink-500">{p.telefone || 'sem telefone'}</p>
-                </div>
-                <div className="flex items-center flex-wrap gap-2">
+              ) : (
+                <>
+                  <div className="flex items-start gap-3">
+                    <div className={`flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold shrink-0 ${avatarColor(p.id)}`}>
+                      {getInitials(p.nome)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-ink-900 truncate">{p.nome}</p>
+                        {!p.ativo && (
+                          <span className="shrink-0 text-[10px] font-medium text-ink-500 bg-ink-100 px-1.5 py-0.5 rounded-full">inativo</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-ink-500 flex items-center gap-1 mt-0.5">
+                        <Phone className="w-3 h-3 shrink-0" /> {p.telefone || 'sem telefone'}
+                      </p>
+                    </div>
+                  </div>
+
                   {p.google?.conectado ? (
-                    <>
-                      <span className="flex items-center gap-1 text-xs text-brand-700 bg-brand-50 px-2 py-1 rounded-full break-all">
-                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Google conectado{p.google.email ? ` (${p.google.email})` : ''}
-                      </span>
-                      <a
-                        href={`/api/agenda/profissionais/${p.id}/google/connect`}
-                        title="Reconectar ou trocar de conta Google"
-                        className="flex items-center gap-1 text-xs text-ink-500 bg-ink-50 px-2 py-1 rounded-full hover:bg-ink-100 transition-colors"
-                      >
-                        <Link2 className="w-3.5 h-3.5" /> Trocar conta
-                      </a>
-                    </>
+                    <div className="flex items-center gap-1.5 text-xs text-brand-700 bg-brand-50 px-2 py-1.5 rounded-lg" title={p.google.email}>
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Google conectado{p.google.email ? ` · ${p.google.email}` : ''}</span>
+                    </div>
                   ) : (
                     <a
                       href={`/api/agenda/profissionais/${p.id}/google/connect`}
-                      className="flex items-center gap-1 text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded-full hover:bg-blue-100 transition-colors"
+                      className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 px-2 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
                     >
-                      <Link2 className="w-3.5 h-3.5" /> Conectar Google Calendar
+                      <Link2 className="w-3.5 h-3.5 shrink-0" /> Conectar Google Calendar
                     </a>
                   )}
-                  <button onClick={() => startEdit(p)} className="p-1.5 text-ink-400 hover:text-brand-600 transition-colors" title="Editar">
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => handleDelete(p.id)} className="p-1.5 text-ink-400 hover:text-red-600 transition-colors" title="Remover">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-ink-100">
+                    {p.google?.conectado ? (
+                      <a
+                        href={`/api/agenda/profissionais/${p.id}/google/connect`}
+                        title="Reconectar ou trocar de conta Google"
+                        className="text-xs text-ink-500 hover:text-ink-700 transition-colors"
+                      >
+                        Trocar conta
+                      </a>
+                    ) : (
+                      <span />
+                    )}
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => startEdit(p)} className="p-1.5 text-ink-400 hover:text-brand-600 transition-colors" title="Editar">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleDelete(p.id)} className="p-1.5 text-ink-400 hover:text-red-600 transition-colors" title="Remover">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
 /* ─── Serviços ───────────────────────────────────────────────────────────── */
 
+function ProfissionaisMultiSelect({
+  profissionais,
+  selecionados,
+  onToggle,
+}: {
+  profissionais: Profissional[]
+  selecionados: string[]
+  onToggle: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [open])
+
+  const label =
+    selecionados.length === 0
+      ? 'Todos os profissionais'
+      : selecionados.length === 1
+        ? (profissionais.find((p) => p.id === selecionados[0])?.nome ?? '1 selecionado')
+        : `${selecionados.length} profissionais selecionados`
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 border border-ink-200 rounded-lg text-sm text-left hover:border-ink-300 transition-colors bg-white"
+      >
+        <span className="truncate text-ink-700">{label}</span>
+        <ChevronDown className={`w-4 h-4 text-ink-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full bg-white border border-ink-200 rounded-lg shadow-lg max-h-52 overflow-y-auto py-1">
+          {profissionais.map((p) => (
+            <label key={p.id} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-ink-50 cursor-pointer">
+              <input type="checkbox" checked={selecionados.includes(p.id)} onChange={() => onToggle(p.id)} />
+              {p.nome}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DuracaoInput({
+  valor,
+  unidade,
+  onValorChange,
+  onUnidadeChange,
+}: {
+  valor: string
+  unidade: DuracaoUnidade
+  onValorChange: (v: string) => void
+  onUnidadeChange: (u: DuracaoUnidade) => void
+}) {
+  return (
+    <div className="flex gap-2">
+      <input
+        type="number"
+        min={1}
+        step={unidade === 'minutos' ? 5 : 1}
+        value={valor}
+        onChange={(e) => onValorChange(e.target.value)}
+        required
+        className="w-full min-w-0 px-3 py-2 border border-ink-200 rounded-lg text-sm"
+      />
+      <select
+        value={unidade}
+        onChange={(e) => onUnidadeChange(e.target.value as DuracaoUnidade)}
+        className="px-3 py-2 border border-ink-200 rounded-lg text-sm bg-white shrink-0"
+      >
+        <option value="minutos">minutos</option>
+        <option value="horas">horas</option>
+        <option value="dias">dias</option>
+      </select>
+    </div>
+  )
+}
+
 function ServicosTab({ servicos, profissionais, onChanged }: { servicos: Servico[]; profissionais: Profissional[]; onChanged: () => void }) {
   const [showForm, setShowForm] = useState(false)
   const [nome, setNome] = useState('')
   const [duracao, setDuracao] = useState('30')
+  const [duracaoUnidade, setDuracaoUnidade] = useState<DuracaoUnidade>('minutos')
   const [selecionados, setSelecionados] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editNome, setEditNome] = useState('')
   const [editDuracao, setEditDuracao] = useState('30')
+  const [editDuracaoUnidade, setEditDuracaoUnidade] = useState<DuracaoUnidade>('minutos')
   const [editSelecionados, setEditSelecionados] = useState<string[]>([])
   const [editAtivo, setEditAtivo] = useState(true)
   const { confirm, ConfirmDialogElement } = useConfirmDialog()
@@ -409,13 +555,15 @@ function ServicosTab({ servicos, profissionais, onChanged }: { servicos: Servico
   function startEdit(s: Servico) {
     setEditingId(s.id)
     setEditNome(s.nome)
-    setEditDuracao(String(s.duracaoMinutos))
+    const { valor, unidade } = minutosParaUnidade(s.duracaoMinutos)
+    setEditDuracao(valor)
+    setEditDuracaoUnidade(unidade)
     setEditSelecionados(s.profissionalIds ?? [])
     setEditAtivo(s.ativo)
   }
 
   async function handleSaveEdit(id: string) {
-    const duracaoMinutos = parseInt(editDuracao, 10)
+    const duracaoMinutos = unidadeParaMinutos(editDuracao, editDuracaoUnidade)
     if (!editNome.trim() || !duracaoMinutos || duracaoMinutos <= 0) return
     setSaving(true)
     try {
@@ -443,7 +591,7 @@ function ServicosTab({ servicos, profissionais, onChanged }: { servicos: Servico
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    const duracaoMinutos = parseInt(duracao, 10)
+    const duracaoMinutos = unidadeParaMinutos(duracao, duracaoUnidade)
     if (!nome.trim() || !duracaoMinutos || duracaoMinutos <= 0) return
     setSaving(true)
     try {
@@ -455,16 +603,21 @@ function ServicosTab({ servicos, profissionais, onChanged }: { servicos: Servico
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erro ao criar serviço')
       toast.success('Serviço criado.')
-      setNome('')
-      setDuracao('30')
-      setSelecionados([])
-      setShowForm(false)
+      closeForm()
       onChanged()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao criar serviço')
     } finally {
       setSaving(false)
     }
+  }
+
+  function closeForm() {
+    setShowForm(false)
+    setNome('')
+    setDuracao('30')
+    setDuracaoUnidade('minutos')
+    setSelecionados([])
   }
 
   async function handleDelete(id: string) {
@@ -481,108 +634,133 @@ function ServicosTab({ servicos, profissionais, onChanged }: { servicos: Servico
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {ConfirmDialogElement}
-      <button
-        onClick={() => setShowForm((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors"
-      >
-        {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-        Novo serviço
-      </button>
 
-      {showForm && (
-        <form onSubmit={handleCreate} className="space-y-3 bg-white p-3 rounded-xl border border-ink-200">
-          <div className="flex flex-wrap items-end gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-ink-500">
+          {servicos.length === 0
+            ? 'Nenhum serviço cadastrado'
+            : `${servicos.length} ${servicos.length === 1 ? 'serviço cadastrado' : 'serviços cadastrados'}`}
+        </p>
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Novo serviço
+        </button>
+      </div>
+
+      <Modal open={showForm} onClose={closeForm} title="Novo serviço" widthClass="max-w-sm">
+        <form onSubmit={handleCreate} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-ink-600 mb-1">Nome</label>
+            <input
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              required
+              autoFocus
+              placeholder="Ex: Corte de cabelo"
+              className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink-600 mb-1">Duração</label>
+            <DuracaoInput valor={duracao} unidade={duracaoUnidade} onValorChange={setDuracao} onUnidadeChange={setDuracaoUnidade} />
+          </div>
+          {profissionais.length > 0 && (
             <div>
-              <label className="block text-xs font-medium text-ink-600 mb-1">Nome</label>
-              <input value={nome} onChange={(e) => setNome(e.target.value)} required className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+              <label className="block text-xs font-medium text-ink-600 mb-1">Quem atende esse serviço</label>
+              <ProfissionaisMultiSelect profissionais={profissionais} selecionados={selecionados} onToggle={toggleProfissional} />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-ink-600 mb-1">Duração (minutos)</label>
-              <input type="number" min={5} step={5} value={duracao} onChange={(e) => setDuracao(e.target.value)} required className="w-24 px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
-            </div>
+          )}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button type="button" onClick={closeForm} className="px-3 py-1.5 text-sm text-ink-500 hover:bg-ink-50 rounded-lg transition-colors">
+              Cancelar
+            </button>
             <button type="submit" disabled={saving} className="px-3 py-1.5 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 disabled:opacity-50">
               {saving ? 'Salvando...' : 'Salvar'}
             </button>
           </div>
-          {profissionais.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-ink-600 mb-1">Quem atende esse serviço (vazio = todos)</label>
-              <div className="flex flex-wrap gap-2">
-                {profissionais.map((p) => (
-                  <label key={p.id} className="flex items-center gap-1.5 text-xs bg-ink-50 border border-ink-200 rounded-lg px-2 py-1 cursor-pointer">
-                    <input type="checkbox" checked={selecionados.includes(p.id)} onChange={() => toggleProfissional(p.id)} />
-                    {p.nome}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
         </form>
-      )}
+      </Modal>
 
-      <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100">
-        {servicos.length === 0 && <p className="p-6 text-center text-sm text-ink-400">Nenhum serviço cadastrado ainda.</p>}
-        {servicos.map((s) => (
-          <div key={s.id} className="px-4 py-3">
-            {editingId === s.id ? (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-end gap-2">
+      {servicos.length === 0 ? (
+        <div className="bg-white rounded-xl border border-ink-200 p-10 text-center">
+          <p className="text-sm text-ink-400">Nenhum serviço cadastrado ainda.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {servicos.map((s) => (
+            <div key={s.id} className="bg-white rounded-xl border border-ink-200 p-4 flex flex-col gap-3 hover:border-ink-300 transition-colors">
+              {editingId === s.id ? (
+                <div className="flex flex-col gap-2">
                   <div>
                     <label className="block text-xs font-medium text-ink-600 mb-1">Nome</label>
-                    <input value={editNome} onChange={(e) => setEditNome(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+                    <input value={editNome} onChange={(e) => setEditNome(e.target.value)} className="w-full px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-ink-600 mb-1">Duração (minutos)</label>
-                    <input type="number" min={5} step={5} value={editDuracao} onChange={(e) => setEditDuracao(e.target.value)} className="w-24 px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
-                  </div>
-                  <label className="flex items-center gap-1.5 text-xs text-ink-600 pb-2">
-                    <input type="checkbox" checked={editAtivo} onChange={(e) => setEditAtivo(e.target.checked)} /> Ativo
-                  </label>
-                  <button onClick={() => handleSaveEdit(s.id)} disabled={saving} className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors" title="Salvar">
-                    <Check className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => setEditingId(null)} className="p-1.5 text-ink-400 hover:bg-ink-50 rounded-lg transition-colors" title="Cancelar">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                {profissionais.length > 0 && (
-                  <div>
-                    <label className="block text-xs font-medium text-ink-600 mb-1">Quem atende esse serviço (vazio = todos)</label>
-                    <div className="flex flex-wrap gap-2">
-                      {profissionais.map((p) => (
-                        <label key={p.id} className="flex items-center gap-1.5 text-xs bg-ink-50 border border-ink-200 rounded-lg px-2 py-1 cursor-pointer">
-                          <input type="checkbox" checked={editSelecionados.includes(p.id)} onChange={() => toggleEditProfissional(p.id)} />
-                          {p.nome}
-                        </label>
-                      ))}
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-ink-600 mb-1">Duração</label>
+                      <DuracaoInput valor={editDuracao} unidade={editDuracaoUnidade} onValorChange={setEditDuracao} onUnidadeChange={setEditDuracaoUnidade} />
                     </div>
+                    <label className="flex items-center gap-1.5 text-xs text-ink-600 pb-2 shrink-0">
+                      <input type="checkbox" checked={editAtivo} onChange={(e) => setEditAtivo(e.target.checked)} /> Ativo
+                    </label>
                   </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-ink-900 break-words">{s.nome}{!s.ativo && <span className="ml-2 text-[10px] text-ink-400 font-normal">inativo</span>}</p>
-                  <p className="text-xs text-ink-500 break-words">
-                    {s.duracaoMinutos} min
-                    {s.profissionalIds?.length ? ` · ${s.profissionalIds.map((id) => profissionais.find((p) => p.id === id)?.nome ?? id).join(', ')}` : ' · qualquer profissional'}
-                  </p>
+                  {profissionais.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium text-ink-600 mb-1">Quem atende</label>
+                      <ProfissionaisMultiSelect profissionais={profissionais} selecionados={editSelecionados} onToggle={toggleEditProfissional} />
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button onClick={() => handleSaveEdit(s.id)} disabled={saving} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-lg transition-colors">
+                      <Check className="w-3.5 h-3.5" /> Salvar
+                    </button>
+                    <button onClick={() => setEditingId(null)} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-ink-500 hover:bg-ink-50 rounded-lg transition-colors">
+                      <X className="w-3.5 h-3.5" /> Cancelar
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => startEdit(s)} className="p-1.5 text-ink-400 hover:text-brand-600 transition-colors" title="Editar">
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => handleDelete(s.id)} className="p-1.5 text-ink-400 hover:text-red-600 transition-colors" title="Remover">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+              ) : (
+                <>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-ink-900 truncate">{s.nome}</p>
+                      {!s.ativo && (
+                        <span className="shrink-0 text-[10px] font-medium text-ink-500 bg-ink-100 px-1.5 py-0.5 rounded-full">inativo</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-ink-500 flex items-center gap-1 mt-0.5">
+                      <Clock className="w-3 h-3 shrink-0" /> {formatDuracao(s.duracaoMinutos)}
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-1.5 text-xs text-ink-600 bg-ink-50 px-2 py-1.5 rounded-lg">
+                    <Users className="w-3.5 h-3.5 shrink-0 text-ink-400 mt-0.5" />
+                    <span className="min-w-0">
+                      {s.profissionalIds?.length
+                        ? s.profissionalIds.map((id) => profissionais.find((p) => p.id === id)?.nome ?? id).join(', ')
+                        : 'Qualquer profissional'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-1 pt-2 border-t border-ink-100">
+                    <button onClick={() => startEdit(s)} className="p-1.5 text-ink-400 hover:text-brand-600 transition-colors" title="Editar">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDelete(s.id)} className="p-1.5 text-ink-400 hover:text-red-600 transition-colors" title="Remover">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -590,6 +768,7 @@ function ServicosTab({ servicos, profissionais, onChanged }: { servicos: Servico
 /* ─── Disponibilidade ────────────────────────────────────────────────────── */
 
 const WEEKDAY_LABELS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
+const HORIZONTE_DIAS = 120 // até quantos dias no futuro a lista de disponibilidade busca — mantém a UI consistente com `carregar()`
 
 function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }) {
   const [profissionalId, setProfissionalId] = useState(profissionais[0]?.id ?? '')
@@ -621,6 +800,8 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
   const [padraoInicio, setPadraoInicio] = useState('09:00')
   const [padraoFim, setPadraoFim] = useState('18:00')
   const [applying, setApplying] = useState<'aplicar' | 'remover' | null>(null)
+  const [hojeKey] = useState(() => toDateKey(new Date()))
+  const [horizonteKey] = useState(() => toDateKey(new Date(Date.now() + HORIZONTE_DIAS * 24 * 60 * 60 * 1000)))
 
   const carregar = useCallback(async () => {
     if (!profissionalId) {
@@ -630,7 +811,7 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
     setLoading(true)
     try {
       const de = new Date()
-      const ate = new Date(de.getTime() + 120 * 24 * 60 * 60 * 1000)
+      const ate = new Date(de.getTime() + HORIZONTE_DIAS * 24 * 60 * 60 * 1000)
       const res = await fetchJson<{ disponibilidades: Disponibilidade[] }>(
         `/api/agenda/disponibilidades?profissionalId=${profissionalId}&de=${de.toISOString()}&ate=${ate.toISOString()}`
       )
@@ -722,15 +903,21 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
     }
     if (!(await confirm(`Remover ${alvo.length} bloco(s) de disponibilidade nesse período?`))) return
     setApplying('remover')
+    let removidos = 0
     for (const b of alvo) {
       try {
-        await fetch(`/api/agenda/disponibilidades/${b.id}`, { method: 'DELETE' })
+        const res = await fetch(`/api/agenda/disponibilidades/${b.id}`, { method: 'DELETE' })
+        if (res.ok) removidos++
       } catch {
         // segue tentando os outros
       }
     }
     setApplying(null)
-    toast.success('Disponibilidade removida do período selecionado.')
+    if (removidos === alvo.length) {
+      toast.success('Disponibilidade removida do período selecionado.')
+    } else {
+      toast.error(`${removidos} de ${alvo.length} horário(s) removidos — tente novamente para os restantes.`)
+    }
     carregar()
   }
 
@@ -762,6 +949,7 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
   }
 
   async function handleDelete(id: string) {
+    if (!(await confirm('Remover esse horário de disponibilidade?'))) return
     try {
       const res = await fetch(`/api/agenda/disponibilidades/${id}`, { method: 'DELETE' })
       const json = await res.json()
@@ -778,15 +966,22 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
     const label = new Date(`${dateKey}T00:00:00`).toLocaleDateString('pt-BR')
     if (!(await confirm(`Marcar ${label} como indisponível? Isso remove ${alvo.length} horário(s) cadastrado(s) nesse dia.`))) return
     setSaving(true)
-    try {
-      for (const b of alvo) {
-        await fetch(`/api/agenda/disponibilidades/${b.id}`, { method: 'DELETE' })
+    let removidos = 0
+    for (const b of alvo) {
+      try {
+        const res = await fetch(`/api/agenda/disponibilidades/${b.id}`, { method: 'DELETE' })
+        if (res.ok) removidos++
+      } catch {
+        // segue tentando os outros
       }
-      toast.success('Dia marcado como indisponível.')
-      carregar()
-    } finally {
-      setSaving(false)
     }
+    setSaving(false)
+    if (removidos === alvo.length) {
+      toast.success('Dia marcado como indisponível.')
+    } else {
+      toast.error(`${removidos} de ${alvo.length} horário(s) removidos — tente novamente para os restantes.`)
+    }
+    carregar()
   }
 
   function toggleDiaSelecionado(dateKey: string) {
@@ -812,16 +1007,23 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
     if (alvo.length === 0) return
     if (!(await confirm(`Marcar ${diasSelecionados.size} dia(s) selecionado(s) como indisponível? Isso remove ${alvo.length} horário(s) cadastrado(s).`))) return
     setSaving(true)
-    try {
-      for (const b of alvo) {
-        await fetch(`/api/agenda/disponibilidades/${b.id}`, { method: 'DELETE' })
+    let removidos = 0
+    for (const b of alvo) {
+      try {
+        const res = await fetch(`/api/agenda/disponibilidades/${b.id}`, { method: 'DELETE' })
+        if (res.ok) removidos++
+      } catch {
+        // segue tentando os outros
       }
-      toast.success('Dias marcados como indisponíveis.')
-      setDiasSelecionados(new Set())
-      carregar()
-    } finally {
-      setSaving(false)
     }
+    setSaving(false)
+    setDiasSelecionados(new Set())
+    if (removidos === alvo.length) {
+      toast.success('Dias marcados como indisponíveis.')
+    } else {
+      toast.error(`${removidos} de ${alvo.length} horário(s) removidos — tente novamente para os restantes.`)
+    }
+    carregar()
   }
 
   async function handleBulkEditarHorario() {
@@ -933,20 +1135,38 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
   }
 
   const diasSelecionadosCount = diasNoPeriodo().length
-  const blocosDoDia = selectedDate ? blocos.filter((b) => toDateKey(new Date(b.inicio)) === selectedDate) : blocos
+  const blocosDoDia = selectedDate ? blocos.filter((b) => toDateKey(new Date(b.inicio)) === selectedDate) : []
 
   if (profissionais.length === 0) {
-    return <p className="text-sm text-ink-400 py-8 text-center">Cadastre um profissional primeiro, na aba Profissionais.</p>
+    return (
+      <div className="bg-white rounded-xl border border-ink-200 p-10 text-center">
+        <p className="text-sm text-ink-400">Cadastre um profissional primeiro, na aba Profissionais.</p>
+      </div>
+    )
   }
 
+  const operacaoEmAndamento = saving || applying !== null
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {ConfirmDialogElement}
       <div>
         <label className="block text-xs font-medium text-ink-600 mb-1">Profissional</label>
-        <select value={profissionalId} onChange={(e) => { setProfissionalId(e.target.value); setSelectedDate(null); setMesSelecionado(null); setDiasSelecionados(new Set()) }} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm">
+        <select
+          value={profissionalId}
+          disabled={operacaoEmAndamento}
+          onChange={(e) => {
+            setProfissionalId(e.target.value)
+            setSelectedDate(null)
+            setMesSelecionado(null)
+            setDiasSelecionados(new Set())
+            setEditingId(null)
+            setBulkEditando(false)
+          }}
+          className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm disabled:opacity-50"
+        >
           {profissionais.map((p) => (
-            <option key={p.id} value={p.id}>{p.nome}</option>
+            <option key={p.id} value={p.id}>{p.nome}{!p.ativo ? ' (inativo)' : ''}</option>
           ))}
         </select>
       </div>
@@ -965,7 +1185,7 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
 
         <div className="space-y-4 min-w-0">
           {/* Programar vários dias de uma vez */}
-          <div className="bg-white p-4 rounded-xl border border-ink-200 space-y-3">
+          <div className="bg-white p-4 rounded-xl border border-ink-200 space-y-3 max-w-2xl">
             <div>
               <p className="text-sm font-semibold text-ink-900">Programar vários dias de uma vez</p>
               <p className="text-xs text-ink-500">Escolha os dias da semana, o período e o horário — sem precisar cadastrar dia por dia.</p>
@@ -998,11 +1218,11 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
             <div className="flex flex-wrap items-end gap-2">
               <div>
                 <label className="block text-xs font-medium text-ink-600 mb-1">De</label>
-                <input type="date" value={rangeDe} onChange={(e) => setRangeDe(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+                <input type="date" value={rangeDe} min={hojeKey} max={horizonteKey} onChange={(e) => setRangeDe(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink-600 mb-1">Até</label>
-                <input type="date" value={rangeAte} onChange={(e) => setRangeAte(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
+                <input type="date" value={rangeAte} min={hojeKey} max={horizonteKey} onChange={(e) => setRangeAte(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink-600 mb-1">Início</label>
@@ -1044,7 +1264,7 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
                 </div>
               </div>
 
-              <form onSubmit={handleAddAvulso} className="flex flex-wrap items-end gap-2 bg-white p-3 rounded-xl border border-ink-200">
+              <form onSubmit={handleAddAvulso} className="flex flex-wrap items-end gap-2 bg-white p-3 rounded-xl border border-ink-200 max-w-2xl">
                 <div>
                   <label className="block text-xs font-medium text-ink-600 mb-1">Início</label>
                   <input type="time" value={avulsoInicio} onChange={(e) => setAvulsoInicio(e.target.value)} required className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm" />
@@ -1121,7 +1341,7 @@ function DisponibilidadeTab({ profissionais }: { profissionais: Profissional[] }
               )}
 
               {!loading && blocosPorMes.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                   {blocosPorMes.map((m) => (
                     <button
                       key={m.key}
@@ -1315,10 +1535,17 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
     setSemanaSelecionada(null)
     setMesInteiroAberto(false)
-    setSelecionados(new Set())
     setOcultosManualmente(new Set())
     setPeriodosSelecionados(new Set())
   }, [mesVisivel, profissionalId])
+
+  // A seleção de agendamentos (pra ocultar) é sempre relativa ao período aberto no
+  // momento — trocar de dia/semana/mês sem passar pelo botão "Limpar seleção" não
+  // pode deixar ids de um período antigo escondidos dentro da seleção do novo.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    setSelecionados(new Set())
+  }, [selectedDate, semanaSelecionada, mesInteiroAberto])
 
   function toggleSelecionado(id: string) {
     setSelecionados((prev) => {
@@ -1385,6 +1612,22 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
       carregar()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao cancelar agendamento')
+    }
+  }
+
+  async function handleConcluir(id: string) {
+    try {
+      const res = await fetch(`/api/agenda/agendamentos/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'concluido' }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao concluir')
+      toast.success('Agendamento marcado como concluído.')
+      carregar()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao concluir agendamento')
     }
   }
 
@@ -1504,9 +1747,14 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
             <div className="flex items-center gap-2 shrink-0">
               <span className={`text-xs px-2 py-1 rounded-full ${statusStyle[a.status]}`}>{a.status}</span>
               {a.status === 'confirmado' && (
-                <button onClick={() => handleCancelar(a.id)} className="text-xs text-red-600 hover:underline">
-                  Cancelar
-                </button>
+                <>
+                  <button onClick={() => handleConcluir(a.id)} className="text-xs text-brand-700 hover:underline">
+                    Concluir
+                  </button>
+                  <button onClick={() => handleCancelar(a.id)} className="text-xs text-red-600 hover:underline">
+                    Cancelar
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1525,7 +1773,7 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
             <select value={profissionalId} onChange={(e) => setProfissionalId(e.target.value)} className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm">
               <option value="">Todos</option>
               {profissionais.map((p) => (
-                <option key={p.id} value={p.id}>{p.nome}</option>
+                <option key={p.id} value={p.id}>{p.nome}{!p.ativo ? ' (inativo)' : ''}</option>
               ))}
             </select>
           </div>
@@ -1634,7 +1882,7 @@ function AgendamentosTab({ profissionais, servicos }: { profissionais: Profissio
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
                     <div className="relative bg-white border border-ink-200 rounded-xl hover:border-brand-300 hover:bg-brand-50/40 transition-colors">
                       <input
                         type="checkbox"
@@ -1731,6 +1979,7 @@ function NovoAgendamentoForm({
   const [clienteNome, setClienteNome] = useState('')
   const [clienteTelefone, setClienteTelefone] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const buscaIdRef = useRef(0)
 
   const servicosDoProfissional = servicos.filter(
     (s) => s.ativo && (!s.profissionalIds?.length || s.profissionalIds.includes(profissionalId))
@@ -1739,6 +1988,7 @@ function NovoAgendamentoForm({
   async function handleBuscarHorarios(e: React.FormEvent) {
     e.preventDefault()
     if (!profissionalId || !servicoId || !data) return
+    const buscaId = ++buscaIdRef.current
     setBuscando(true)
     setBuscou(false)
     setSlotSelecionado(null)
@@ -1748,12 +1998,14 @@ function NovoAgendamentoForm({
       const res = await fetchJson<{ horarios: Horario[] }>(
         `/api/agenda/horarios-livres?profissionalId=${profissionalId}&servicoId=${servicoId}&de=${de}&ate=${ate}`
       )
+      if (buscaId !== buscaIdRef.current) return // profissional/serviço/data mudaram enquanto a busca estava em voo
       setHorarios(res.horarios)
       setBuscou(true)
     } catch (error) {
+      if (buscaId !== buscaIdRef.current) return
       toast.error(error instanceof Error ? error.message : 'Erro ao buscar horários livres')
     } finally {
-      setBuscando(false)
+      if (buscaId === buscaIdRef.current) setBuscando(false)
     }
   }
 
@@ -1800,6 +2052,7 @@ function NovoAgendamentoForm({
           <select
             value={profissionalId}
             onChange={(e) => {
+              buscaIdRef.current++
               setProfissionalId(e.target.value)
               setServicoId('')
               setBuscou(false)
@@ -1808,7 +2061,7 @@ function NovoAgendamentoForm({
             className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm"
           >
             {profissionais.map((p) => (
-              <option key={p.id} value={p.id}>{p.nome}</option>
+              <option key={p.id} value={p.id}>{p.nome}{!p.ativo ? ' (inativo)' : ''}</option>
             ))}
           </select>
         </div>
@@ -1816,7 +2069,7 @@ function NovoAgendamentoForm({
           <label className="block text-xs font-medium text-ink-600 mb-1">Serviço</label>
           <select
             value={servicoId}
-            onChange={(e) => { setServicoId(e.target.value); setBuscou(false); setSlotSelecionado(null) }}
+            onChange={(e) => { buscaIdRef.current++; setServicoId(e.target.value); setBuscou(false); setSlotSelecionado(null) }}
             required
             className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm"
           >
@@ -1825,13 +2078,17 @@ function NovoAgendamentoForm({
               <option key={s.id} value={s.id}>{s.nome} ({s.duracaoMinutos} min)</option>
             ))}
           </select>
+          {servicosDoProfissional.length === 0 && (
+            <p className="text-[11px] text-ink-400 mt-1">Esse profissional não tem serviços vinculados.</p>
+          )}
         </div>
         <div>
           <label className="block text-xs font-medium text-ink-600 mb-1">Data</label>
           <input
             type="date"
             value={data}
-            onChange={(e) => { setData(e.target.value); setBuscou(false); setSlotSelecionado(null) }}
+            min={toDateKey(new Date())}
+            onChange={(e) => { buscaIdRef.current++; setData(e.target.value); setBuscou(false); setSlotSelecionado(null) }}
             required
             className="px-3 py-1.5 border border-ink-200 rounded-lg text-sm"
           />

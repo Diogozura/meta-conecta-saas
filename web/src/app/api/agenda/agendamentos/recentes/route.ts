@@ -22,20 +22,29 @@ export async function GET(req: NextRequest) {
   const contaId = session.user.contaId
 
   const { searchParams } = new URL(req.url)
-  const since = parseInt(searchParams.get('since') ?? '0')
+  const since = parseInt(searchParams.get('since') ?? '0', 10)
+  if (!Number.isFinite(since) || since < 0) {
+    return NextResponse.json({ error: 'since deve ser um timestamp em milissegundos válido' }, { status: 400 })
+  }
 
-  const agendamentos = await listarAgendamentosRecentes(contaId, since)
-  const eventos = await Promise.all(
-    agendamentos.map(async (a) => {
-      const profissional = await obterProfissional(contaId, a.profissionalId)
-      return {
-        id: a.id,
-        clienteNome: a.clienteNome,
-        profissionalNome: profissional?.nome ?? 'profissional',
-        inicio: a.inicio,
-      }
-    }),
-  )
+  try {
+    const agendamentos = await listarAgendamentosRecentes(contaId, since)
+    const eventos = await Promise.all(
+      agendamentos.map(async (a) => {
+        const profissional = await obterProfissional(contaId, a.profissionalId)
+        return {
+          id: a.id,
+          clienteNome: a.clienteNome,
+          profissionalNome: profissional?.nome ?? 'profissional',
+          inicio: a.inicio,
+        }
+      }),
+    )
 
-  return NextResponse.json({ eventos, serverTime: Date.now() })
+    return NextResponse.json({ eventos, serverTime: Date.now() })
+  } catch (error) {
+    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse()
+    console.error('Erro ao buscar agendamentos recentes:', error)
+    return NextResponse.json({ error: 'Erro ao buscar agendamentos recentes' }, { status: 500 })
+  }
 }

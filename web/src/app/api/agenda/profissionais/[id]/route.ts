@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { atualizarProfissional, deletarProfissional, obterProfissional } from '@/lib/firestore'
+import { atualizarProfissional, deletarProfissional, listarAgendamentos, obterProfissional } from '@/lib/firestore'
 import { sanitizeProfissional } from '@/lib/agendaHelpers'
 
 // GET /api/agenda/profissionais/[id]
@@ -56,6 +56,14 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const existing = await obterProfissional(session.user.contaId, id)
   if (!existing) {
     return NextResponse.json({ error: 'Profissional não encontrado' }, { status: 404 })
+  }
+
+  const agendamentosFuturos = await listarAgendamentos(session.user.contaId, { profissionalId: id, status: 'confirmado', de: new Date() })
+  if (agendamentosFuturos.length > 0) {
+    return NextResponse.json(
+      { error: 'Esse profissional tem agendamentos confirmados futuros. Cancele-os ou desative o profissional em vez de removê-lo.' },
+      { status: 409 },
+    )
   }
 
   await deletarProfissional(session.user.contaId, id)

@@ -24,6 +24,7 @@ export async function getMetaCredentials() {
     appId: metaAccess.appId,
     appSecret: metaAccess.appSecret,
     webhookVerifyToken: metaAccess.webhookVerifyToken,
+    numerosAdicionais: metaAccess.numerosAdicionais,
   }
 }
 
@@ -136,6 +137,80 @@ export async function sendTextMessage(
   if (!res.ok) {
     const err = await res.json()
     throw new MetaApiError(err?.error?.message ?? 'Falha ao enviar mensagem', err?.error?.code)
+  }
+  return res.json()
+}
+
+export interface InteractiveButton { id: string; title: string }
+
+/** Envia mensagem com até 3 botões de resposta rápida nativos do WhatsApp (limite da Cloud API: 3 botões, título de até 20 caracteres). */
+export async function sendButtonsMessage(
+  phoneNumberId: string,
+  accessToken: string,
+  to: string,
+  bodyText: string,
+  buttons: InteractiveButton[],
+) {
+  const res = await fetch(`${GRAPH_API}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: bodyText },
+        action: { buttons: buttons.map((b) => ({ type: 'reply', reply: { id: b.id, title: b.title } })) },
+      },
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new MetaApiError(err?.error?.message ?? 'Falha ao enviar mensagem com botões', err?.error?.code)
+  }
+  return res.json()
+}
+
+export interface InteractiveListRow { id: string; title: string; description?: string }
+
+/** Envia mensagem com lista de opções nativa do WhatsApp (limite da Cloud API: 10 linhas, título de até 24 caracteres). */
+export async function sendListMessage(
+  phoneNumberId: string,
+  accessToken: string,
+  to: string,
+  bodyText: string,
+  buttonLabel: string,
+  rows: InteractiveListRow[],
+) {
+  const res = await fetch(`${GRAPH_API}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'list',
+        body: { text: bodyText },
+        action: {
+          button: buttonLabel,
+          sections: [{ rows: rows.map((r) => ({ id: r.id, title: r.title, ...(r.description ? { description: r.description } : {}) })) }],
+        },
+      },
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new MetaApiError(err?.error?.message ?? 'Falha ao enviar mensagem com lista', err?.error?.code)
   }
   return res.json()
 }

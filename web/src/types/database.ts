@@ -45,8 +45,21 @@ export interface ContaAiConfig {
 // Estado de controle por número de telefone — principalmente se a IA está
 // respondendo automaticamente ou se um atendente humano assumiu.
 // ─────────────────────────────────────────
+// aberta = recebeu mensagem mas ainda não teve nenhuma resposta (IA ou
+// humano); em_andamento = já houve resposta e não foi encerrada; encerrada =
+// atendente fechou explicitamente. Uma mensagem nova numa conversa encerrada
+// reabre ela (volta pra 'aberta').
+export type ConversaStatus = 'aberta' | 'em_andamento' | 'encerrada'
+
 export interface Conversa {
   numero: string
+  // Ausente = conversas antigas, criadas antes desse campo existir — trate
+  // como 'em_andamento' na UI (não são novas nem foram encerradas).
+  status?: ConversaStatus
+  abertaEm?: Date
+  encerradaEm?: Date
+  encerradaPor?: string // usuarioId de quem encerrou, ou 'sistema'
+
   iaAtiva: boolean
   motivoTransferencia?: string
   dataTransferencia?: Date
@@ -54,7 +67,128 @@ export interface Conversa {
   // no painel); 'manual' é um atendente respondendo direto (não gera aviso,
   // já que ele mesmo acabou de responder).
   origemTransferencia?: 'ia' | 'manual'
+
+  // Atendente que assumiu a conversa (reivindicação explícita, distinta de
+  // simplesmente desativar a IA) — enquanto ausente com iaAtiva=false, a
+  // conversa está "aguardando humano" na fila.
+  atendenteId?: string
+  atendenteNome?: string
+  assumidoEm?: Date
+
+  // Nó do Fluxo (ver abaixo) onde essa conversa está parada aguardando
+  // resposta do cliente — ausente/null = fluxo não iniciado ou já terminou
+  // (conversa seguiu pra IA, humano, ou fim de fluxo).
+  fluxoNoAtualId?: string | null
+  // Setor/departamento atribuído por um nó "encaminhar_humano" do fluxo
+  // (ex: "Suporte técnico", "Financeiro", "Vendas") — usado pra segmentar a
+  // fila de atendimento humano por equipe, não só "todo mundo numa fila só".
+  setor?: string | null
+
+  // Prioridade na fila — 'urgente'/'alta' furam a ordem de chegada (FIFO só
+  // vale dentro da mesma prioridade). Preenchido automaticamente quando o
+  // Cliente correspondente ao número tem a tag "VIP" (ver lib/clienteLookup.ts),
+  // ou manualmente pelo atendente.
+  prioridade?: 'normal' | 'alta' | 'urgente'
+
+  // Respostas capturadas por nós "coleta" do Fluxo, indexadas pela chave
+  // (FluxoNode.variavel) — ex: { cpf: "123.456.789-00" }. Persistem mesmo
+  // depois que a conversa segue pra IA/humano, pra dar contexto.
+  dadosColetados?: Record<string, string>
+
+  // Timestamp do último e-mail de alerta de SLA estourado já enviado pra
+  // essa conversa — evita reenviar a cada execução do cron enquanto ela
+  // continuar esperando (ver api/cron/sla-alertas).
+  alertaSlaEnviadoEm?: Date | null
+
+  // true logo depois de mandar a pergunta de satisfação (CSAT) ao encerrar
+  // a conversa — a PRÓXIMA mensagem do cliente é interpretada como a nota
+  // (0-10), não repassada pro fluxo/IA. Ver lib/csatService.ts.
+  aguardandoCsat?: boolean
+
+  // Qual número da conta (MetaAccess.phoneNumberId ou um de
+  // numerosAdicionais) o cliente está usando pra falar com essa conta —
+  // preenchido a partir do metadata do webhook. Toda resposta futura sai
+  // pelo mesmo número, em vez de sempre o principal (ver lib/canalWhatsapp.ts).
+  canalPhoneNumberId?: string | null
 }
+
+// ─────────────────────────────────────────
+// AvaliacaoCsat (Subcoleção: contas/{contaId}/avaliacoesCsat) — nota de
+// satisfação (0-10, estilo NPS) que o cliente dá ao responder a pergunta
+// enviada automaticamente quando uma conversa é encerrada.
+// ─────────────────────────────────────────
+export interface AvaliacaoCsat {
+  id: string
+  numero: string
+  nota: number
+  criadoEm: Date
+}
+
+// ─────────────────────────────────────────
+// Fluxo (Subcoleção: contas/{contaId}/fluxos) — árvore de decisão estática
+// (menus, mensagens, encaminhamentos) que guia o início do atendimento antes
+// do agente de IA livre assumir. Hoje: um fluxo só por conta (doc "principal"),
+// com um botão liga/desliga (`ativo`) — sem fluxo configurado ou desligado,
+// o comportamento é o de sempre (mensagem vai direto pro agente de IA).
+// ─────────────────────────────────────────
+export type FluxoNodeTipo = 'inicio' | 'mensagem' | 'menu' | 'horario' | 'coleta' | 'encaminhar_ia' | 'encaminhar_humano' | 'fim'
+
+// Horário de Brasília (America/Sao_Paulo) — 0=domingo...6=sábado, mesmo índice usado no resto do app (ex: WEEKDAY_LABELS da Agenda).
+export interface FluxoHorario {
+  diasSemana: boolean[]
+  horaInicio: string // "HH:mm"
+  horaFim: string // "HH:mm"
+}
+
+export interface FluxoNode {
+  id: string
+  tipo: FluxoNodeTipo
+  posicao: { x: number; y: number }
+  // Conteúdo depende do tipo — 'mensagem'/'menu'/'coleta' usam `texto`
+  // (a pergunta, no caso de 'coleta'); 'menu' usa também `opcoes` (o que o
+  // cliente precisa digitar pra seguir por cada aresta, cada uma virando um
+  // "handle" — ponto de saída — no nó); 'horario' usa `horario` (a mesma
+  // ideia de handle nomeado, com duas saídas fixas: "dentro"/"fora");
+  // 'coleta' usa também `variavel` (a chave onde a resposta livre do
+  // cliente é guardada em Conversa.dadosColetados); 'encaminhar_humano' usa
+  // `setor`/`motivo`. Os demais tipos ('inicio', 'encaminhar_ia', 'fim')
+  // não têm conteúdo extra.
+  texto?: string
+  opcoes?: { id: string; rotulo: string }[]
+  horario?: FluxoHorario
+  variavel?: string
+  setor?: string
+  motivo?: string
+}
+
+export interface FluxoEdge {
+  id: string
+  origem: string // FluxoNode.id
+  destino: string // FluxoNode.id
+  // Handle de saída do nó de origem que essa aresta usa — em nós 'menu', é
+  // o id de uma opção (FluxoNode.opcoes[].id); em nós 'horario', é a string
+  // fixa 'dentro' ou 'fora'. Ausente em nós com uma única saída (mensagem, inicio).
+  opcaoId?: string
+}
+
+export interface Fluxo {
+  id: string
+  contaId: string
+  nome: string
+  ativo: boolean
+  nodes: FluxoNode[]
+  edges: FluxoEdge[]
+  dataCadastro: Date
+  dataAtualizacao: Date
+}
+
+/**
+ * Valor de `Conversa.fluxoNoAtualId` que marca "essa conversa já foi
+ * entregue pro agente de IA ou pra fila humana pelo fluxo — não reentrar no
+ * menu nas próximas mensagens". Diferente de `null`/ausente, que significa
+ * "fluxo ainda não começou" (ou foi resetado por uma reabertura da conversa).
+ */
+export const FLUXO_SAIU = '__saiu__'
 
 // ─────────────────────────────────────────
 // Usuario (Subcoleção: contas/{contaId}/usuarios)
@@ -77,6 +211,61 @@ export interface Usuario {
   dataCadastro: Date
   dataAtualizacao: Date
   status: 'ativo' | 'inativo' | 'convite_pendente'
+  // Setor/departamento desse atendente (ex: "Financeiro", "Suporte técnico")
+  // — usado pelo round-robin do fluxo de atendimento pra saber quem pode
+  // receber uma conversa encaminhada pra cada setor. Sem setor definido, o
+  // usuário não entra em nenhuma rotação automática (só assume manualmente).
+  setor?: string | null
+}
+
+// ─────────────────────────────────────────
+// EventoAtendimento (Subcoleção: contas/{contaId}/eventosAtendimento) — log
+// append-only de transições da conversa, usado pra métricas HISTÓRICAS (a
+// diferença do endpoint de métricas "ao vivo", que só olha o estado atual).
+// ─────────────────────────────────────────
+export type TipoEventoAtendimento = 'aberta' | 'transferida_humano' | 'assumida' | 'liberada' | 'encerrada'
+
+export interface EventoAtendimento {
+  id: string
+  numero: string
+  tipo: TipoEventoAtendimento
+  setor?: string | null
+  atendenteId?: string | null
+  atendenteNome?: string | null
+  criadoEm: Date
+}
+
+// ─────────────────────────────────────────
+// RespostaRapida (Subcoleção: contas/{contaId}/respostasRapidas) — modelos
+// de mensagem prontos pro atendente inserir no chat com um clique.
+// ─────────────────────────────────────────
+export interface RespostaRapida {
+  id: string
+  contaId: string
+  atalho: string // ex: "saudacao" — só pra identificar na lista, não precisa ser único
+  texto: string
+  dataCadastro: Date
+}
+
+// ─────────────────────────────────────────
+// RegistroAuditoria (Subcoleção: contas/{contaId}/auditoria) — log
+// append-only de quem mudou o quê nas configurações sensíveis da conta
+// (fluxo de atendimento, respostas rápidas, equipe/atendentes). Não cobre
+// TUDO no sistema, só o que afeta como a conta atende os clientes.
+// ─────────────────────────────────────────
+export type AuditoriaEntidade = 'fluxo' | 'resposta_rapida' | 'atendente'
+export type AuditoriaAcao = 'criar' | 'atualizar' | 'excluir' | 'ativar' | 'convidar'
+
+export interface RegistroAuditoria {
+  id: string
+  contaId: string
+  entidade: AuditoriaEntidade
+  entidadeId?: string
+  acao: AuditoriaAcao
+  descricao: string // resumo pronto pra exibir, ex: "Ativou o fluxo 'Atendimento padrão'"
+  usuarioId: string
+  usuarioNome: string
+  criadoEm: Date
 }
 
 // ─────────────────────────────────────────
@@ -105,6 +294,12 @@ export interface MetaAccess {
   // Limpo (null) automaticamente na próxima conexão bem-sucedida.
   desconectadoEm?: Date | null
   dataAtualizacao: Date
+  // Números extras registrados na MESMA WABA/token (ex: um número por loja
+  // física) — o principal continua sendo `phoneNumberId` acima. Mensagens
+  // recebidas em qualquer um chegam pelo mesmo webhook (a Meta identifica só
+  // pela WABA); a resposta sai pelo número em que o cliente escreveu (ver
+  // Conversa.canalPhoneNumberId e lib/canalWhatsapp.ts).
+  numerosAdicionais?: { phoneNumberId: string; nome: string }[]
 }
 
 // ─────────────────────────────────────────

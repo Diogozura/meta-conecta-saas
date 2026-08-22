@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { atualizarAgendamento, obterAgendamento, obterProfissional } from '@/lib/firestore'
+import { atualizarAgendamento, existeConflitoDeAgendamento, obterAgendamento, obterProfissional } from '@/lib/firestore'
 import { deleteCalendarEvent } from '@/lib/googleCalendar'
 
 // GET /api/agenda/agendamentos/[id]
@@ -44,6 +44,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const profissional = await obterProfissional(session.user.contaId, agendamento.profissionalId)
       if (profissional?.google?.conectado) {
         await deleteCalendarEvent(profissional.google.refreshTokenEnc, profissional.google.calendarId, agendamento.googleEventId)
+      }
+    }
+
+    if (status === 'confirmado' && agendamento.status !== 'confirmado') {
+      const temConflito = await existeConflitoDeAgendamento(
+        session.user.contaId,
+        agendamento.profissionalId,
+        agendamento.inicio,
+        agendamento.fim,
+        agendamento.id,
+      )
+      if (temConflito) {
+        return NextResponse.json({ error: 'Esse horário já está ocupado por outro agendamento confirmado.' }, { status: 409 })
       }
     }
 

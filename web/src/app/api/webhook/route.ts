@@ -1,8 +1,11 @@
 import { createHmac } from 'crypto'
 import { after } from 'next/server'
-import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem, atualizarMetaAccess, obterInstagramAccessPorIgUserId, criarMensagemInstagram, criarComentarioInstagram, criarMencaoInstagram } from '@/lib/firestore'
+import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem, atualizarMetaAccess, obterInstagramAccessPorIgUserId, criarMensagemInstagram, criarComentarioInstagram, criarMencaoInstagram, garantirConversaAberta, definirCanalConversa } from '@/lib/firestore'
 import { processarMensagemComIA } from '@/lib/aiAgent'
 import { getMentionedComment, getMentionedMedia } from '@/lib/instagram'
+import { processarMensagemComFluxo } from '@/lib/fluxoService'
+import { aplicarPrioridadeAutomatica } from '@/lib/prioridadeConversa'
+import { processarRespostaCsatSeAguardando } from '@/lib/csatService'
 
 /* ─── GET: verificação do endpoint pelo Meta ─────────────────────────────── */
 export async function GET(request: Request) {
@@ -122,6 +125,13 @@ export async function POST(request: Request) {
         // status), então fica opcional.
         const nomeContato = value.contacts?.find((c) => c.wa_id === msg.from)?.profile?.name
 
+        // Resposta a um botão/lista nativos (enviados pelo fluxo de
+        // atendimento) chega como type "interactive", não "text" — trata o
+        // título escolhido como se fosse o texto digitado, pra casar com o
+        // rótulo da opção no motor do fluxo (fluxoEngine) sem mudar nada lá.
+        const textoInterativo = msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title
+        const corpoTexto = msg.text?.body ?? textoInterativo
+
         // Salva no Firebase (persistência — também é a fonte do polling do painel)
         if (contaId) {
           try {
@@ -132,18 +142,54 @@ export async function POST(request: Request) {
               // Spread condicional: o Admin SDK do Firestore rejeita
               // "undefined" como valor de campo (viraria erro no .set()).
               ...(nomeContato ? { nomeContato } : {}),
-              text: msg.text?.body ?? '(mídia)',
+              text: corpoTexto ?? '(mídia)',
               timestamp: parseInt(msg.timestamp),
               tipo: 'recebida',
             })
 
-            // Aciona o agente de IA (se ligado pra essa conta) DEPOIS de
-            // responder 200 OK pro Meta — o Meta não pode esperar o Gemini
-            // terminar, ou trata o webhook como falho.
-            if (msg.text?.body) {
+            // Cria a conversa (status 'aberta') se for a primeira mensagem
+            // desse número, ou reabre se estava 'encerrada' — mensagem nova
+            // sempre reativa a conversa na fila do painel.
+            await garantirConversaAberta(contaId, msg.from)
+
+            // Guarda por qual número da conta (principal ou adicional) esse
+            // cliente está falando — toda resposta futura sai por ele, não
+            // sempre pelo principal (contas com mais de um número).
+            if (value.metadata?.phone_number_id) {
+              await definirCanalConversa(contaId, msg.from, value.metadata.phone_number_id).catch(() => {})
+            }
+
+            // Cliente cadastrado com tag VIP/prioritário fura a fila —
+            // best-effort, nunca deve atrasar/derrubar o resto do webhook.
+            await aplicarPrioridadeAutomatica(contaId, msg.from).catch((error) => {
+              console.error('Erro ao aplicar prioridade automática:', error)
+            })
+
+            // Aciona o fluxo de atendimento (se a conta tiver um configurado
+            // e ligado) e, se ele não tratar a mensagem — sem fluxo, ou o
+            // fluxo decidiu encaminhar pra IA —, cai no agente de IA de
+            // sempre. Tudo DEPOIS de responder 200 OK pro Meta, que não pode
+            // esperar isso terminar ou trata o webhook como falho.
+            if (corpoTexto) {
               const contaIdParaIA = contaId
               const from = msg.from
-              after(() => processarMensagemComIA(contaIdParaIA, from))
+              const texto = corpoTexto
+              after(async () => {
+                // Se a conversa tinha acabado de ser encerrada e essa é a
+                // resposta à pergunta de satisfação, essa mensagem NÃO é uma
+                // nova conversa — nem o fluxo nem a IA devem vê-la.
+                const tratadoPeloCsat = await processarRespostaCsatSeAguardando(contaIdParaIA, from, texto).catch((error) => {
+                  console.error('Erro ao processar resposta de satisfação (CSAT):', error)
+                  return false
+                })
+                if (tratadoPeloCsat) return
+
+                const tratadoPeloFluxo = await processarMensagemComFluxo(contaIdParaIA, from, texto).catch((error) => {
+                  console.error('Erro ao processar mensagem pelo fluxo de atendimento:', error)
+                  return false
+                })
+                if (!tratadoPeloFluxo) await processarMensagemComIA(contaIdParaIA, from)
+              })
             }
           } catch (error) {
             console.error('❌ Erro ao salvar mensagem no Firebase:', error)
@@ -153,13 +199,13 @@ export async function POST(request: Request) {
           // Pode ser uma empresa do CRM novo (backend/app) — repassa pra lá.
           // Não bloqueia nem atrasa o "OK" pro Meta: roda depois da resposta,
           // e qualquer erro é só logado (ver encaminharParaBackendNovo).
-          if (msg.text?.body) {
+          if (corpoTexto) {
             after(() =>
               encaminharParaBackendNovo({
                 wabaId,
                 from: msg.from,
                 messageId: msg.id,
-                text: msg.text!.body,
+                text: corpoTexto,
                 timestamp: parseInt(msg.timestamp),
                 contactName: nomeContato,
               })
@@ -450,6 +496,12 @@ interface WebhookPayload {
           timestamp: string
           type: string
           text?: { body: string }
+          // Resposta a um botão/lista nativos (mensagens type "interactive").
+          interactive?: {
+            type: 'button_reply' | 'list_reply'
+            button_reply?: { id: string; title: string }
+            list_reply?: { id: string; title: string; description?: string }
+          }
         }>
         statuses?: Array<{
           id: string

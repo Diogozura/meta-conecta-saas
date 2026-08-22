@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { atualizarServico, deletarServico, obterServico } from '@/lib/firestore'
+import { atualizarServico, deletarServico, listarAgendamentos, obterServico } from '@/lib/firestore'
 
 // GET /api/agenda/servicos/[id]
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -34,6 +34,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const body = await req.json()
   const { nome, duracaoMinutos, profissionalIds, ativo } = body
 
+  if (duracaoMinutos !== undefined && (!duracaoMinutos || duracaoMinutos <= 0)) {
+    return NextResponse.json({ error: 'Duração (em minutos) deve ser maior que zero' }, { status: 400 })
+  }
+
   try {
     await atualizarServico(session.user.contaId, id, { nome, duracaoMinutos, profissionalIds, ativo })
     const updated = await obterServico(session.user.contaId, id)
@@ -55,6 +59,14 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const existing = await obterServico(session.user.contaId, id)
   if (!existing) {
     return NextResponse.json({ error: 'Serviço não encontrado' }, { status: 404 })
+  }
+
+  const agendamentosFuturos = await listarAgendamentos(session.user.contaId, { status: 'confirmado', de: new Date() })
+  if (agendamentosFuturos.some((a) => a.servicoId === id)) {
+    return NextResponse.json(
+      { error: 'Esse serviço tem agendamentos confirmados futuros. Cancele-os ou desative o serviço em vez de removê-lo.' },
+      { status: 409 },
+    )
   }
 
   await deletarServico(session.user.contaId, id)

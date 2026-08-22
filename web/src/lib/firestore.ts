@@ -5,7 +5,7 @@
 
 import { getFirestore, Timestamp, Query, Filter, FieldValue } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, ContaAiConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa } from '@/types/database'
+import { Conta, ContaAiConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, AvaliacaoCsat, RegistroAuditoria } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -95,6 +95,13 @@ export async function obterConta(contaId: string): Promise<Conta | null> {
   const docSnap = await db.collection('contas').doc(contaId).get()
   if (!docSnap.exists) return null
   return decryptContaAiSecrets({ id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Conta)
+}
+
+/** Todas as contas ativas — usado só pela varredura do cron de alertas de SLA (não expor num endpoint comum, é dado de outras empresas). */
+export async function listarContasAtivas(): Promise<Conta[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').where('status', '==', 'ativo').get()
+  return snapshot.docs.map((doc) => decryptContaAiSecrets({ id: doc.id, ...convertTimestamps(doc.data()) } as Conta))
 }
 
 /** Usado para evitar criar uma conta duplicada para quem já tem uma (ver api/meta/credentials/route.ts). */
@@ -317,6 +324,36 @@ export async function obterMetaAccessPorWabaId(wabaId: string): Promise<{ metaAc
   return null
 }
 
+/** Registra mais um número (mesma WABA/token) na conta — o Cloud API já deve ter sido chamado pra registrar o número antes (ver lib/meta.ts registerPhoneNumber). */
+export async function adicionarNumeroWhatsapp(contaId: string, accessId: string, numero: { phoneNumberId: string; nome: string }): Promise<MetaAccess> {
+  const db = getDb()
+  const ref = db.collection('contas').doc(contaId).collection('metaAccess').doc(accessId)
+  const atual = await ref.get()
+  if (!atual.exists) throw new Error('Credenciais da Meta não encontradas')
+  const existentes: { phoneNumberId: string; nome: string }[] = atual.data()?.numerosAdicionais ?? []
+  const numerosAdicionais = [...existentes.filter((n) => n.phoneNumberId !== numero.phoneNumberId), numero]
+  await ref.update({ numerosAdicionais, dataAtualizacao: Timestamp.now() })
+  return decryptMetaAccessSecrets({ id: ref.id, ...convertTimestamps({ ...atual.data(), numerosAdicionais }) } as MetaAccess)
+}
+
+export async function removerNumeroWhatsapp(contaId: string, accessId: string, phoneNumberId: string): Promise<void> {
+  const db = getDb()
+  const ref = db.collection('contas').doc(contaId).collection('metaAccess').doc(accessId)
+  const atual = await ref.get()
+  if (!atual.exists) return
+  const existentes: { phoneNumberId: string; nome: string }[] = atual.data()?.numerosAdicionais ?? []
+  await ref.update({ numerosAdicionais: existentes.filter((n) => n.phoneNumberId !== phoneNumberId), dataAtualizacao: Timestamp.now() })
+}
+
+/** Guarda por qual número da conta (principal ou adicional) essa conversa está passando — best-effort, chamado a cada mensagem recebida com metadata.phone_number_id. */
+export async function definirCanalConversa(contaId: string, numero: string, phoneNumberId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), canalPhoneNumberId: phoneNumberId },
+    { merge: true },
+  )
+}
+
 export async function atualizarMetaAccess(contaId: string, accessId: string, data: Partial<Omit<MetaAccess, 'id'>>): Promise<void> {
   const db = getDb()
   await db.collection('contas').doc(contaId).collection('metaAccess').doc(accessId).update({
@@ -440,6 +477,20 @@ export async function listarClientes(contaId: string): Promise<Cliente[]> {
   return snapshot.docs.map(doc => ({ id: doc.id, ...convertTimestamps(doc.data()) } as Cliente))
 }
 
+/**
+ * Acha o Cliente cadastrado pra um número de WhatsApp — usado pra detectar
+ * automaticamente cliente VIP (tag) e priorizar a conversa na fila. Sem
+ * índice dedicado: compara o número sanitizado em memória, igual ao que
+ * `Conversa.numero` já usa — evita depender de como o telefone foi digitado
+ * na hora do cadastro (com/sem DDI, espaços, etc.).
+ */
+export async function buscarClientePorNumero(contaId: string, numero: string): Promise<Cliente | null> {
+  const alvo = sanitizarNumero(numero)
+  if (!alvo) return null
+  const clientes = await listarClientes(contaId)
+  return clientes.find((c) => sanitizarNumero(c.whatsapp || c.telefone || '') === alvo) ?? null
+}
+
 export async function atualizarCliente(contaId: string, clienteId: string, data: Partial<Omit<Cliente, 'id' | 'dataCadastro'>>): Promise<void> {
   const db = getDb()
   await db.collection('contas').doc(contaId).collection('clientes').doc(clienteId).update({
@@ -494,7 +545,8 @@ export async function obterProfissional(contaId: string, profissionalId: string)
     const docSnap = await db.collection('contas').doc(contaId).collection('profissionais').doc(profissionalId).get()
     if (!docSnap.exists) return null
     return decryptProfissionalSecrets({ id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Profissional)
-  } catch {
+  } catch (error) {
+    console.error('Erro ao buscar profissional:', error)
     return null
   }
 }
@@ -539,7 +591,8 @@ export async function obterServico(contaId: string, servicoId: string): Promise<
     const docSnap = await db.collection('contas').doc(contaId).collection('servicos').doc(servicoId).get()
     if (!docSnap.exists) return null
     return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Servico
-  } catch {
+  } catch (error) {
+    console.error('Erro ao buscar serviço:', error)
     return null
   }
 }
@@ -567,16 +620,26 @@ export async function deletarServico(contaId: string, servicoId: string): Promis
 // DISPONIBILIDADES
 // ─────────────────────────────────────────
 
-export async function criarDisponibilidade(contaId: string, data: Omit<Disponibilidade, 'id' | 'dataCadastro'>): Promise<Disponibilidade> {
+/** Cria vários blocos de disponibilidade numa única escrita em lote (ex: "repetir por N semanas") — atômico, sem N idas sequenciais ao banco. Para um único bloco, passe um array de 1 item. */
+export async function criarDisponibilidadesEmLote(contaId: string, items: Omit<Disponibilidade, 'id' | 'dataCadastro'>[]): Promise<Disponibilidade[]> {
   const db = getDb()
+  const colRef = db.collection('contas').doc(contaId).collection('disponibilidades')
   const now = Timestamp.now()
-  const docRef = await db.collection('contas').doc(contaId).collection('disponibilidades').add({
-    ...data,
-    inicio: Timestamp.fromDate(data.inicio),
-    fim: Timestamp.fromDate(data.fim),
-    dataCadastro: now,
+  const batch = db.batch()
+
+  const criados = items.map((data) => {
+    const docRef = colRef.doc()
+    batch.set(docRef, {
+      ...data,
+      inicio: Timestamp.fromDate(data.inicio),
+      fim: Timestamp.fromDate(data.fim),
+      dataCadastro: now,
+    })
+    return { id: docRef.id, ...data, dataCadastro: now.toDate() }
   })
-  return { id: docRef.id, ...data, dataCadastro: now.toDate() }
+
+  await batch.commit()
+  return criados
 }
 
 /** Lista blocos de disponibilidade de um profissional, opcionalmente filtrando por intervalo. */
@@ -607,7 +670,8 @@ export async function obterDisponibilidade(contaId: string, disponibilidadeId: s
     const docSnap = await db.collection('contas').doc(contaId).collection('disponibilidades').doc(disponibilidadeId).get()
     if (!docSnap.exists) return null
     return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Disponibilidade
-  } catch {
+  } catch (error) {
+    console.error('Erro ao buscar disponibilidade:', error)
     return null
   }
 }
@@ -621,17 +685,74 @@ export async function deletarDisponibilidade(contaId: string, disponibilidadeId:
 // AGENDAMENTOS
 // ─────────────────────────────────────────
 
-export async function criarAgendamento(contaId: string, data: Omit<Agendamento, 'id' | 'dataCriacao' | 'dataAtualizacao'>): Promise<Agendamento> {
+export class AgendamentoConflitoError extends Error {
+  constructor(message = 'Esse horário acabou de ser reservado. Escolha outro.') {
+    super(message)
+  }
+}
+
+/** Verifica (fora de transação, best-effort) se já existe um agendamento confirmado do profissional que colide com o intervalo. */
+export async function existeConflitoDeAgendamento(
+  contaId: string,
+  profissionalId: string,
+  inicio: Date,
+  fim: Date,
+  ignorarId?: string,
+): Promise<boolean> {
   const db = getDb()
-  const now = Timestamp.now()
-  const docRef = await db.collection('contas').doc(contaId).collection('agendamentos').add({
-    ...data,
-    inicio: Timestamp.fromDate(data.inicio),
-    fim: Timestamp.fromDate(data.fim),
-    dataCriacao: now,
-    dataAtualizacao: now,
+  const snapshot = await db.collection('contas').doc(contaId).collection('agendamentos')
+    .where('profissionalId', '==', profissionalId)
+    .where('status', '==', 'confirmado')
+    .where('inicio', '<', Timestamp.fromDate(fim))
+    .get()
+
+  return snapshot.docs.some((doc) => {
+    if (ignorarId && doc.id === ignorarId) return false
+    const fimExistente = (doc.data().fim as Timestamp).toDate()
+    return fimExistente > inicio
   })
-  return { id: docRef.id, ...data, dataCriacao: now.toDate(), dataAtualizacao: now.toDate() }
+}
+
+/**
+ * Cria um agendamento revalidando a ausência de conflito dentro da MESMA
+ * transação do Firestore — ler e escrever em duas idas separadas ao banco
+ * (padrão anterior) deixava uma janela onde duas requisições concorrentes
+ * (ex: painel + agente de IA agendando ao mesmo tempo) podiam passar as
+ * duas pela verificação e criar dois agendamentos sobrepostos.
+ */
+export async function criarAgendamentoSeLivre(
+  contaId: string,
+  data: Omit<Agendamento, 'id' | 'dataCriacao' | 'dataAtualizacao'>,
+): Promise<Agendamento> {
+  const db = getDb()
+  const colRef = db.collection('contas').doc(contaId).collection('agendamentos')
+  const inicioTs = Timestamp.fromDate(data.inicio)
+  const fimTs = Timestamp.fromDate(data.fim)
+
+  return db.runTransaction(async (tx) => {
+    const conflitantesSnap = await tx.get(
+      colRef
+        .where('profissionalId', '==', data.profissionalId)
+        .where('status', '==', 'confirmado')
+        .where('inicio', '<', fimTs)
+    )
+    const temConflito = conflitantesSnap.docs.some((doc) => {
+      const fimExistente = (doc.data().fim as Timestamp).toDate()
+      return fimExistente > data.inicio
+    })
+    if (temConflito) throw new AgendamentoConflitoError()
+
+    const now = Timestamp.now()
+    const docRef = colRef.doc()
+    tx.set(docRef, {
+      ...data,
+      inicio: inicioTs,
+      fim: fimTs,
+      dataCriacao: now,
+      dataAtualizacao: now,
+    })
+    return { id: docRef.id, ...data, dataCriacao: now.toDate(), dataAtualizacao: now.toDate() }
+  })
 }
 
 export async function obterAgendamento(contaId: string, agendamentoId: string): Promise<Agendamento | null> {
@@ -640,7 +761,8 @@ export async function obterAgendamento(contaId: string, agendamentoId: string): 
     const docSnap = await db.collection('contas').doc(contaId).collection('agendamentos').doc(agendamentoId).get()
     if (!docSnap.exists) return null
     return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Agendamento
-  } catch {
+  } catch (error) {
+    console.error('Erro ao buscar agendamento:', error)
     return null
   }
 }
@@ -713,11 +835,360 @@ export async function definirIaAtivaConversa(
       numero: sanitizarNumero(numero),
       iaAtiva,
       ...(iaAtiva
-        ? { motivoTransferencia: null, dataTransferencia: null, origemTransferencia: null }
-        : { motivoTransferencia: motivoTransferencia ?? null, dataTransferencia: Timestamp.now(), origemTransferencia }),
+        // Reativar a IA também libera o atendente — se ninguém mais está "na
+        // trave", não faz sentido a conversa continuar marcada como atendida
+        // por uma pessoa específica.
+        ? { motivoTransferencia: null, dataTransferencia: null, origemTransferencia: null, atendenteId: null, atendenteNome: null, assumidoEm: null, alertaSlaEnviadoEm: null }
+        : { motivoTransferencia: motivoTransferencia ?? null, dataTransferencia: Timestamp.now(), origemTransferencia, alertaSlaEnviadoEm: null }),
     },
     { merge: true },
   )
+}
+
+/**
+ * Garante que existe um doc de conversa em status utilizável ao chegar
+ * mensagem nova — cria com status 'aberta' se nunca existiu, ou reabre
+ * ('aberta') se estava 'encerrada'. Idempotente e barato pra chamar em toda
+ * mensagem recebida: não sobrescreve nada se a conversa já está
+ * aberta/em_andamento.
+ */
+export async function garantirConversaAberta(contaId: string, numero: string): Promise<void> {
+  const db = getDb()
+  const ref = db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero))
+  const snap = await ref.get()
+  if (!snap.exists) {
+    await ref.set({ numero: sanitizarNumero(numero), status: 'aberta', abertaEm: Timestamp.now(), iaAtiva: true }, { merge: true })
+    await registrarEventoAtendimento(contaId, { numero: sanitizarNumero(numero), tipo: 'aberta' }).catch(() => {})
+    return
+  }
+  const status = (snap.data()?.status as ConversaStatus | undefined) ?? 'em_andamento'
+  if (status === 'encerrada') {
+    // Reabrir é um contato novo pro fluxo de atendimento também — sem isso,
+    // uma conversa que já tinha saído do fluxo (ex: foi pra IA) continuaria
+    // "saída" mesmo depois de reaberta, pulando o menu pra sempre.
+    await ref.set({ status: 'aberta', abertaEm: Timestamp.now(), encerradaEm: null, encerradaPor: null, fluxoNoAtualId: null }, { merge: true })
+    await registrarEventoAtendimento(contaId, { numero: sanitizarNumero(numero), tipo: 'aberta' }).catch(() => {})
+  }
+}
+
+/** Chamado depois de qualquer resposta enviada (IA ou manual) — uma conversa recém-aberta passa a "em andamento". */
+export async function marcarConversaEmAndamento(contaId: string, numero: string): Promise<void> {
+  const db = getDb()
+  const ref = db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero))
+  await ref.set({ numero: sanitizarNumero(numero), status: 'em_andamento' }, { merge: true })
+}
+
+export async function encerrarConversa(contaId: string, numero: string, encerradaPor: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), status: 'encerrada', encerradaEm: Timestamp.now(), encerradaPor },
+    { merge: true },
+  )
+  await registrarEventoAtendimento(contaId, { numero: sanitizarNumero(numero), tipo: 'encerrada' }).catch(() => {})
+}
+
+// ─────────────────────────────────────────
+// CSAT (Subcoleção: contas/{contaId}/avaliacoesCsat) — nota 0-10 que o
+// cliente dá ao responder a pergunta de satisfação enviada ao encerrar uma
+// conversa. Ver lib/csatService.ts pro envio/interpretação da resposta.
+// ─────────────────────────────────────────
+
+export async function marcarAguardandoCsat(contaId: string, numero: string, aguardando: boolean): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), aguardandoCsat: aguardando },
+    { merge: true },
+  )
+}
+
+export async function salvarAvaliacaoCsat(contaId: string, numero: string, nota: number): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('avaliacoesCsat').add({
+    numero: sanitizarNumero(numero),
+    nota,
+    criadoEm: Timestamp.now(),
+  })
+}
+
+export async function listarAvaliacoesCsat(contaId: string, desde: Date): Promise<AvaliacaoCsat[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('avaliacoesCsat')
+    .where('criadoEm', '>=', Timestamp.fromDate(desde))
+    .get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as AvaliacaoCsat))
+}
+
+export async function reabrirConversa(contaId: string, numero: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), status: 'aberta', encerradaEm: null, encerradaPor: null },
+    { merge: true },
+  )
+}
+
+/** Atendente reivindica a conversa explicitamente — distinto de só desativar a IA (mesmo efeito sobre iaAtiva, mas registra quem assumiu). */
+export async function assumirConversa(contaId: string, numero: string, atendenteId: string, atendenteNome: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    {
+      numero: sanitizarNumero(numero),
+      iaAtiva: false,
+      atendenteId,
+      atendenteNome,
+      assumidoEm: Timestamp.now(),
+      // A espera acabou — se essa conversa voltar pra fila depois, um novo
+      // alerta de SLA deve poder disparar de novo.
+      alertaSlaEnviadoEm: null,
+    },
+    { merge: true },
+  )
+  await registrarEventoAtendimento(contaId, { numero: sanitizarNumero(numero), tipo: 'assumida', atendenteId, atendenteNome }).catch(() => {})
+}
+
+/** Libera a reivindicação sem reativar a IA — conversa volta pra fila "aguardando humano" sem dono. */
+export async function liberarAtendenteConversa(contaId: string, numero: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), atendenteId: null, atendenteNome: null, assumidoEm: null },
+    { merge: true },
+  )
+  await registrarEventoAtendimento(contaId, { numero: sanitizarNumero(numero), tipo: 'liberada' }).catch(() => {})
+}
+
+/** Resumo de todas as conversas da conta — usado pra sobrepor status/fila na lista do painel. Uma conta tem no máximo algumas centenas de números ativos, então uma leitura direta (sem paginação) é suficiente aqui. */
+export async function listarConversas(contaId: string): Promise<Conversa[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('conversas').get()
+  return snapshot.docs.map((doc) => ({ numero: doc.id, ...convertTimestamps(doc.data()) } as Conversa))
+}
+
+/** Guarda em que nó do Fluxo a conversa está parada (aguardando resposta do cliente) — null quando o fluxo terminou/não está em uso. */
+export async function atualizarFluxoConversa(contaId: string, numero: string, noAtualId: string | null): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), fluxoNoAtualId: noAtualId },
+    { merge: true },
+  )
+}
+
+/** Encaminha a conversa pra fila humana a partir do Fluxo — mesmo efeito de um handoff da IA, mais o setor (se o nó do fluxo definiu um). Tenta round-robin entre atendentes desse setor antes de deixar "aguardando" sem dono. */
+export async function encaminharConversaParaFilaPeloFluxo(contaId: string, numero: string, setor?: string, motivo?: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    {
+      numero: sanitizarNumero(numero),
+      iaAtiva: false,
+      fluxoNoAtualId: FLUXO_SAIU,
+      setor: setor ?? null,
+      motivoTransferencia: motivo ?? (setor ? `Encaminhado pelo fluxo para ${setor}` : 'Encaminhado pelo fluxo de atendimento'),
+      dataTransferencia: Timestamp.now(),
+      origemTransferencia: 'ia',
+      alertaSlaEnviadoEm: null,
+    },
+    { merge: true },
+  )
+  await registrarEventoAtendimento(contaId, { numero: sanitizarNumero(numero), tipo: 'transferida_humano', setor: setor ?? null }).catch(() => {})
+
+  if (setor) {
+    const atendente = await atribuirRoundRobin(contaId, setor).catch(() => null)
+    if (atendente) await assumirConversa(contaId, numero, atendente.id, atendente.nome)
+  }
+}
+
+/** Guarda a resposta de um nó "coleta" do Fluxo em Conversa.dadosColetados[variavel] — merge recursivo, não apaga chaves coletadas antes. */
+export async function salvarDadoColetado(contaId: string, numero: string, variavel: string, valor: string): Promise<void> {
+  if (!variavel.trim()) return
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), dadosColetados: { [variavel.trim()]: valor } },
+    { merge: true },
+  )
+}
+
+export async function definirPrioridadeConversa(contaId: string, numero: string, prioridade: 'normal' | 'alta' | 'urgente'): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), prioridade },
+    { merge: true },
+  )
+}
+
+/** Marca que o alerta de SLA já foi enviado pra essa espera — evita o cron reenviar e-mail a cada execução enquanto a conversa continuar parada. */
+export async function marcarAlertaSlaEnviado(contaId: string, numero: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), alertaSlaEnviadoEm: Timestamp.now() },
+    { merge: true },
+  )
+}
+
+// ─────────────────────────────────────────
+// EVENTOS DE ATENDIMENTO (Subcoleção: contas/{contaId}/eventosAtendimento)
+// Log append-only de transições — só alimenta métricas HISTÓRICAS; o estado
+// "ao vivo" de cada conversa continua sendo Conversa, não isso aqui.
+// ─────────────────────────────────────────
+
+export async function registrarEventoAtendimento(contaId: string, data: Omit<EventoAtendimento, 'id' | 'criadoEm'>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('eventosAtendimento').add({
+    ...data,
+    criadoEm: Timestamp.now(),
+  })
+}
+
+/** Eventos desde um instante — base das métricas históricas (ex: "últimos 7 dias"). */
+export async function listarEventosAtendimento(contaId: string, desde: Date): Promise<EventoAtendimento[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('eventosAtendimento')
+    .where('criadoEm', '>=', Timestamp.fromDate(desde))
+    .orderBy('criadoEm', 'asc')
+    .get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as EventoAtendimento))
+}
+
+// ─────────────────────────────────────────
+// ROUND-ROBIN de atendentes por setor
+// ─────────────────────────────────────────
+
+/**
+ * Escolhe o próximo atendente ativo de um setor, em rodízio — cada setor
+ * mantém seu próprio "ponteiro" (contas/{contaId}/roundRobin/{setor}). A
+ * lista de elegíveis é lida fora da transação (Firestore não faz query
+ * arbitrária dentro de uma transação de forma barata aqui) — numa correria
+ * de várias conversas chegando ao mesmo tempo pro mesmo setor, o pior caso é
+ * escalar alguém com base numa lista de elegíveis levemente desatualizada,
+ * nunca perder o avanço do ponteiro em si (isso sim fica dentro da transação).
+ * Retorna null se ninguém do setor está marcado como atendente ativo — nesse
+ * caso a conversa fica na fila geral, sem dono, pra alguém assumir manualmente.
+ */
+export async function atribuirRoundRobin(contaId: string, setor: string): Promise<Usuario | null> {
+  const setorNormalizado = setor.trim().toLowerCase()
+  if (!setorNormalizado) return null
+
+  const usuarios = await listarUsuarios(contaId)
+  const elegiveis = usuarios
+    .filter((u) => u.status === 'ativo' && (u.setor ?? '').trim().toLowerCase() === setorNormalizado)
+    .sort((a, b) => a.id.localeCompare(b.id))
+  if (elegiveis.length === 0) return null
+
+  const db = getDb()
+  const cursorRef = db.collection('contas').doc(contaId).collection('roundRobin').doc(setorNormalizado.replace(/\s+/g, '-'))
+
+  return db.runTransaction(async (tx) => {
+    const cursorSnap = await tx.get(cursorRef)
+    const ultimoId = cursorSnap.exists ? (cursorSnap.data()?.ultimoAtendenteId as string | undefined) : undefined
+    const idxAtual = ultimoId ? elegiveis.findIndex((u) => u.id === ultimoId) : -1
+    const proximo = elegiveis[(idxAtual + 1) % elegiveis.length]
+    tx.set(cursorRef, { ultimoAtendenteId: proximo.id, atualizadoEm: Timestamp.now() }, { merge: true })
+    return proximo
+  })
+}
+
+// ─────────────────────────────────────────
+// RESPOSTAS RÁPIDAS (Subcoleção: contas/{contaId}/respostasRapidas)
+// ─────────────────────────────────────────
+
+export async function criarRespostaRapida(contaId: string, data: Omit<RespostaRapida, 'id' | 'contaId' | 'dataCadastro'>): Promise<RespostaRapida> {
+  const db = getDb()
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('respostasRapidas').add({ contaId, ...data, dataCadastro: now })
+  return { id: docRef.id, contaId, ...data, dataCadastro: now.toDate() }
+}
+
+export async function listarRespostasRapidas(contaId: string): Promise<RespostaRapida[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('respostasRapidas').orderBy('atalho', 'asc').get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as RespostaRapida))
+}
+
+export async function atualizarRespostaRapida(contaId: string, id: string, data: Partial<Pick<RespostaRapida, 'atalho' | 'texto'>>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('respostasRapidas').doc(id).update(data)
+}
+
+export async function excluirRespostaRapida(contaId: string, id: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('respostasRapidas').doc(id).delete()
+}
+
+// ─────────────────────────────────────────
+// FLUXO (Subcoleção: contas/{contaId}/fluxos) — uma conta pode manter vários
+// fluxos desenhados (ex: "Padrão", "Black Friday", "Recesso de fim de ano"),
+// mas no máximo 1 fica `ativo` por vez — é esse que o webhook usa.
+// ─────────────────────────────────────────
+
+export async function listarFluxos(contaId: string): Promise<Fluxo[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('fluxos').orderBy('dataAtualizacao', 'desc').get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as Fluxo))
+}
+
+export async function obterFluxoPorId(contaId: string, fluxoId: string): Promise<Fluxo | null> {
+  const db = getDb()
+  try {
+    const docSnap = await db.collection('contas').doc(contaId).collection('fluxos').doc(fluxoId).get()
+    if (!docSnap.exists) return null
+    return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Fluxo
+  } catch (error) {
+    console.error('Erro ao buscar fluxo:', error)
+    return null
+  }
+}
+
+/** Fluxo ativo da conta, pronto pra uso no motor de execução — null quando nenhum está ligado. */
+export async function obterFluxoAtivo(contaId: string): Promise<Fluxo | null> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('fluxos').where('ativo', '==', true).limit(1).get()
+  if (snapshot.empty) return null
+  const doc = snapshot.docs[0]
+  return { id: doc.id, ...convertTimestamps(doc.data()) } as Fluxo
+}
+
+/** Desliga `ativo` em todos os fluxos da conta (num batch) — garante que no máximo 1 fica ligado ao ativar/salvar outro como ativo. */
+async function desativarOutrosFluxos(contaId: string, exceto?: string): Promise<void> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('fluxos').where('ativo', '==', true).get()
+  const alvos = snapshot.docs.filter((doc) => doc.id !== exceto)
+  if (alvos.length === 0) return
+  const batch = db.batch()
+  for (const doc of alvos) batch.update(doc.ref, { ativo: false })
+  await batch.commit()
+}
+
+export async function criarFluxo(contaId: string, data: Pick<Fluxo, 'nome' | 'ativo' | 'nodes' | 'edges'>): Promise<Fluxo> {
+  const db = getDb()
+  if (data.ativo) await desativarOutrosFluxos(contaId)
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('fluxos').add({
+    contaId,
+    ...data,
+    dataCadastro: now,
+    dataAtualizacao: now,
+  })
+  return { id: docRef.id, contaId, ...data, dataCadastro: now.toDate(), dataAtualizacao: now.toDate() }
+}
+
+export async function atualizarFluxo(contaId: string, fluxoId: string, data: Pick<Fluxo, 'nome' | 'ativo' | 'nodes' | 'edges'>): Promise<Fluxo> {
+  const db = getDb()
+  if (data.ativo) await desativarOutrosFluxos(contaId, fluxoId)
+  const ref = db.collection('contas').doc(contaId).collection('fluxos').doc(fluxoId)
+  const existente = await ref.get()
+  const now = Timestamp.now()
+  const dataCadastro = existente.exists ? (existente.data()!.dataCadastro as Timestamp) : now
+  await ref.set({ contaId, ...data, dataCadastro, dataAtualizacao: now }, { merge: false })
+  return { id: fluxoId, contaId, ...data, dataCadastro: dataCadastro.toDate(), dataAtualizacao: now.toDate() }
+}
+
+/** Ativa um fluxo específico e desliga qualquer outro que estivesse ativo — atalho pra "trocar de fluxo" sem reabrir o editor. */
+export async function ativarFluxo(contaId: string, fluxoId: string): Promise<void> {
+  const db = getDb()
+  await desativarOutrosFluxos(contaId, fluxoId)
+  await db.collection('contas').doc(contaId).collection('fluxos').doc(fluxoId).update({ ativo: true, dataAtualizacao: Timestamp.now() })
+}
+
+export async function excluirFluxo(contaId: string, fluxoId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('fluxos').doc(fluxoId).delete()
 }
 
 /**
@@ -736,6 +1207,30 @@ export async function listarTransferenciasRecentes(contaId: string, sinceMs: num
   return snapshot.docs
     .map((doc) => ({ numero: doc.id, ...convertTimestamps(doc.data()) } as Conversa))
     .filter((c) => c.origemTransferencia === 'ia')
+}
+
+// ─────────────────────────────────────────
+// AUDITORIA (Subcoleção: contas/{contaId}/auditoria) — log append-only de
+// mudanças em configurações sensíveis (fluxo, respostas rápidas, equipe).
+// ─────────────────────────────────────────
+
+export async function registrarAuditoria(contaId: string, data: Omit<RegistroAuditoria, 'id' | 'contaId' | 'criadoEm'>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('auditoria').add({
+    contaId,
+    ...data,
+    criadoEm: Timestamp.now(),
+  })
+}
+
+/** Últimos registros de auditoria da conta, mais recente primeiro. */
+export async function listarAuditoria(contaId: string, limite = 200): Promise<RegistroAuditoria[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('auditoria')
+    .orderBy('criadoEm', 'desc')
+    .limit(limite)
+    .get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as RegistroAuditoria))
 }
 
 // ─────────────────────────────────────────

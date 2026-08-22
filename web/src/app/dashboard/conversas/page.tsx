@@ -2,9 +2,25 @@
 
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck, Bot, ArrowLeft } from 'lucide-react'
-import { WhatsAppGlyph, InstagramGlyph, FacebookGlyph } from '@/components/BrandIcons'
+import Link from 'next/link'
+import { toast } from 'sonner'
+import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck, Bot, ArrowLeft, Clock, CheckCircle2, RotateCcw, Workflow, BarChart3, Users as UsersIcon, Zap, Trash2, Download, History } from 'lucide-react'
 import { Skeleton } from '@/components/Skeleton'
+import { Modal } from '@/components/Modal'
+import {
+  type ConversaStatus,
+  type ConversaMeta,
+  type Prioridade,
+  STATUS_LABELS,
+  PRIORIDADE_LABELS,
+  CONVERSA_META_PADRAO,
+  filaDaConversa,
+  formatEspera,
+  esperaExcedeuSla,
+  ordenarFilaPorPrioridade,
+  SLA_ALERTA_MINUTOS,
+} from '@/lib/conversaStatus'
+import type { MetricaSetor, MetricaHistoricaSetor, MetricaCsat } from '@/lib/metricasConversas'
 
 type Message = {
   id: string
@@ -176,6 +192,41 @@ function ConversasInner() {
   const [sendStatus, setSendStatus] = useState<'idle' | 'loading'>('idle')
   const [search, setSearch] = useState('')
   const [showNewForm, setShowNewForm] = useState(false)
+  const [showMetricas, setShowMetricas] = useState(false)
+  const [abaMetricas, setAbaMetricas] = useState<'ao-vivo' | 'historico'>('ao-vivo')
+  const [metricas, setMetricas] = useState<MetricaSetor[] | null>(null)
+  const [metricasHistoricas, setMetricasHistoricas] = useState<MetricaHistoricaSetor[] | null>(null)
+  const [csat, setCsat] = useState<MetricaCsat | null>(null)
+  const [carregandoMetricas, setCarregandoMetricas] = useState(false)
+  const [diasHistorico, setDiasHistorico] = useState(7)
+  const [showAtendentes, setShowAtendentes] = useState(false)
+  const [atendentes, setAtendentes] = useState<{ id: string; nome: string; email: string; setor: string | null; status?: string }[] | null>(null)
+  const [carregandoAtendentes, setCarregandoAtendentes] = useState(false)
+  const [showConvite, setShowConvite] = useState(false)
+  const [convidando, setConvidando] = useState(false)
+  const [conviteNome, setConviteNome] = useState('')
+  const [conviteEmail, setConviteEmail] = useState('')
+  const [showAuditoria, setShowAuditoria] = useState(false)
+  const [auditoria, setAuditoria] = useState<{ id: string; descricao: string; usuarioNome: string; criadoEm: string }[] | null>(null)
+  const [carregandoAuditoria, setCarregandoAuditoria] = useState(false)
+  const [showRespostas, setShowRespostas] = useState(false)
+  const [gerenciandoRespostas, setGerenciandoRespostas] = useState(false)
+  const [respostasRapidas, setRespostasRapidas] = useState<{ id: string; atalho: string; texto: string }[] | null>(null)
+  const [novaRespostaAtalho, setNovaRespostaAtalho] = useState('')
+  const [novaRespostaTexto, setNovaRespostaTexto] = useState('')
+  // Preferência pessoal do atendente (por navegador) — não é config da conta, cada um decide se assina.
+  const [assinarMensagens, setAssinarMensagens] = useState(false)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    setAssinarMensagens(localStorage.getItem('conversas-assinar-mensagens') === 'true')
+  }, [])
+  function alternarAssinatura() {
+    setAssinarMensagens((prev) => {
+      const next = !prev
+      localStorage.setItem('conversas-assinar-mensagens', String(next))
+      return next
+    })
+  }
   const [newNumber, setNewNumber] = useState('')
   const [newName, setNewName] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -248,11 +299,200 @@ function ConversasInner() {
     })
   }, [searchParams])
 
-  const filtered = conversations.filter(
-    (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.number.includes(search.replace(/\D/g, ''))
-  )
+  // Status/fila/atendente de TODAS as conversas — sobreposto na lista
+  // (indicador + filtro por fila) e no painel da conversa aberta. Ausente no
+  // mapa = nunca teve nenhuma transferência/estado especial (trata como
+  // CONVERSA_META_PADRAO: IA ativa, em andamento).
+  const [conversasMeta, setConversasMeta] = useState<Map<string, ConversaMeta>>(new Map())
+  const [filtroFila, setFiltroFila] = useState<'todas' | 'aguardando' | 'encerradas'>('todas')
+
+  // "Relógio" pra recalcular "há X min" sem precisar de um novo fetch — só
+  // dispara re-render, não busca dado nenhum.
+  const [agora, setAgora] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setAgora(new Date()), 30000)
+    return () => clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    if (!showMetricas) return
+    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    setCarregandoMetricas(true)
+    const url = abaMetricas === 'ao-vivo' ? '/api/conversas/metricas' : `/api/conversas/metricas/historico?dias=${diasHistorico}`
+    fetch(url)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { metricas: MetricaSetor[] | MetricaHistoricaSetor[]; csat?: MetricaCsat } | null) => {
+        if (cancelled || !data) return
+        if (abaMetricas === 'ao-vivo') setMetricas(data.metricas as MetricaSetor[])
+        else {
+          setMetricasHistoricas(data.metricas as MetricaHistoricaSetor[])
+          setCsat(data.csat ?? null)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Erro ao carregar as métricas.')
+      })
+      .finally(() => {
+        if (!cancelled) setCarregandoMetricas(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [showMetricas, abaMetricas, diasHistorico])
+
+  useEffect(() => {
+    if (!showAtendentes) return
+    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    setCarregandoAtendentes(true)
+    fetch('/api/atendentes')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { atendentes: { id: string; nome: string; email: string; setor?: string | null; status?: string }[] } | null) => {
+        if (!cancelled && data) setAtendentes(data.atendentes.map((a) => ({ ...a, setor: a.setor ?? null })))
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Erro ao carregar os atendentes.')
+      })
+      .finally(() => {
+        if (!cancelled) setCarregandoAtendentes(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [showAtendentes])
+
+  useEffect(() => {
+    if (!showAuditoria) return
+    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    setCarregandoAuditoria(true)
+    fetch('/api/auditoria')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { registros: { id: string; descricao: string; usuarioNome: string; criadoEm: string }[] } | null) => {
+        if (!cancelled && data) setAuditoria(data.registros)
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Erro ao carregar o log de auditoria.')
+      })
+      .finally(() => {
+        if (!cancelled) setCarregandoAuditoria(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [showAuditoria])
+
+  useEffect(() => {
+    if (!showRespostas || respostasRapidas !== null) return
+    let cancelled = false
+    fetch('/api/respostas-rapidas')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { respostas: { id: string; atalho: string; texto: string }[] } | null) => {
+        if (!cancelled && data) setRespostasRapidas(data.respostas)
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Erro ao carregar respostas rápidas.')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [showRespostas, respostasRapidas])
+
+  function inserirRespostaRapida(texto: string) {
+    setMessage((prev) => (prev ? `${prev} ${texto}` : texto))
+    setShowRespostas(false)
+  }
+
+  async function handleCriarRespostaRapida(e: React.FormEvent) {
+    e.preventDefault()
+    if (!novaRespostaAtalho.trim() || !novaRespostaTexto.trim()) return
+    try {
+      const res = await fetch('/api/respostas-rapidas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ atalho: novaRespostaAtalho.trim(), texto: novaRespostaTexto.trim() }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao criar resposta rápida')
+      setRespostasRapidas((prev) => [...(prev ?? []), json.resposta].sort((a, b) => a.atalho.localeCompare(b.atalho)))
+      setNovaRespostaAtalho('')
+      setNovaRespostaTexto('')
+      toast.success('Resposta rápida criada.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao criar resposta rápida')
+    }
+  }
+
+  async function handleExcluirRespostaRapida(id: string) {
+    try {
+      const res = await fetch(`/api/respostas-rapidas/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      setRespostasRapidas((prev) => prev?.filter((r) => r.id !== id) ?? null)
+    } catch {
+      toast.error('Erro ao excluir resposta rápida')
+    }
+  }
+
+  async function handleConvidarAtendente(e: React.FormEvent) {
+    e.preventDefault()
+    if (!conviteNome.trim() || !conviteEmail.trim()) return
+    setConvidando(true)
+    try {
+      const res = await fetch('/api/atendentes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: conviteNome.trim(), email: conviteEmail.trim() }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao convidar atendente')
+      setAtendentes((prev) => [...(prev ?? []), { ...json.atendente, setor: json.atendente.setor ?? null }])
+      setConviteNome('')
+      setConviteEmail('')
+      setShowConvite(false)
+      toast.success(json.emailEnviado ? 'Convite enviado por e-mail.' : 'Atendente criado — configure RESEND_API_KEY pra enviar o e-mail automaticamente.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao convidar atendente')
+    } finally {
+      setConvidando(false)
+    }
+  }
+
+  async function handleSalvarSetorAtendente(id: string, setor: string) {
+    setAtendentes((prev) => prev?.map((a) => (a.id === id ? { ...a, setor: setor || null } : a)) ?? null)
+    try {
+      const res = await fetch(`/api/atendentes/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setor }),
+      })
+      if (!res.ok) throw new Error()
+      toast.success('Setor atualizado.')
+    } catch {
+      toast.error('Erro ao salvar o setor desse atendente.')
+    }
+  }
+
+  const filtradoPorBusca = conversations.filter((c) => {
+    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.number.includes(search.replace(/\D/g, ''))
+    if (!matchesSearch) return false
+    if (filtroFila === 'todas') return true
+    const meta = conversasMeta.get(c.number) ?? CONVERSA_META_PADRAO
+    if (filtroFila === 'encerradas') return meta.status === 'encerrada'
+    return filaDaConversa(meta) === 'aguardando'
+  })
+
+  // Na fila "aguardando" a ordem não é mais só "mais recente primeiro" — VIP/urgente fura a fila.
+  const filtered =
+    filtroFila === 'aguardando'
+      ? ordenarFilaPorPrioridade(filtradoPorBusca.map((c) => ({ ...c, ...(conversasMeta.get(c.number) ?? CONVERSA_META_PADRAO) })))
+      : filtradoPorBusca
+
+  const totalAguardando = conversations.filter((c) => filaDaConversa(conversasMeta.get(c.number) ?? CONVERSA_META_PADRAO) === 'aguardando').length
+  const totalSlaEstourado = conversations.filter((c) => {
+    const meta = conversasMeta.get(c.number) ?? CONVERSA_META_PADRAO
+    return filaDaConversa(meta) === 'aguardando' && meta.dataTransferencia && esperaExcedeuSla(new Date(meta.dataTransferencia), agora)
+  }).length
 
   const currentConv = selectedNumber !== null ? conversations.find((c) => c.number === selectedNumber) ?? null : null
 
@@ -261,28 +501,66 @@ function ConversasInner() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [currentConv?.messages.length])
 
-  // Estado da IA na conversa selecionada — se um humano assumiu (ou a
-  // própria IA transferiu), mostra o aviso e a opção de reativar.
-  const [iaStatus, setIaStatus] = useState<{ iaAtiva: boolean; motivoTransferencia: string | null } | null>(null)
+  async function carregarConversasMeta() {
+    try {
+      const res = await fetch('/api/conversas')
+      if (!res.ok) return
+      const data = (await res.json()) as {
+        conversas: {
+          numero: string
+          status?: ConversaStatus
+          iaAtiva: boolean
+          motivoTransferencia?: string | null
+          dataTransferencia?: string | null
+          atendenteId?: string | null
+          atendenteNome?: string | null
+          assumidoEm?: string | null
+          setor?: string | null
+          prioridade?: Prioridade
+        }[]
+      }
+      setConversasMeta(
+        new Map(
+          data.conversas.map((c) => [
+            c.numero,
+            {
+              status: c.status ?? 'em_andamento',
+              iaAtiva: c.iaAtiva,
+              motivoTransferencia: c.motivoTransferencia ?? null,
+              dataTransferencia: c.dataTransferencia ?? null,
+              atendenteId: c.atendenteId ?? null,
+              atendenteNome: c.atendenteNome ?? null,
+              assumidoEm: c.assumidoEm ?? null,
+              setor: c.setor ?? null,
+              prioridade: c.prioridade ?? 'normal',
+            },
+          ])
+        )
+      )
+    } catch {
+      // silencioso — mantém o que já tinha, tenta de novo no próximo ciclo
+    }
+  }
 
   useEffect(() => {
-    if (!currentConv) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
-      setIaStatus(null)
-      return
-    }
-    let cancelled = false
-    fetch(`/api/conversas/${currentConv.number}/ia`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data) setIaStatus(data)
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- só precisa reagir à troca de conversa, não a todo objeto novo
-  }, [currentConv?.number])
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    carregarConversasMeta()
+    const id = setInterval(() => {
+      if (document.hidden) return
+      void carregarConversasMeta()
+    }, 8000)
+    return () => clearInterval(id)
+  }, [])
+
+  function atualizarMetaLocal(numero: string, patch: Partial<ConversaMeta>) {
+    setConversasMeta((prev) => {
+      const next = new Map(prev)
+      next.set(numero, { ...CONVERSA_META_PADRAO, ...prev.get(numero), ...patch })
+      return next
+    })
+  }
+
+  const currentMeta = currentConv ? (conversasMeta.get(currentConv.number) ?? CONVERSA_META_PADRAO) : null
 
   async function handleToggleIA(novoEstado: boolean) {
     if (!currentConv) return
@@ -293,9 +571,71 @@ function ConversasInner() {
         body: JSON.stringify({ iaAtiva: novoEstado }),
       })
       if (!res.ok) throw new Error('Erro ao atualizar a IA')
-      setIaStatus({ iaAtiva: novoEstado, motivoTransferencia: novoEstado ? null : 'Desativada manualmente pelo painel' })
+      atualizarMetaLocal(currentConv.number, {
+        iaAtiva: novoEstado,
+        motivoTransferencia: novoEstado ? null : 'Desativada manualmente pelo painel',
+        ...(novoEstado ? { atendenteId: null, atendenteNome: null, assumidoEm: null } : {}),
+      })
     } catch {
-      // silencioso — o usuário pode tentar de novo
+      toast.error('Erro ao atualizar a IA dessa conversa.')
+    }
+  }
+
+  async function handleAssumirConversa() {
+    if (!currentConv) return
+    try {
+      const res = await fetch(`/api/conversas/${currentConv.number}/assumir`, { method: 'POST' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao assumir a conversa')
+      await carregarConversasMeta()
+      toast.success('Você assumiu essa conversa.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao assumir a conversa')
+    }
+  }
+
+  async function handleLiberarConversa() {
+    if (!currentConv) return
+    try {
+      const res = await fetch(`/api/conversas/${currentConv.number}/liberar`, { method: 'POST' })
+      if (!res.ok) throw new Error('Erro ao liberar a conversa')
+      atualizarMetaLocal(currentConv.number, { atendenteId: null, atendenteNome: null, assumidoEm: null })
+      toast.success('Conversa liberada — volta pra fila de aguardando humano.')
+    } catch {
+      toast.error('Erro ao liberar a conversa')
+    }
+  }
+
+  async function handleMudarStatusConversa(novoStatus: 'encerrada' | 'aberta') {
+    if (!currentConv) return
+    try {
+      const res = await fetch(`/api/conversas/${currentConv.number}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: novoStatus }),
+      })
+      if (!res.ok) throw new Error('Erro ao atualizar o status da conversa')
+      atualizarMetaLocal(currentConv.number, { status: novoStatus })
+      toast.success(novoStatus === 'encerrada' ? 'Conversa encerrada.' : 'Conversa reaberta.')
+    } catch {
+      toast.error('Erro ao atualizar o status da conversa')
+    }
+  }
+
+  async function handleMudarPrioridade(novaPrioridade: Prioridade) {
+    if (!currentConv) return
+    const anterior = conversasMeta.get(currentConv.number)?.prioridade ?? 'normal'
+    atualizarMetaLocal(currentConv.number, { prioridade: novaPrioridade })
+    try {
+      const res = await fetch(`/api/conversas/${currentConv.number}/prioridade`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prioridade: novaPrioridade }),
+      })
+      if (!res.ok) throw new Error('Erro ao atualizar a prioridade')
+    } catch {
+      atualizarMetaLocal(currentConv.number, { prioridade: anterior })
+      toast.error('Erro ao atualizar a prioridade')
     }
   }
 
@@ -423,7 +763,7 @@ function ConversasInner() {
       const res = await fetch('/api/meta/send-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: conv.number.replace(/\D/g, ''), message: msgText }),
+        body: JSON.stringify({ to: conv.number.replace(/\D/g, ''), message: msgText, assinar: assinarMensagens }),
       })
       const json: { error?: string; code?: number; messages?: { id: string }[] } = await res.json()
       if (!res.ok) {
@@ -454,6 +794,10 @@ function ConversasInner() {
             )
           )
         }
+        // Responder manualmente pausa a IA e assume a conversa pro atendente
+        // (ver /api/meta/send-message) — busca o estado atualizado pra
+        // refletir isso no painel sem esperar o próximo ciclo de 8s.
+        void carregarConversasMeta()
       }
       setSendStatus('idle')
     } catch {
@@ -492,32 +836,6 @@ function ConversasInner() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-7rem)]">
-      {/* Channel switcher */}
-      <div data-tour="conversas-channels" className="flex items-center gap-2 mb-3 shrink-0 overflow-x-auto overflow-y-hidden scrollbar-thin -mx-1 px-1">
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-brand-600 text-white shadow-sm shrink-0 whitespace-nowrap">
-          <WhatsAppGlyph className="w-4 h-4" />
-          WhatsApp
-        </button>
-        <button
-          disabled
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-ink-200 text-ink-400 cursor-not-allowed shrink-0 whitespace-nowrap"
-          title="Em breve"
-        >
-          <InstagramGlyph className="w-3.5 h-3.5" />
-          Instagram
-          <span className="text-[9px] font-semibold uppercase px-1 py-0.5 rounded-full bg-ink-100">em breve</span>
-        </button>
-        <button
-          disabled
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white border border-ink-200 text-ink-400 cursor-not-allowed shrink-0 whitespace-nowrap"
-          title="Em breve"
-        >
-          <FacebookGlyph className="w-3.5 h-3.5" />
-          Facebook
-          <span className="text-[9px] font-semibold uppercase px-1 py-0.5 rounded-full bg-ink-100">em breve</span>
-        </button>
-      </div>
-
       <div className="flex gap-4 flex-1 min-h-0">
       {/* Left: conversation list — full width on mobile, hidden once a conversation is open */}
       <div
@@ -529,13 +847,43 @@ function ConversasInner() {
         <div className="p-3 border-b border-ink-100 space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-ink-900">Conversas</h2>
-            <button
-              onClick={() => setShowNewForm((v) => !v)}
-              className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
-              title="Nova conversa"
-            >
-              {showNewForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setShowMetricas(true)}
+                className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
+                title="Métricas da fila"
+              >
+                <BarChart3 className="w-4 h-4" />
+              </button>
+              <Link
+                href="/dashboard/conversas/fluxo"
+                className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
+                title="Fluxo de atendimento"
+              >
+                <Workflow className="w-4 h-4" />
+              </Link>
+              <button
+                onClick={() => setShowAtendentes(true)}
+                className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
+                title="Setores dos atendentes (round-robin)"
+              >
+                <UsersIcon className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowAuditoria(true)}
+                className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
+                title="Log de auditoria (quem mudou o quê)"
+              >
+                <History className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowNewForm((v) => !v)}
+                className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
+                title="Nova conversa"
+              >
+                {showNewForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           {showNewForm && (
@@ -574,6 +922,30 @@ function ConversasInner() {
               className="w-full pl-8 pr-3 py-1.5 border border-ink-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+            {(
+              [
+                { key: 'todas', label: 'Todas' },
+                { key: 'aguardando', label: `Aguardando${totalAguardando > 0 ? ` (${totalAguardando})` : ''}` },
+                { key: 'encerradas', label: 'Encerradas' },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setFiltroFila(tab.key)}
+                title={tab.key === 'aguardando' && totalSlaEstourado > 0 ? `${totalSlaEstourado} aguardando há mais de ${SLA_ALERTA_MINUTOS} min` : undefined}
+                className={`relative px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap transition-colors ${
+                  filtroFila === tab.key ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200'
+                }`}
+              >
+                {tab.label}
+                {tab.key === 'aguardando' && totalSlaEstourado > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 border border-white" />
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto divide-y divide-ink-100">
@@ -583,6 +955,8 @@ function ConversasInner() {
             </>
           )}
           {(!loadingConversas || conversations.length > 0) && filtered.map((c) => {
+            const meta = conversasMeta.get(c.number) ?? CONVERSA_META_PADRAO
+            const fila = filaDaConversa(meta)
             return (
               <div
                 key={c.number}
@@ -591,15 +965,48 @@ function ConversasInner() {
                   selectedNumber === c.number ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'
                 }`}
               >
-                <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
-                  <span className="text-xs font-bold text-brand-700">{c.name[0]}</span>
+                <div className="relative shrink-0">
+                  <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center">
+                    <span className="text-xs font-bold text-brand-700">{c.name[0]}</span>
+                  </div>
+                  {meta.status !== 'encerrada' && (() => {
+                    const desde = fila === 'aguardando' && meta.dataTransferencia ? new Date(meta.dataTransferencia) : null
+                    const estourouSla = desde ? esperaExcedeuSla(desde, agora) : false
+                    return (
+                      <span
+                        title={
+                          fila === 'aguardando'
+                            ? `Aguardando humano${meta.setor ? ` · ${meta.setor}` : ''}${desde ? ` · ${formatEspera(desde, agora)}` : ''}`
+                            : fila === 'humano'
+                              ? `Com ${meta.atendenteNome ?? 'atendente'}`
+                              : 'IA respondendo'
+                        }
+                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
+                          estourouSla ? 'bg-red-500' : fila === 'aguardando' ? 'bg-amber-500' : fila === 'humano' ? 'bg-blue-500' : 'bg-brand-500'
+                        }`}
+                      />
+                    )
+                  })()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-ink-900 truncate">{c.name}</p>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="flex items-center gap-1 min-w-0">
+                      {meta.prioridade !== 'normal' && (
+                        <span
+                          title={PRIORIDADE_LABELS[meta.prioridade]}
+                          className={`shrink-0 text-[9px] font-bold uppercase px-1 py-0.5 rounded ${meta.prioridade === 'urgente' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}
+                        >
+                          {meta.prioridade === 'urgente' ? '!!' : '!'}
+                        </span>
+                      )}
+                      <p className="text-xs font-semibold text-ink-900 truncate">{c.name}</p>
+                    </span>
                     <span className="text-[10px] text-ink-400 shrink-0 ml-1">{c.time}</span>
                   </div>
-                  <p className="text-[11px] text-ink-500 truncate mt-0.5">{c.last || 'Sem mensagens'}</p>
+                  <p className="text-[11px] text-ink-500 truncate mt-0.5">
+                    {meta.status === 'encerrada' && <span className="text-ink-400">Encerrada · </span>}
+                    {c.last || 'Sem mensagens'}
+                  </p>
                 </div>
               </div>
             )
@@ -626,43 +1033,137 @@ function ConversasInner() {
               <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
                 <span className="text-xs font-bold text-brand-700">{currentConv.name[0]}</span>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-ink-900">{currentConv.name}</p>
-                <p className="text-xs text-ink-500">{currentConv.number}</p>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-ink-900 truncate">{currentConv.name}</p>
+                <p className="text-xs text-ink-500 truncate">{currentConv.number}</p>
               </div>
 
-              {iaStatus && (
-                <button
-                  data-tour="conversas-ai-toggle"
-                  onClick={() => handleToggleIA(!iaStatus.iaAtiva)}
-                  title={iaStatus.iaAtiva ? 'Desativar a IA nessa conversa' : 'Reativar a IA nessa conversa'}
-                  className={`ml-auto shrink-0 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
-                    iaStatus.iaAtiva
-                      ? 'text-brand-700 bg-brand-100 hover:bg-brand-200'
-                      : 'text-ink-600 bg-ink-200 hover:bg-ink-300'
-                  }`}
-                >
-                  <Bot className="w-3.5 h-3.5" />
-                  {iaStatus.iaAtiva ? 'IA ativa' : 'IA desativada'}
-                </button>
+              {currentMeta && (
+                <div className="ml-auto shrink-0 flex flex-wrap items-center justify-end gap-2 max-w-[55%]">
+                  <span className="text-[10px] font-medium text-ink-500 bg-ink-100 px-2 py-1 rounded-full">
+                    {STATUS_LABELS[currentMeta.status]}
+                  </span>
+                  <select
+                    value={currentMeta.prioridade}
+                    onChange={(e) => handleMudarPrioridade(e.target.value as Prioridade)}
+                    title="Prioridade na fila"
+                    className={`text-[10px] font-semibold px-2 py-1 rounded-full border-0 cursor-pointer ${
+                      currentMeta.prioridade === 'urgente'
+                        ? 'bg-red-100 text-red-700'
+                        : currentMeta.prioridade === 'alta'
+                          ? 'bg-orange-100 text-orange-700'
+                          : 'bg-ink-100 text-ink-500'
+                    }`}
+                  >
+                    {(Object.keys(PRIORIDADE_LABELS) as Prioridade[]).map((p) => (
+                      <option key={p} value={p}>
+                        {PRIORIDADE_LABELS[p]}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    data-tour="conversas-ai-toggle"
+                    onClick={() => handleToggleIA(!currentMeta.iaAtiva)}
+                    title={currentMeta.iaAtiva ? 'Desativar a IA nessa conversa' : 'Reativar a IA nessa conversa'}
+                    className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
+                      currentMeta.iaAtiva
+                        ? 'text-brand-700 bg-brand-100 hover:bg-brand-200'
+                        : 'text-ink-600 bg-ink-200 hover:bg-ink-300'
+                    }`}
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                    {currentMeta.iaAtiva ? 'IA ativa' : 'IA desativada'}
+                  </button>
+                  {currentMeta.status === 'encerrada' ? (
+                    <button
+                      onClick={() => handleMudarStatusConversa('aberta')}
+                      title="Reabrir conversa"
+                      className="p-1.5 rounded-full text-ink-500 bg-white border border-ink-200 hover:bg-ink-50 transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleMudarStatusConversa('encerrada')}
+                      title="Encerrar conversa"
+                      className="p-1.5 rounded-full text-ink-500 bg-white border border-ink-200 hover:bg-ink-50 transition-colors"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
-            {iaStatus && !iaStatus.iaAtiva && (
-              <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs text-amber-800 min-w-0">
-                  <UserCheck className="w-4 h-4 shrink-0" />
-                  <span className="truncate">
-                    IA pausada nessa conversa{iaStatus.motivoTransferencia ? ` — ${iaStatus.motivoTransferencia}` : ''}
-                  </span>
+            {currentMeta?.status === 'encerrada' && (
+              <div className="px-4 py-2.5 bg-ink-100 border-b border-ink-200 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs text-ink-600 min-w-0">
+                  <Clock className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Essa conversa foi encerrada.</span>
                 </div>
                 <button
-                  onClick={() => handleToggleIA(true)}
-                  className="shrink-0 text-xs font-medium text-amber-800 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-full transition-colors"
+                  onClick={() => handleMudarStatusConversa('aberta')}
+                  className="shrink-0 text-xs font-medium text-ink-700 bg-white border border-ink-200 hover:bg-ink-50 px-2.5 py-1 rounded-full transition-colors"
                 >
-                  Reativar IA
+                  Reabrir
                 </button>
               </div>
+            )}
+
+            {currentMeta && currentMeta.status !== 'encerrada' && !currentMeta.iaAtiva && (
+              currentMeta.atendenteId ? (
+                <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-100 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs text-blue-800 min-w-0">
+                    <UserCheck className="w-4 h-4 shrink-0" />
+                    <span className="truncate">Em atendimento com {currentMeta.atendenteNome}</span>
+                  </div>
+                  <div className="shrink-0 flex items-center gap-2">
+                    <button
+                      onClick={handleLiberarConversa}
+                      className="text-xs font-medium text-blue-800 bg-blue-100 hover:bg-blue-200 px-2.5 py-1 rounded-full transition-colors"
+                    >
+                      Liberar
+                    </button>
+                    <button
+                      onClick={() => handleToggleIA(true)}
+                      className="text-xs font-medium text-blue-800 bg-blue-100 hover:bg-blue-200 px-2.5 py-1 rounded-full transition-colors"
+                    >
+                      Reativar IA
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                (() => {
+                  const desde = currentMeta.dataTransferencia ? new Date(currentMeta.dataTransferencia) : null
+                  const estourouSla = desde ? esperaExcedeuSla(desde, agora) : false
+                  return (
+                    <div className={`px-4 py-2.5 border-b flex items-center justify-between gap-3 ${estourouSla ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
+                      <div className={`flex items-center gap-2 text-xs min-w-0 ${estourouSla ? 'text-red-800' : 'text-amber-800'}`}>
+                        <UserCheck className="w-4 h-4 shrink-0" />
+                        <span className="truncate">
+                          Aguardando atendimento humano{currentMeta.setor ? ` · ${currentMeta.setor}` : ''}
+                          {desde ? ` · ${formatEspera(desde, agora)}` : ''}
+                          {currentMeta.motivoTransferencia ? ` — ${currentMeta.motivoTransferencia}` : ''}
+                        </span>
+                      </div>
+                      <div className="shrink-0 flex items-center gap-2">
+                        <button
+                          onClick={handleAssumirConversa}
+                          className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${estourouSla ? 'text-red-800 bg-red-100 hover:bg-red-200' : 'text-amber-800 bg-amber-100 hover:bg-amber-200'}`}
+                        >
+                          Assumir atendimento
+                        </button>
+                        <button
+                          onClick={() => handleToggleIA(true)}
+                          className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${estourouSla ? 'text-red-800 bg-red-100 hover:bg-red-200' : 'text-amber-800 bg-amber-100 hover:bg-amber-200'}`}
+                        >
+                          Reativar IA
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })()
+              )
             )}
 
             {/* Messages area */}
@@ -698,8 +1199,81 @@ function ConversasInner() {
             </div>
 
             {/* Input bar */}
-            <div data-tour="conversas-input" className="p-3 border-t border-ink-100 bg-white">
-              <form onSubmit={handleSend} className="flex items-end gap-2">
+            <div data-tour="conversas-input" className="border-t border-ink-100 bg-white">
+              {showRespostas && (
+                <div className="p-3 border-b border-ink-100 bg-ink-50 max-h-48 overflow-y-auto">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-ink-700">Respostas rápidas</p>
+                    <button type="button" onClick={() => setGerenciandoRespostas((v) => !v)} className="text-[11px] font-medium text-brand-700 hover:underline">
+                      {gerenciandoRespostas ? 'Fechar' : 'Gerenciar'}
+                    </button>
+                  </div>
+
+                  {gerenciandoRespostas && (
+                    <form onSubmit={handleCriarRespostaRapida} className="flex flex-wrap items-end gap-1.5 mb-2 bg-white p-2 rounded-lg border border-ink-200">
+                      <input
+                        value={novaRespostaAtalho}
+                        onChange={(e) => setNovaRespostaAtalho(e.target.value)}
+                        placeholder="Atalho (ex: saudação)"
+                        className="px-2 py-1 border border-ink-200 rounded text-xs w-28"
+                      />
+                      <input
+                        value={novaRespostaTexto}
+                        onChange={(e) => setNovaRespostaTexto(e.target.value)}
+                        placeholder="Texto da resposta"
+                        className="flex-1 min-w-[120px] px-2 py-1 border border-ink-200 rounded text-xs"
+                      />
+                      <button type="submit" className="px-2 py-1 bg-brand-600 text-white text-xs rounded hover:bg-brand-700">
+                        Adicionar
+                      </button>
+                    </form>
+                  )}
+
+                  {respostasRapidas === null ? (
+                    <p className="text-xs text-ink-400">Carregando...</p>
+                  ) : respostasRapidas.length === 0 ? (
+                    <p className="text-xs text-ink-400">Nenhuma resposta rápida cadastrada ainda.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {respostasRapidas.map((r) => (
+                        <div key={r.id} className="flex items-center gap-2 bg-white border border-ink-200 rounded-lg px-2.5 py-1.5">
+                          <button
+                            type="button"
+                            onClick={() => inserirRespostaRapida(r.texto)}
+                            className="flex-1 min-w-0 text-left"
+                          >
+                            <span className="text-[11px] font-semibold text-brand-700">/{r.atalho}</span>{' '}
+                            <span className="text-xs text-ink-600 truncate">{r.texto}</span>
+                          </button>
+                          {gerenciandoRespostas && (
+                            <button type="button" onClick={() => handleExcluirRespostaRapida(r.id)} className="p-1 text-ink-400 hover:text-red-600 transition-colors shrink-0" title="Excluir">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <form onSubmit={handleSend} className="flex items-end gap-2 p-3">
+                <button
+                  type="button"
+                  onClick={() => setShowRespostas((v) => !v)}
+                  title="Respostas rápidas"
+                  className={`p-2.5 rounded-full transition-colors shrink-0 ${showRespostas ? 'bg-brand-100 text-brand-700' : 'text-ink-400 hover:bg-ink-100'}`}
+                >
+                  <Zap className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={alternarAssinatura}
+                  title={assinarMensagens ? 'Assinando com seu nome — clique pra desligar' : 'Assinar mensagens com seu nome'}
+                  className={`p-2.5 rounded-full transition-colors shrink-0 ${assinarMensagens ? 'bg-brand-100 text-brand-700' : 'text-ink-400 hover:bg-ink-100'}`}
+                >
+                  <UserCheck className="w-4 h-4" />
+                </button>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
@@ -736,6 +1310,217 @@ function ConversasInner() {
         )}
       </div>
       </div>
+
+      <Modal open={showMetricas} onClose={() => setShowMetricas(false)} title="Métricas da fila humana" widthClass="max-w-lg">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              {(['ao-vivo', 'historico'] as const).map((aba) => (
+                <button
+                  key={aba}
+                  onClick={() => setAbaMetricas(aba)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                    abaMetricas === aba ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500 hover:bg-ink-200'
+                  }`}
+                >
+                  {aba === 'ao-vivo' ? 'Ao vivo' : 'Histórico'}
+                </button>
+              ))}
+            </div>
+            {abaMetricas === 'historico' && (
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={diasHistorico}
+                  onChange={(e) => setDiasHistorico(Number(e.target.value))}
+                  className="text-[11px] border border-ink-200 rounded-lg px-2 py-1"
+                >
+                  <option value={7}>Últimos 7 dias</option>
+                  <option value={30}>Últimos 30 dias</option>
+                  <option value={90}>Últimos 90 dias</option>
+                </select>
+                <a
+                  href={`/api/conversas/exportar?dias=${diasHistorico}`}
+                  className="flex items-center gap-1 text-[11px] font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 px-2 py-1 rounded-lg transition-colors"
+                  title="Exportar CSV desse período"
+                >
+                  <Download className="w-3 h-3" /> CSV
+                </a>
+              </div>
+            )}
+          </div>
+
+          {carregandoMetricas ? (
+            <div className="flex items-center justify-center py-8 text-ink-400">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando...
+            </div>
+          ) : abaMetricas === 'ao-vivo' ? (
+            !metricas || metricas.length === 0 ? (
+              <p className="text-sm text-ink-400 text-center py-8">Nenhuma conversa na fila humana agora — tudo com a IA ou encerrado.</p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-[11px] text-ink-400">
+                  Fotografia de agora — não é histórico. Espera calculada só das conversas aguardando (ainda sem atendente).
+                </p>
+                <div className="border border-ink-200 rounded-xl divide-y divide-ink-100">
+                  {metricas.map((m) => (
+                    <div key={m.setor} className="px-4 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-ink-900 truncate">{m.setor}</p>
+                        <p className="text-xs text-ink-500 mt-0.5">
+                          {m.totalAguardando} aguardando · {m.totalEmAtendimento} em atendimento
+                        </p>
+                      </div>
+                      {m.esperaMediaMin !== null && (
+                        <div className="text-right shrink-0">
+                          <p className={`text-xs font-semibold ${m.esperaMediaMin >= SLA_ALERTA_MINUTOS ? 'text-red-600' : 'text-ink-700'}`}>~{m.esperaMediaMin} min de espera</p>
+                          <p className="text-[10px] text-ink-400">pico: {m.esperaMaximaMin} min</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          ) : (!metricasHistoricas || metricasHistoricas.length === 0) && !csat?.totalRespostas ? (
+            <p className="text-sm text-ink-400 text-center py-8">Nenhum atendimento registrado nesse período.</p>
+          ) : (
+            <div className="space-y-3">
+              {csat && csat.totalRespostas > 0 && (
+                <div className="border border-ink-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-ink-900">Satisfação (CSAT/NPS)</p>
+                    <p className="text-xs text-ink-500 mt-0.5">{csat.totalRespostas} respostas · nota média {csat.notaMedia}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={`text-lg font-bold ${csat.nps !== null && csat.nps >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {csat.nps !== null && csat.nps > 0 ? '+' : ''}{csat.nps}
+                    </p>
+                    <p className="text-[10px] text-ink-400">NPS</p>
+                  </div>
+                </div>
+              )}
+              {metricasHistoricas && metricasHistoricas.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-ink-400">Tempo real entre encaminhar → assumir (espera) e assumir → encerrar (atendimento).</p>
+                  <div className="border border-ink-200 rounded-xl divide-y divide-ink-100">
+                    {metricasHistoricas.map((m) => (
+                      <div key={m.setor} className="px-4 py-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-ink-900 truncate">{m.setor}</p>
+                          <p className="text-xs text-ink-500 shrink-0">{m.totalTransferencias} recebidas · {m.totalAssumidas} assumidas · {m.totalEncerradas} encerradas</p>
+                        </div>
+                        <div className="flex items-center gap-4 mt-1">
+                          <p className="text-xs text-ink-600">Espera média: <span className="font-semibold">{m.esperaMediaMin !== null ? `${m.esperaMediaMin} min` : '—'}</span></p>
+                          <p className="text-xs text-ink-600">Atendimento médio: <span className="font-semibold">{m.atendimentoMedioMin !== null ? `${m.atendimentoMedioMin} min` : '—'}</span></p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal open={showAtendentes} onClose={() => setShowAtendentes(false)} title="Atendentes" widthClass="max-w-lg">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] text-ink-400 flex-1">
+              Mesmo setor = rodízio automático quando o fluxo encaminha pra esse setor. Em branco = só assume manualmente.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowConvite((v) => !v)}
+              className="shrink-0 ml-2 flex items-center gap-1 text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Convidar
+            </button>
+          </div>
+
+          {showConvite && (
+            <form onSubmit={handleConvidarAtendente} className="flex flex-wrap items-end gap-1.5 bg-ink-50 p-2.5 rounded-lg border border-ink-200">
+              <input
+                value={conviteNome}
+                onChange={(e) => setConviteNome(e.target.value)}
+                placeholder="Nome"
+                required
+                className="flex-1 min-w-[100px] px-2 py-1.5 border border-ink-200 rounded-lg text-xs"
+              />
+              <input
+                type="email"
+                value={conviteEmail}
+                onChange={(e) => setConviteEmail(e.target.value)}
+                placeholder="E-mail (conta Google)"
+                required
+                className="flex-1 min-w-[140px] px-2 py-1.5 border border-ink-200 rounded-lg text-xs"
+              />
+              <button type="submit" disabled={convidando} className="px-2.5 py-1.5 bg-brand-600 text-white text-xs rounded-lg hover:bg-brand-700 disabled:opacity-50">
+                {convidando ? 'Enviando...' : 'Convidar'}
+              </button>
+              <p className="text-[10px] text-ink-400 basis-full">
+                O convidado acessa entrando com Google em /login usando esse e-mail — sem senha pra configurar.
+              </p>
+            </form>
+          )}
+
+          {carregandoAtendentes ? (
+            <div className="flex items-center justify-center py-8 text-ink-400">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando...
+            </div>
+          ) : !atendentes || atendentes.length === 0 ? (
+            <p className="text-sm text-ink-400 text-center py-8">Nenhum atendente encontrado.</p>
+          ) : (
+            <div className="border border-ink-200 rounded-xl divide-y divide-ink-100">
+              {atendentes.map((a) => (
+                <div key={a.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-semibold text-ink-900 truncate">{a.nome}</p>
+                      {a.status === 'convite_pendente' && (
+                        <span className="shrink-0 text-[9px] font-semibold uppercase text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full">Convite pendente</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-ink-500 truncate">{a.email}</p>
+                  </div>
+                  <input
+                    defaultValue={a.setor ?? ''}
+                    onBlur={(e) => {
+                      if (e.target.value !== (a.setor ?? '')) handleSalvarSetorAtendente(a.id, e.target.value.trim())
+                    }}
+                    placeholder="Sem setor"
+                    className="w-32 shrink-0 px-2.5 py-1.5 border border-ink-200 rounded-lg text-xs"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal open={showAuditoria} onClose={() => setShowAuditoria(false)} title="Log de auditoria" widthClass="max-w-lg">
+        <div className="space-y-3">
+          <p className="text-[11px] text-ink-400">Mudanças em fluxo de atendimento, respostas rápidas e equipe — mais recente primeiro.</p>
+          {carregandoAuditoria ? (
+            <div className="flex items-center justify-center py-8 text-ink-400">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando...
+            </div>
+          ) : !auditoria || auditoria.length === 0 ? (
+            <p className="text-sm text-ink-400 text-center py-8">Nenhuma mudança registrada ainda.</p>
+          ) : (
+            <div className="border border-ink-200 rounded-xl divide-y divide-ink-100 max-h-96 overflow-y-auto">
+              {auditoria.map((r) => (
+                <div key={r.id} className="px-4 py-2.5">
+                  <p className="text-sm text-ink-900">{r.descricao}</p>
+                  <p className="text-[11px] text-ink-400 mt-0.5">
+                    {r.usuarioNome} · {new Date(r.criadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }
