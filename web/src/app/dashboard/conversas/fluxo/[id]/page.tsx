@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -17,14 +17,17 @@ import {
   type NodeChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { ArrowLeft, Plus, Save, Trash2, Loader2, Power } from 'lucide-react'
+import { ArrowLeft, Plus, Save, Trash2, Loader2, Power, ChevronDown } from 'lucide-react'
 import { NODE_TYPES, TIPO_INFO, type FluxoRFNode } from '@/components/fluxo/FluxoNodes'
 import type { Fluxo, FluxoNode, FluxoEdge as FluxoEdgeData, FluxoNodeTipo } from '@/types/database'
 
-const TIPOS_ADICIONAVEIS: FluxoNodeTipo[] = [
-  'mensagem', 'menu', 'horario', 'coleta', 'encaminhar_ia', 'encaminhar_humano', 'fim',
-  'enviar_template', 'enviar_url', 'enviar_email', 'nota_interna', 'solicitar_localizacao', 'gerar_qrcode', 'adicionar_etiqueta', 'gerar_protocolo',
-  'definir_variavel', 'condicao_variavel', 'pausar',
+// Agrupado por categoria (em vez de uma fileira só com os 18 tipos) — cada
+// botão abre um dropdown com os nós daquele grupo.
+const CATEGORIAS_ADICIONAVEIS: { label: string; tipos: FluxoNodeTipo[] }[] = [
+  { label: 'Mensagens', tipos: ['mensagem', 'menu', 'enviar_template', 'enviar_url', 'enviar_email', 'solicitar_localizacao', 'gerar_qrcode'] },
+  { label: 'Lógica', tipos: ['horario', 'coleta', 'definir_variavel', 'condicao_variavel', 'pausar'] },
+  { label: 'Conversa', tipos: ['nota_interna', 'adicionar_etiqueta', 'gerar_protocolo'] },
+  { label: 'Encaminhar', tipos: ['encaminhar_ia', 'encaminhar_humano', 'fim'] },
 ]
 
 const HORARIO_PADRAO = { diasSemana: [false, true, true, true, true, true, false], horaInicio: '09:00', horaFim: '18:00' }
@@ -94,6 +97,16 @@ export default function FluxoEditorPage() {
   const [edges, setEdges, onEdgesChangeBase] = useEdgesState<Edge>([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [templates, setTemplates] = useState<{ name: string; status: string }[] | null>(null)
+  const [categoriaAberta, setCategoriaAberta] = useState<string | null>(null)
+  const paletaRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (paletaRef.current && !paletaRef.current.contains(e.target as Node)) setCategoriaAberta(null)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -279,22 +292,45 @@ export default function FluxoEditorPage() {
         </button>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        {TIPOS_ADICIONAVEIS.map((tipo) => {
-          const info = TIPO_INFO[tipo]
-          const Icon = info.icon
-          return (
+      <div ref={paletaRef} className="flex items-center gap-2 flex-wrap relative">
+        {CATEGORIAS_ADICIONAVEIS.map((categoria) => (
+          <div key={categoria.label} className="relative">
             <button
-              key={tipo}
-              onClick={() => adicionarNo(tipo)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border ${info.corBorda} ${info.corFundo} ${info.corTexto} hover:brightness-95 transition-all`}
+              onClick={() => setCategoriaAberta((atual) => (atual === categoria.label ? null : categoria.label))}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                categoriaAberta === categoria.label ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-ink-200 bg-white text-ink-600 hover:bg-ink-50'
+              }`}
             >
               <Plus className="w-3 h-3" />
-              <Icon className="w-3.5 h-3.5" />
-              {info.label}
+              {categoria.label}
+              <ChevronDown className={`w-3 h-3 transition-transform ${categoriaAberta === categoria.label ? 'rotate-180' : ''}`} />
             </button>
-          )
-        })}
+
+            {categoriaAberta === categoria.label && (
+              <div className="absolute left-0 top-full mt-1 z-20 w-56 bg-white border border-ink-200 rounded-xl shadow-lg py-1.5">
+                {categoria.tipos.map((tipo) => {
+                  const info = TIPO_INFO[tipo]
+                  const Icon = info.icon
+                  return (
+                    <button
+                      key={tipo}
+                      onClick={() => {
+                        adicionarNo(tipo)
+                        setCategoriaAberta(null)
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-ink-700 hover:bg-ink-50 transition-colors"
+                    >
+                      <span className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${info.corFundo} ${info.corTexto}`}>
+                        <Icon className="w-3.5 h-3.5" />
+                      </span>
+                      {info.label}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
 
       <div className="flex gap-3 flex-1 min-h-0">
