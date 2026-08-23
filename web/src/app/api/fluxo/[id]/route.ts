@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { obterFluxoPorId, atualizarFluxo, excluirFluxo, registrarAuditoria } from '@/lib/firestore'
-import { validarFluxo } from '../route'
+import { validarFluxo } from '@/lib/validarFluxo'
 
 // GET /api/fluxo/[id]
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

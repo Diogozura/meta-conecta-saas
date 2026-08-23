@@ -1,25 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { listarFluxos, criarFluxo, registrarAuditoria } from '@/lib/firestore'
-import type { FluxoNode, FluxoEdge } from '@/types/database'
-
-const TIPOS_VALIDOS = new Set(['inicio', 'mensagem', 'menu', 'horario', 'coleta', 'encaminhar_ia', 'encaminhar_humano', 'fim'])
-
-export function validarFluxo(body: unknown): { nome: string; ativo: boolean; nodes: FluxoNode[]; edges: FluxoEdge[] } | null {
-  if (!body || typeof body !== 'object') return null
-  const { nome, ativo, nodes, edges } = body as Record<string, unknown>
-  if (typeof nome !== 'string' || !nome.trim()) return null
-  if (typeof ativo !== 'boolean') return null
-  if (!Array.isArray(nodes) || !Array.isArray(edges)) return null
-  for (const n of nodes) {
-    if (!n || typeof n !== 'object' || typeof n.id !== 'string' || !TIPOS_VALIDOS.has(n.tipo)) return null
-  }
-  for (const e of edges) {
-    if (!e || typeof e !== 'object' || typeof e.id !== 'string' || typeof e.origem !== 'string' || typeof e.destino !== 'string') return null
-  }
-  if (!nodes.some((n: FluxoNode) => n.tipo === 'inicio')) return null
-  return { nome: nome.trim(), ativo, nodes: nodes as FluxoNode[], edges: edges as FluxoEdge[] }
-}
+import { validarFluxo } from '@/lib/validarFluxo'
 
 // GET /api/fluxo - Lista os fluxos de atendimento da conta
 export async function GET() {
