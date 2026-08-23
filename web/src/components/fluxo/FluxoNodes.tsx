@@ -1,7 +1,7 @@
 'use client'
 
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
-import { Play, MessageSquare, ListTree, Clock, TextCursorInput, Bot, UserCheck, Square, FileText, Link2, Mail, StickyNote, MapPin, QrCode, Tag, Hash, Variable, GitBranch, Timer, Workflow } from 'lucide-react'
+import { Play, MessageSquare, ListTree, Clock, TextCursorInput, Bot, UserCheck, Square, FileText, Link2, Mail, StickyNote, MapPin, QrCode, Tag, Hash, Variable, GitBranch, Timer, Workflow, Columns3 } from 'lucide-react'
 import type { FluxoNode, FluxoNodeTipo } from '@/types/database'
 
 // O React Flow exige que `data` seja um Record indexável — a interface
@@ -32,6 +32,7 @@ export const TIPO_INFO: Record<FluxoNodeTipo, { label: string; icon: typeof Play
   condicao_variavel: { label: 'Condição', icon: GitBranch, corBorda: 'border-pink-300', corFundo: 'bg-pink-50', corTexto: 'text-pink-700' },
   pausar: { label: 'Pausar', icon: Timer, corBorda: 'border-stone-300', corFundo: 'bg-stone-50', corTexto: 'text-stone-700' },
   ir_para_fluxo: { label: 'Ir para outro fluxo', icon: Workflow, corBorda: 'border-cyan-400', corFundo: 'bg-cyan-50', corTexto: 'text-cyan-800' },
+  mover_etapa_funil: { label: 'Mover etapa do funil', icon: Columns3, corBorda: 'border-emerald-400', corFundo: 'bg-emerald-50', corTexto: 'text-emerald-800' },
 }
 
 function NodeShell({ tipo, selected, children }: { tipo: FluxoNodeTipo; selected?: boolean; children: React.ReactNode }) {
@@ -324,6 +325,20 @@ export function IrParaFluxoNode({ data, selected }: NodeProps<FluxoRFNode>) {
   )
 }
 
+export function MoverEtapaFunilNode({ data, selected }: NodeProps<FluxoRFNode>) {
+  // Nome da etapa é resolvido pela página do editor (que tem a lista de
+  // etapas do funil da conta) e injetado aqui só pra exibição — o que
+  // persiste é `etapaFunilId`.
+  const nomeEtapa = typeof data.etapaFunilNome === 'string' ? data.etapaFunilNome : undefined
+  return (
+    <NodeShell tipo="mover_etapa_funil" selected={selected}>
+      <Handle type="target" position={Position.Top} className="!bg-emerald-600" />
+      <p className="text-xs text-ink-700 mt-1">{nomeEtapa || (data.etapaFunilId ? '(etapa não encontrada)' : 'Clique para escolher a etapa…')}</p>
+      <Handle type="source" position={Position.Bottom} className="!bg-emerald-600" />
+    </NodeShell>
+  )
+}
+
 export const NODE_TYPES = {
   inicio: InicioNode,
   mensagem: MensagemNode,
@@ -345,4 +360,5 @@ export const NODE_TYPES = {
   condicao_variavel: CondicaoVariavelNode,
   pausar: PausarNode,
   ir_para_fluxo: IrParaFluxoNode,
+  mover_etapa_funil: MoverEtapaFunilNode,
 }

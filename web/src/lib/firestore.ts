@@ -1066,6 +1066,15 @@ export async function definirProtocoloConversa(contaId: string, numero: string, 
   )
 }
 
+/** Move a conversa pra outra coluna do Kanban do CRM leve — por um nó "mover_etapa_funil" do fluxo, ou arrastada manualmente no board. */
+export async function moverConversaEtapaFunil(contaId: string, numero: string, etapaFunilId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), etapaFunilId },
+    { merge: true },
+  )
+}
+
 /** Marca que o alerta de SLA já foi enviado pra essa espera — evita o cron reenviar e-mail a cada execução enquanto a conversa continuar parada. */
 export async function marcarAlertaSlaEnviado(contaId: string, numero: string): Promise<void> {
   const db = getDb()

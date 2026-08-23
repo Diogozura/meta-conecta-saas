@@ -7,6 +7,7 @@ const TODOS_OS_TIPOS: FluxoNodeTipo[] = [
   'enviar_template', 'enviar_url', 'enviar_email', 'nota_interna', 'solicitar_localizacao', 'gerar_qrcode', 'adicionar_etiqueta', 'gerar_protocolo',
   'definir_variavel', 'condicao_variavel', 'pausar',
   'ir_para_fluxo',
+  'mover_etapa_funil',
 ]
 
 function corpoValido(tipo: FluxoNodeTipo) {

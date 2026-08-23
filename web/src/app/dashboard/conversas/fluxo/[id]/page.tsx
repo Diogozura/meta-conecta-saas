@@ -26,7 +26,7 @@ import type { Fluxo, FluxoNode, FluxoEdge as FluxoEdgeData, FluxoNodeTipo } from
 const CATEGORIAS_ADICIONAVEIS: { label: string; tipos: FluxoNodeTipo[] }[] = [
   { label: 'Mensagens', tipos: ['mensagem', 'menu', 'enviar_template', 'enviar_url', 'enviar_email', 'solicitar_localizacao', 'gerar_qrcode'] },
   { label: 'Lógica', tipos: ['horario', 'coleta', 'definir_variavel', 'condicao_variavel', 'pausar'] },
-  { label: 'Conversa', tipos: ['nota_interna', 'adicionar_etiqueta', 'gerar_protocolo'] },
+  { label: 'Conversa', tipos: ['nota_interna', 'adicionar_etiqueta', 'gerar_protocolo', 'mover_etapa_funil'] },
   { label: 'Encaminhar', tipos: ['encaminhar_ia', 'encaminhar_humano', 'ir_para_fluxo', 'fim'] },
 ]
 
@@ -77,6 +77,7 @@ function rfParaFluxoNode(n: FluxoRFNode): FluxoNode {
     valorComparacao: n.data.valorComparacao,
     pausaSegundos: n.data.pausaSegundos,
     fluxoDestinoId: n.data.fluxoDestinoId,
+    etapaFunilId: n.data.etapaFunilId,
   }
 }
 
@@ -99,6 +100,7 @@ export default function FluxoEditorPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [templates, setTemplates] = useState<{ name: string; status: string }[] | null>(null)
   const [outrosFluxos, setOutrosFluxos] = useState<{ id: string; nome: string }[] | null>(null)
+  const [etapasFunil, setEtapasFunil] = useState<{ id: string; nome: string }[] | null>(null)
   const [categoriaAberta, setCategoriaAberta] = useState<string | null>(null)
   const paletaRef = useRef<HTMLDivElement>(null)
 
@@ -246,16 +248,29 @@ export default function FluxoEditorPage() {
       .catch(() => setOutrosFluxos([]))
   }, [noSelecionado?.type, outrosFluxos, fluxoId])
 
-  // Enriquece só pra exibição (não é salvo) — o nó "ir_para_fluxo" guarda um
-  // id, mas o usuário precisa ver o NOME do fluxo de destino na tela.
+  useEffect(() => {
+    if (noSelecionado?.type !== 'mover_etapa_funil' || etapasFunil !== null) return
+    fetch('/api/conta/funil-etapas')
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: { etapas: { id: string; nome: string }[] }) => setEtapasFunil(data.etapas))
+      .catch(() => setEtapasFunil([]))
+  }, [noSelecionado?.type, etapasFunil])
+
+  // Enriquece só pra exibição (não é salvo) — os nós "ir_para_fluxo" e
+  // "mover_etapa_funil" guardam um id, mas o usuário precisa ver o NOME
+  // (do fluxo de destino / da etapa) na tela.
   const nodesParaExibir = useMemo(() => {
-    if (!outrosFluxos) return nodes
-    return nodes.map((n) =>
-      n.type === 'ir_para_fluxo' && n.data.fluxoDestinoId
-        ? { ...n, data: { ...n.data, fluxoDestinoNome: outrosFluxos.find((f) => f.id === n.data.fluxoDestinoId)?.nome } }
-        : n
-    )
-  }, [nodes, outrosFluxos])
+    if (!outrosFluxos && !etapasFunil) return nodes
+    return nodes.map((n) => {
+      if (n.type === 'ir_para_fluxo' && n.data.fluxoDestinoId && outrosFluxos) {
+        return { ...n, data: { ...n.data, fluxoDestinoNome: outrosFluxos.find((f) => f.id === n.data.fluxoDestinoId)?.nome } }
+      }
+      if (n.type === 'mover_etapa_funil' && n.data.etapaFunilId && etapasFunil) {
+        return { ...n, data: { ...n.data, etapaFunilNome: etapasFunil.find((e) => e.id === n.data.etapaFunilId)?.nome } }
+      }
+      return n
+    })
+  }, [nodes, outrosFluxos, etapasFunil])
 
   if (loading) {
     return (
@@ -815,6 +830,29 @@ export default function FluxoEditorPage() {
                   </select>
                 )}
                 <p className="text-[11px] text-ink-400 mt-1">Esse fluxo termina aqui e a conversa entra no fluxo escolhido desde o início — sem voltar pra cá depois.</p>
+              </div>
+            )}
+
+            {noSelecionado.type === 'mover_etapa_funil' && (
+              <div>
+                <label className="block text-xs font-medium text-ink-600 mb-1">Etapa do funil</label>
+                {etapasFunil === null ? (
+                  <p className="text-xs text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando etapas...</p>
+                ) : etapasFunil.length === 0 ? (
+                  <p className="text-[11px] text-ink-400">Nenhuma etapa configurada — defina as etapas do funil em CRM &gt; Etapas.</p>
+                ) : (
+                  <select
+                    value={noSelecionado.data.etapaFunilId ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { etapaFunilId: e.target.value || undefined })}
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  >
+                    <option value="">Selecione...</option>
+                    {etapasFunil.map((e) => (
+                      <option key={e.id} value={e.id}>{e.nome}</option>
+                    ))}
+                  </select>
+                )}
+                <p className="text-[11px] text-ink-400 mt-1">Move a conversa pra essa coluna do Kanban do CRM e segue pro próximo passo do fluxo.</p>
               </div>
             )}
 

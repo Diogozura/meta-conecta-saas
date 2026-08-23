@@ -12,6 +12,7 @@ import {
   X,
   Settings,
   Calendar,
+  Columns3,
   HelpCircle,
   RotateCcw,
   Sparkles,
@@ -140,6 +141,7 @@ function DashboardShellInner({
   const allLabeledItems: { href: string; label: string }[] = [
     { href: '/dashboard', label: 'Visão Geral' },
     ...(servicosContratados.agenda ? [{ href: '/dashboard/agenda', label: 'Agenda' }] : []),
+    ...(servicosContratados.crm ? [{ href: '/dashboard/crm', label: 'CRM' }] : []),
     ...(servicosContratados.whatsapp ? [{ href: '/dashboard/conversas', label: 'Conversas' }] : []),
     ...(servicosContratados.instagram ? [{ href: '/dashboard/instagram', label: 'Instagram' }] : []),
     ...visibleManageItems,
@@ -234,6 +236,13 @@ function DashboardShellInner({
               <NavLink
                 item={{ href: '/dashboard/agenda', label: 'Agenda', icon: Calendar, tour: 'nav-agenda' }}
                 active={pathname === '/dashboard/agenda'}
+                onNavigate={() => setSidebarOpen(false)}
+              />
+            )}
+            {servicosContratados.crm && (
+              <NavLink
+                item={{ href: '/dashboard/crm', label: 'CRM', icon: Columns3 }}
+                active={pathname === '/dashboard/crm'}
                 onNavigate={() => setSidebarOpen(false)}
               />
             )}

@@ -18,6 +18,7 @@ vi.mock('@/lib/firestore', () => ({
   salvarDadoColetado: vi.fn().mockResolvedValue(undefined),
   adicionarEtiquetaConversa: vi.fn().mockResolvedValue(undefined),
   definirProtocoloConversa: vi.fn().mockResolvedValue(undefined),
+  moverConversaEtapaFunil: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/lib/meta', () => ({
@@ -199,6 +200,37 @@ describe('processarMensagemComFluxo — sem fluxo ativo', () => {
 
     expect(tratado).toBe(false)
     expect(meta.sendTextMessage).not.toHaveBeenCalled()
+  })
+})
+
+describe('processarMensagemComFluxo — nó "mover_etapa_funil"', () => {
+  it('move a conversa pra etapa do funil configurada no nó, sem gerar mensagem nenhuma pro cliente', async () => {
+    const fluxo: Fluxo = {
+      id: 'fluxo-crm',
+      contaId: CONTA_ID,
+      nome: 'Fluxo com CRM',
+      ativo: true,
+      dataCadastro: new Date(),
+      dataAtualizacao: new Date(),
+      nodes: [
+        { id: 'inicio', tipo: 'inicio', posicao: { x: 0, y: 0 } },
+        { id: 'move', tipo: 'mover_etapa_funil', posicao: { x: 0, y: 0 }, etapaFunilId: 'negociacao' },
+        { id: 'humano', tipo: 'encaminhar_humano', posicao: { x: 0, y: 0 }, setor: 'Vendas' },
+      ],
+      edges: [
+        { id: 'e1', origem: 'inicio', destino: 'move' },
+        { id: 'e2', origem: 'move', destino: 'humano' },
+      ],
+    }
+    vi.mocked(firestore.obterConversa).mockResolvedValue(null)
+    vi.mocked(firestore.obterFluxoAtivo).mockResolvedValue(fluxo)
+
+    const tratado = await processarMensagemComFluxo(CONTA_ID, NUMERO, 'oi')
+
+    expect(tratado).toBe(true)
+    expect(firestore.moverConversaEtapaFunil).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'negociacao')
+    expect(meta.sendTextMessage).not.toHaveBeenCalled()
+    expect(firestore.encaminharConversaParaFilaPeloFluxo).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'Vendas', undefined)
   })
 })
 

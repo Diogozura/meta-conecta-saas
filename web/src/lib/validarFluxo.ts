@@ -8,6 +8,7 @@ const TIPOS_VALIDOS: Set<FluxoNodeTipo> = new Set([
   'enviar_template', 'enviar_url', 'enviar_email', 'nota_interna', 'solicitar_localizacao', 'gerar_qrcode', 'adicionar_etiqueta', 'gerar_protocolo',
   'definir_variavel', 'condicao_variavel', 'pausar',
   'ir_para_fluxo',
+  'mover_etapa_funil',
 ] satisfies FluxoNodeTipo[])
 
 export function validarFluxo(body: unknown): { nome: string; ativo: boolean; nodes: FluxoNode[]; edges: FluxoEdge[] } | null {

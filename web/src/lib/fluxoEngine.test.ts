@@ -449,3 +449,34 @@ describe('nó "ir_para_fluxo"', () => {
     expect(iniciarFluxo({ nodes, edges })).toEqual({ acao: 'encerrar', acoes: [] })
   })
 })
+
+describe('nó "mover_etapa_funil"', () => {
+  it('acumula a ação "etapa_funil" e segue pra próxima aresta, como um nó automático', () => {
+    const nodes: FluxoNode[] = [
+      no({ id: 'inicio', tipo: 'inicio' }),
+      no({ id: 'move', tipo: 'mover_etapa_funil', etapaFunilId: 'negociacao' }),
+      no({ id: 'ia', tipo: 'encaminhar_ia' }),
+    ]
+    const edges: FluxoEdge[] = [
+      aresta({ id: 'e1', origem: 'inicio', destino: 'move' }),
+      aresta({ id: 'e2', origem: 'move', destino: 'ia' }),
+    ]
+    expect(iniciarFluxo({ nodes, edges })).toEqual({
+      acao: 'encaminhar_ia',
+      acoes: [{ tipo: 'etapa_funil', etapaId: 'negociacao' }],
+    })
+  })
+
+  it('sem etapa configurada, não gera ação e só segue em frente', () => {
+    const nodes: FluxoNode[] = [
+      no({ id: 'inicio', tipo: 'inicio' }),
+      no({ id: 'move', tipo: 'mover_etapa_funil' }),
+      no({ id: 'ia', tipo: 'encaminhar_ia' }),
+    ]
+    const edges: FluxoEdge[] = [
+      aresta({ id: 'e1', origem: 'inicio', destino: 'move' }),
+      aresta({ id: 'e2', origem: 'move', destino: 'ia' }),
+    ]
+    expect(iniciarFluxo({ nodes, edges })).toEqual({ acao: 'encaminhar_ia', acoes: [] })
+  })
+})

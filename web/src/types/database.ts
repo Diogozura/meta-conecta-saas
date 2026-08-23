@@ -22,12 +22,25 @@ export interface Conta {
   // ninguém por padrão); só passa a restringir depois que um admin define
   // esse campo explicitamente pra essa conta. Ver lib/servicos.ts.
   servicosContratados?: ServicosContratados
+  // Colunas do Kanban do CRM leve — ausente/vazio = usa ETAPAS_PADRAO
+  // (ver lib/funil.ts), mesmo padrão "ausente = default" do resto da conta.
+  funilEtapas?: FunilEtapa[]
 }
 
 export interface ServicosContratados {
   whatsapp: boolean
   agenda: boolean
   instagram: boolean
+  crm: boolean
+}
+
+// Etapa de funil configurável pela conta (CRM leve) — ex: "Novo lead", "Em
+// negociação", "Fechado". A ORDEM no array é a ordem das colunas do Kanban;
+// não tem um campo `ordem` separado pra não arriscar dessincronizar.
+export interface FunilEtapa {
+  id: string
+  nome: string
+  cor: string
 }
 
 // Configuração do agente de IA que responde as mensagens do WhatsApp
@@ -134,6 +147,11 @@ export interface Conversa {
   // Gerado por um nó "gerar_protocolo" do fluxo — número curto pro cliente
   // referenciar esse atendimento depois.
   protocolo?: string
+
+  // Coluna do Kanban do CRM leve em que essa conversa está — ausente/id que
+  // não existe mais na lista de FunilEtapa da conta = trata como a
+  // PRIMEIRA etapa (ver lib/funil.ts), não como "sem funil".
+  etapaFunilId?: string | null
 }
 
 // ─────────────────────────────────────────
@@ -168,6 +186,9 @@ export type FluxoNodeTipo =
   // 'ir_para_fluxo' — encerra este fluxo e entra em outro (salto direto, sem
   // "voltar" — o fluxo de destino é quem decide como a conversa termina).
   | 'ir_para_fluxo'
+  // 'mover_etapa_funil' — passo automático (como 'mensagem') que move a
+  // conversa pra uma coluna do Kanban do CRM leve. Ver types/database.ts FunilEtapa.
+  | 'mover_etapa_funil'
 
 export type OperadorCondicao = 'igual' | 'diferente' | 'contem' | 'vazio' | 'preenchido' | 'maior' | 'menor'
 
@@ -213,6 +234,7 @@ export interface FluxoNode {
   valorComparacao?: string
   pausaSegundos?: number       // 'pausar' — limitado a alguns segundos (função serverless, não é um agendador de verdade)
   fluxoDestinoId?: string      // 'ir_para_fluxo' — id de outro Fluxo dessa mesma conta
+  etapaFunilId?: string        // 'mover_etapa_funil' — id de uma FunilEtapa da conta
 }
 
 export interface FluxoEdge {

@@ -20,6 +20,7 @@ export type AcaoFluxo =
   | { tipo: 'localizacao'; texto: string }
   | { tipo: 'variavel'; chave: string; valor: string }
   | { tipo: 'pausa'; segundos: number }
+  | { tipo: 'etapa_funil'; etapaId: string }
 
 export type FluxoResultado =
   // Percorreu nós automáticos (mensagem, enviar_template, etc.) até parar
@@ -166,6 +167,8 @@ function avancar(fluxo: FluxoGrafo, noId: string, acoesAcumuladas: AcaoFluxo[], 
       return no.fluxoDestinoId
         ? { acao: 'ir_para_fluxo', acoes: acoesAcumuladas, fluxoDestinoId: no.fluxoDestinoId }
         : { acao: 'encerrar', acoes: acoesAcumuladas }
+    case 'mover_etapa_funil':
+      return passoAutomatico(no.etapaFunilId ? { tipo: 'etapa_funil', etapaId: no.etapaFunilId } : null)
   }
 }
 

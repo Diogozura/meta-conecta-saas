@@ -12,6 +12,7 @@ import {
   salvarDadoColetado,
   adicionarEtiquetaConversa,
   definirProtocoloConversa,
+  moverConversaEtapaFunil,
 } from '@/lib/firestore'
 import { sendTextMessage, sendButtonsMessage, sendListMessage, sendTemplateMessage, sendCtaUrlMessage, sendLocationRequestMessage, uploadMediaToMeta, sendMediaMessage } from '@/lib/meta'
 import { continuarFluxo, encontrarNo, iniciarFluxo, type AcaoFluxo } from '@/lib/fluxoEngine'
@@ -143,6 +144,9 @@ async function executarAcao(
     case 'etiqueta':
       await adicionarEtiquetaConversa(contaId, numero, acao.valor)
       await registrarNotaInterna(contaId, numero, `🏷️ Etiqueta adicionada: ${acao.valor}`, 'info')
+      return
+    case 'etapa_funil':
+      await moverConversaEtapaFunil(contaId, numero, acao.etapaId)
       return
     case 'protocolo': {
       const protocolo = gerarProtocolo()
