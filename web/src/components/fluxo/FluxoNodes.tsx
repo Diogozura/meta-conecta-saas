@@ -1,7 +1,7 @@
 'use client'
 
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
-import { Play, MessageSquare, ListTree, Clock, TextCursorInput, Bot, UserCheck, Square, FileText, Link2, Mail, StickyNote, MapPin, QrCode, Tag, Hash, Variable, GitBranch, Timer, Workflow, Columns3 } from 'lucide-react'
+import { Play, MessageSquare, ListTree, Clock, TextCursorInput, Bot, UserCheck, Square, FileText, Link2, Mail, StickyNote, MapPin, QrCode, Tag, Hash, Variable, GitBranch, Timer, Workflow, Columns3, Ticket as TicketIcon } from 'lucide-react'
 import type { FluxoNode, FluxoNodeTipo } from '@/types/database'
 
 // O React Flow exige que `data` seja um Record indexável — a interface
@@ -33,6 +33,7 @@ export const TIPO_INFO: Record<FluxoNodeTipo, { label: string; icon: typeof Play
   pausar: { label: 'Pausar', icon: Timer, corBorda: 'border-stone-300', corFundo: 'bg-stone-50', corTexto: 'text-stone-700' },
   ir_para_fluxo: { label: 'Ir para outro fluxo', icon: Workflow, corBorda: 'border-cyan-400', corFundo: 'bg-cyan-50', corTexto: 'text-cyan-800' },
   mover_etapa_funil: { label: 'Mover etapa do funil', icon: Columns3, corBorda: 'border-emerald-400', corFundo: 'bg-emerald-50', corTexto: 'text-emerald-800' },
+  criar_ticket: { label: 'Abrir ticket', icon: TicketIcon, corBorda: 'border-red-300', corFundo: 'bg-red-50', corTexto: 'text-red-700' },
 }
 
 function NodeShell({ tipo, selected, children }: { tipo: FluxoNodeTipo; selected?: boolean; children: React.ReactNode }) {
@@ -339,6 +340,17 @@ export function MoverEtapaFunilNode({ data, selected }: NodeProps<FluxoRFNode>) 
   )
 }
 
+export function CriarTicketNode({ data, selected }: NodeProps<FluxoRFNode>) {
+  return (
+    <NodeShell tipo="criar_ticket" selected={selected}>
+      <Handle type="target" position={Position.Top} className="!bg-red-500" />
+      <p className="text-xs text-ink-700 mt-1 line-clamp-2">{data.texto || 'Clique para definir o assunto do chamado…'}</p>
+      <p className="text-[10px] text-ink-400 mt-1">Confirma o protocolo pro cliente automaticamente.</p>
+      <Handle type="source" position={Position.Bottom} className="!bg-red-500" />
+    </NodeShell>
+  )
+}
+
 export const NODE_TYPES = {
   inicio: InicioNode,
   mensagem: MensagemNode,
@@ -361,4 +373,5 @@ export const NODE_TYPES = {
   pausar: PausarNode,
   ir_para_fluxo: IrParaFluxoNode,
   mover_etapa_funil: MoverEtapaFunilNode,
+  criar_ticket: CriarTicketNode,
 }

@@ -15,10 +15,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   const agenda = !!body?.agenda
   const instagram = !!body?.instagram
   const crm = !!body?.crm
+  const tickets = !!body?.tickets
 
   try {
-    await atualizarConta(contaId, { servicosContratados: { whatsapp, agenda, instagram, crm } })
-    console.log('[admin/servicos] Serviços alterados', { contaId, whatsapp, agenda, instagram, crm, por: session?.email })
+    await atualizarConta(contaId, { servicosContratados: { whatsapp, agenda, instagram, crm, tickets } })
+    console.log('[admin/servicos] Serviços alterados', { contaId, whatsapp, agenda, instagram, crm, tickets, por: session?.email })
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Erro ao atualizar serviços contratados da conta:', error)

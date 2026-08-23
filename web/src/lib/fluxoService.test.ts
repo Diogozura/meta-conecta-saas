@@ -19,6 +19,7 @@ vi.mock('@/lib/firestore', () => ({
   adicionarEtiquetaConversa: vi.fn().mockResolvedValue(undefined),
   definirProtocoloConversa: vi.fn().mockResolvedValue(undefined),
   moverConversaEtapaFunil: vi.fn().mockResolvedValue(undefined),
+  criarTicket: vi.fn().mockResolvedValue({ id: 'ticket1' }),
 }))
 
 vi.mock('@/lib/meta', () => ({
@@ -231,6 +232,41 @@ describe('processarMensagemComFluxo — nó "mover_etapa_funil"', () => {
     expect(firestore.moverConversaEtapaFunil).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'negociacao')
     expect(meta.sendTextMessage).not.toHaveBeenCalled()
     expect(firestore.encaminharConversaParaFilaPeloFluxo).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'Vendas', undefined)
+  })
+})
+
+describe('processarMensagemComFluxo — nó "criar_ticket"', () => {
+  it('abre um ticket, confirma o protocolo pro cliente por texto e segue pra próxima aresta', async () => {
+    const fluxo: Fluxo = {
+      id: 'fluxo-ticket',
+      contaId: CONTA_ID,
+      nome: 'Fluxo com ticket',
+      ativo: true,
+      dataCadastro: new Date(),
+      dataAtualizacao: new Date(),
+      nodes: [
+        { id: 'inicio', tipo: 'inicio', posicao: { x: 0, y: 0 } },
+        { id: 'ticket', tipo: 'criar_ticket', posicao: { x: 0, y: 0 }, texto: 'Internet lenta' },
+        { id: 'ia', tipo: 'encaminhar_ia', posicao: { x: 0, y: 0 } },
+      ],
+      edges: [
+        { id: 'e1', origem: 'inicio', destino: 'ticket' },
+        { id: 'e2', origem: 'ticket', destino: 'ia' },
+      ],
+    }
+    vi.mocked(firestore.obterConversa).mockResolvedValue(null)
+    vi.mocked(firestore.obterFluxoAtivo).mockResolvedValue(fluxo)
+
+    const tratado = await processarMensagemComFluxo(CONTA_ID, NUMERO, 'oi')
+
+    expect(tratado).toBe(false) // segue pra IA depois do ticket
+    expect(firestore.criarTicket).toHaveBeenCalledWith(
+      CONTA_ID,
+      expect.objectContaining({ numero: NUMERO, assunto: 'Internet lenta', prioridade: 'normal', criadoPor: 'sistema' })
+    )
+    // Confirma o protocolo pro cliente (o mesmo que foi gerado e passado pro criarTicket).
+    const [, dadosTicket] = vi.mocked(firestore.criarTicket).mock.calls[0]
+    expect(meta.sendTextMessage).toHaveBeenCalledWith('phone1', 'token1', NUMERO, expect.stringContaining(dadosTicket.protocolo))
   })
 })
 

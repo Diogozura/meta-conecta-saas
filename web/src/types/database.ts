@@ -32,6 +32,7 @@ export interface ServicosContratados {
   agenda: boolean
   instagram: boolean
   crm: boolean
+  tickets: boolean
 }
 
 // Etapa de funil configurável pela conta (CRM leve) — ex: "Novo lead", "Em
@@ -155,6 +156,34 @@ export interface Conversa {
 }
 
 // ─────────────────────────────────────────
+// Ticket (Subcoleção: contas/{contaId}/tickets) — chamado de suporte/SAC,
+// separado da Conversa: uma Conversa é o estado do chat "ao vivo" (só um
+// por número), um Ticket é um caso com vida própria — o mesmo número pode
+// abrir vários tickets ao longo do tempo (ex: 3 chamados técnicos em meses
+// diferentes), cada um com seu protocolo e histórico de status.
+// ─────────────────────────────────────────
+export type TicketStatus = 'aberto' | 'em_andamento' | 'resolvido' | 'fechado'
+export type TicketPrioridade = 'baixa' | 'normal' | 'alta' | 'urgente'
+
+export interface Ticket {
+  id: string
+  numero: string // vincula ao mesmo número de WhatsApp da Conversa
+  assunto: string
+  descricao?: string
+  protocolo: string
+  status: TicketStatus
+  prioridade: TicketPrioridade
+  criadoEm: Date
+  atualizadoEm: Date
+  // Preenchido quando o status vira 'resolvido' ou 'fechado' — null se reaberto depois.
+  resolvidoEm?: Date | null
+  // 'sistema' (aberto por um nó "criar_ticket" do fluxo) ou usuarioId de quem abriu manualmente.
+  criadoPor: string
+  atendenteId?: string | null
+  atendenteNome?: string | null
+}
+
+// ─────────────────────────────────────────
 // AvaliacaoCsat (Subcoleção: contas/{contaId}/avaliacoesCsat) — nota de
 // satisfação (0-10, estilo NPS) que o cliente dá ao responder a pergunta
 // enviada automaticamente quando uma conversa é encerrada.
@@ -189,6 +218,9 @@ export type FluxoNodeTipo =
   // 'mover_etapa_funil' — passo automático (como 'mensagem') que move a
   // conversa pra uma coluna do Kanban do CRM leve. Ver types/database.ts FunilEtapa.
   | 'mover_etapa_funil'
+  // 'criar_ticket' — passo automático (como 'mensagem') que abre um Ticket de
+  // suporte (usa `texto` do nó como assunto) e confirma o protocolo pro cliente.
+  | 'criar_ticket'
 
 export type OperadorCondicao = 'igual' | 'diferente' | 'contem' | 'vazio' | 'preenchido' | 'maior' | 'menor'
 

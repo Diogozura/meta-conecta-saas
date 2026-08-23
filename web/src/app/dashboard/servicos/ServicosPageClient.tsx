@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Search, Calendar, Columns3 } from 'lucide-react'
+import { Loader2, Search, Calendar, Columns3, Ticket } from 'lucide-react'
 import { Skeleton } from '@/components/Skeleton'
 import { WhatsAppGlyph, InstagramGlyph } from '@/components/BrandIcons'
 
@@ -10,7 +10,7 @@ interface ContaServicos {
   id: string
   nome: string
   email: string
-  servicosContratados: { whatsapp: boolean; agenda: boolean; instagram: boolean; crm: boolean }
+  servicosContratados: { whatsapp: boolean; agenda: boolean; instagram: boolean; crm: boolean; tickets: boolean }
 }
 
 const MODULOS = [
@@ -18,6 +18,7 @@ const MODULOS = [
   { key: 'agenda' as const, label: 'Agenda', icon: Calendar },
   { key: 'instagram' as const, label: 'Instagram', icon: InstagramGlyph },
   { key: 'crm' as const, label: 'CRM', icon: Columns3 },
+  { key: 'tickets' as const, label: 'Tickets', icon: Ticket },
 ]
 
 export default function ServicosPageClient() {
@@ -32,7 +33,7 @@ export default function ServicosPageClient() {
       .catch(() => toast.error('Erro ao carregar as contas'))
   }, [])
 
-  async function alternar(contaId: string, modulo: 'whatsapp' | 'agenda' | 'instagram' | 'crm') {
+  async function alternar(contaId: string, modulo: 'whatsapp' | 'agenda' | 'instagram' | 'crm' | 'tickets') {
     if (!contas) return
     const conta = contas.find((c) => c.id === contaId)
     if (!conta) return

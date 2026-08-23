@@ -26,7 +26,7 @@ import type { Fluxo, FluxoNode, FluxoEdge as FluxoEdgeData, FluxoNodeTipo } from
 const CATEGORIAS_ADICIONAVEIS: { label: string; tipos: FluxoNodeTipo[] }[] = [
   { label: 'Mensagens', tipos: ['mensagem', 'menu', 'enviar_template', 'enviar_url', 'enviar_email', 'solicitar_localizacao', 'gerar_qrcode'] },
   { label: 'Lógica', tipos: ['horario', 'coleta', 'definir_variavel', 'condicao_variavel', 'pausar'] },
-  { label: 'Conversa', tipos: ['nota_interna', 'adicionar_etiqueta', 'gerar_protocolo', 'mover_etapa_funil'] },
+  { label: 'Conversa', tipos: ['nota_interna', 'adicionar_etiqueta', 'gerar_protocolo', 'mover_etapa_funil', 'criar_ticket'] },
   { label: 'Encaminhar', tipos: ['encaminhar_ia', 'encaminhar_humano', 'ir_para_fluxo', 'fim'] },
 ]
 
@@ -730,6 +730,23 @@ export default function FluxoEditorPage() {
                   className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm resize-none"
                 />
                 <p className="text-[11px] text-ink-400 mt-1">Deixe em branco pra só gerar e guardar o protocolo, sem avisar o cliente. Use {'{{protocolo}}'} no texto pra incluir o número gerado.</p>
+              </div>
+            )}
+
+            {noSelecionado.type === 'criar_ticket' && (
+              <div>
+                <label className="block text-xs font-medium text-ink-600 mb-1">Assunto do chamado</label>
+                <textarea
+                  value={noSelecionado.data.texto ?? ''}
+                  onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { texto: e.target.value })}
+                  rows={2}
+                  placeholder="Ex: Internet lenta, Fatura em duplicidade..."
+                  className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm resize-none"
+                />
+                <p className="text-[11px] text-ink-400 mt-1">
+                  Aceita {'{{chave}}'} pra usar um dado coletado antes no fluxo. Abre o chamado em CRM &gt; Tickets e confirma o protocolo pro
+                  cliente automaticamente.
+                </p>
               </div>
             )}
 

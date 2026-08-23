@@ -13,6 +13,7 @@ import {
   adicionarEtiquetaConversa,
   definirProtocoloConversa,
   moverConversaEtapaFunil,
+  criarTicket,
 } from '@/lib/firestore'
 import { sendTextMessage, sendButtonsMessage, sendListMessage, sendTemplateMessage, sendCtaUrlMessage, sendLocationRequestMessage, uploadMediaToMeta, sendMediaMessage } from '@/lib/meta'
 import { continuarFluxo, encontrarNo, iniciarFluxo, type AcaoFluxo } from '@/lib/fluxoEngine'
@@ -148,6 +149,15 @@ async function executarAcao(
     case 'etapa_funil':
       await moverConversaEtapaFunil(contaId, numero, acao.etapaId)
       return
+    case 'ticket': {
+      const assunto = substituirVariaveis(acao.assunto, dados)
+      const protocolo = gerarProtocolo()
+      await criarTicket(contaId, { numero, assunto, protocolo, prioridade: 'normal', criadoPor: 'sistema' })
+      const texto = `🎫 Chamado registrado! Protocolo: ${protocolo}\nAssunto: ${assunto}`
+      const envio = await sendTextMessage(metaAccess.phoneNumberId, metaAccess.businessToken, numero, texto)
+      await persistirEnvio(contaId, numero, metaAccess.phoneNumberId, texto, envio)
+      return
+    }
     case 'protocolo': {
       const protocolo = gerarProtocolo()
       await definirProtocoloConversa(contaId, numero, protocolo)

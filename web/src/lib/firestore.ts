@@ -5,7 +5,7 @@
 
 import { getFirestore, Timestamp, Query, Filter, FieldValue } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, ContaAiConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, AvaliacaoCsat, RegistroAuditoria } from '@/types/database'
+import { Conta, ContaAiConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -1663,5 +1663,54 @@ export async function listarPublicacoesInstagram(contaId: string, limit = 30): P
     .limit(limit)
     .get()
   return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as PublicacaoInstagram))
+}
+
+// ─────────────────────────────────────────
+// TICKETS (Subcoleção: contas/{contaId}/tickets) — chamados de suporte/SAC,
+// separados da Conversa (ver types/database.ts Ticket).
+// ─────────────────────────────────────────
+
+export async function criarTicket(contaId: string, data: Pick<Ticket, 'numero' | 'assunto' | 'descricao' | 'protocolo' | 'prioridade' | 'criadoPor'>): Promise<Ticket> {
+  const db = getDb()
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('tickets').add({
+    ...data,
+    status: 'aberto',
+    criadoEm: now,
+    atualizadoEm: now,
+  })
+  return { id: docRef.id, ...data, status: 'aberto', criadoEm: now.toDate(), atualizadoEm: now.toDate() }
+}
+
+/** Todos os tickets da conta — uma conta tem no máximo algumas centenas, então uma leitura direta (sem paginação) é suficiente aqui (mesmo raciocínio de listarConversas). */
+export async function listarTickets(contaId: string): Promise<Ticket[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('tickets').orderBy('criadoEm', 'desc').get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as Ticket))
+}
+
+export async function obterTicket(contaId: string, ticketId: string): Promise<Ticket | null> {
+  const db = getDb()
+  const docSnap = await db.collection('contas').doc(contaId).collection('tickets').doc(ticketId).get()
+  if (!docSnap.exists) return null
+  return { id: docSnap.id, ...convertTimestamps(docSnap.data()!) } as Ticket
+}
+
+export async function atualizarTicket(
+  contaId: string,
+  ticketId: string,
+  patch: Partial<Pick<Ticket, 'status' | 'prioridade' | 'descricao' | 'atendenteId' | 'atendenteNome'>>
+): Promise<void> {
+  const db = getDb()
+  const update: Record<string, unknown> = { ...patch, atualizadoEm: Timestamp.now() }
+  // resolvidoEm só é tocado quando o status faz parte dessa atualização —
+  // uma troca de prioridade/atendente sozinha não deve mexer nele.
+  if (patch.status === 'resolvido' || patch.status === 'fechado') {
+    update.resolvidoEm = Timestamp.now()
+  } else if (patch.status === 'aberto' || patch.status === 'em_andamento') {
+    // Reaberto — não fica com uma data de resolução antiga "pendurada".
+    update.resolvidoEm = null
+  }
+  await db.collection('contas').doc(contaId).collection('tickets').doc(ticketId).update(update)
 }
 

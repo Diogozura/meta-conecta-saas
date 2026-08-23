@@ -480,3 +480,34 @@ describe('nó "mover_etapa_funil"', () => {
     expect(iniciarFluxo({ nodes, edges })).toEqual({ acao: 'encaminhar_ia', acoes: [] })
   })
 })
+
+describe('nó "criar_ticket"', () => {
+  it('acumula a ação "ticket" com o assunto (texto do nó) e segue pra próxima aresta', () => {
+    const nodes: FluxoNode[] = [
+      no({ id: 'inicio', tipo: 'inicio' }),
+      no({ id: 'ticket', tipo: 'criar_ticket', texto: 'Internet lenta' }),
+      no({ id: 'ia', tipo: 'encaminhar_ia' }),
+    ]
+    const edges: FluxoEdge[] = [
+      aresta({ id: 'e1', origem: 'inicio', destino: 'ticket' }),
+      aresta({ id: 'e2', origem: 'ticket', destino: 'ia' }),
+    ]
+    expect(iniciarFluxo({ nodes, edges })).toEqual({
+      acao: 'encaminhar_ia',
+      acoes: [{ tipo: 'ticket', assunto: 'Internet lenta' }],
+    })
+  })
+
+  it('sem assunto configurado, não gera ação e só segue em frente', () => {
+    const nodes: FluxoNode[] = [
+      no({ id: 'inicio', tipo: 'inicio' }),
+      no({ id: 'ticket', tipo: 'criar_ticket' }),
+      no({ id: 'ia', tipo: 'encaminhar_ia' }),
+    ]
+    const edges: FluxoEdge[] = [
+      aresta({ id: 'e1', origem: 'inicio', destino: 'ticket' }),
+      aresta({ id: 'e2', origem: 'ticket', destino: 'ia' }),
+    ]
+    expect(iniciarFluxo({ nodes, edges })).toEqual({ acao: 'encaminhar_ia', acoes: [] })
+  })
+})

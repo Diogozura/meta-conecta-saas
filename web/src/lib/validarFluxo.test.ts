@@ -8,6 +8,7 @@ const TODOS_OS_TIPOS: FluxoNodeTipo[] = [
   'definir_variavel', 'condicao_variavel', 'pausar',
   'ir_para_fluxo',
   'mover_etapa_funil',
+  'criar_ticket',
 ]
 
 function corpoValido(tipo: FluxoNodeTipo) {

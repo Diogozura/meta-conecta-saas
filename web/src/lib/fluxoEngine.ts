@@ -21,6 +21,7 @@ export type AcaoFluxo =
   | { tipo: 'variavel'; chave: string; valor: string }
   | { tipo: 'pausa'; segundos: number }
   | { tipo: 'etapa_funil'; etapaId: string }
+  | { tipo: 'ticket'; assunto: string }
 
 export type FluxoResultado =
   // Percorreu nós automáticos (mensagem, enviar_template, etc.) até parar
@@ -169,6 +170,8 @@ function avancar(fluxo: FluxoGrafo, noId: string, acoesAcumuladas: AcaoFluxo[], 
         : { acao: 'encerrar', acoes: acoesAcumuladas }
     case 'mover_etapa_funil':
       return passoAutomatico(no.etapaFunilId ? { tipo: 'etapa_funil', etapaId: no.etapaFunilId } : null)
+    case 'criar_ticket':
+      return passoAutomatico(no.texto ? { tipo: 'ticket', assunto: no.texto } : null)
   }
 }
 

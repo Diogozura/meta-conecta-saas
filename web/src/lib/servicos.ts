@@ -1,6 +1,6 @@
 import type { ServicosContratados } from '@/types/database'
 
-export const SERVICOS_PADRAO: ServicosContratados = { whatsapp: true, agenda: true, instagram: true, crm: true }
+export const SERVICOS_PADRAO: ServicosContratados = { whatsapp: true, agenda: true, instagram: true, crm: true, tickets: true }
 
 /**
  * Se uma conta tem acesso a um módulo. `undefined`/`null` (conta legada, ou

@@ -9,6 +9,7 @@ const TIPOS_VALIDOS: Set<FluxoNodeTipo> = new Set([
   'definir_variavel', 'condicao_variavel', 'pausar',
   'ir_para_fluxo',
   'mover_etapa_funil',
+  'criar_ticket',
 ] satisfies FluxoNodeTipo[])
 
 export function validarFluxo(body: unknown): { nome: string; ativo: boolean; nodes: FluxoNode[]; edges: FluxoEdge[] } | null {
