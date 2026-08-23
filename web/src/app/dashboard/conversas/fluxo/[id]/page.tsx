@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -27,7 +27,7 @@ const CATEGORIAS_ADICIONAVEIS: { label: string; tipos: FluxoNodeTipo[] }[] = [
   { label: 'Mensagens', tipos: ['mensagem', 'menu', 'enviar_template', 'enviar_url', 'enviar_email', 'solicitar_localizacao', 'gerar_qrcode'] },
   { label: 'Lógica', tipos: ['horario', 'coleta', 'definir_variavel', 'condicao_variavel', 'pausar'] },
   { label: 'Conversa', tipos: ['nota_interna', 'adicionar_etiqueta', 'gerar_protocolo'] },
-  { label: 'Encaminhar', tipos: ['encaminhar_ia', 'encaminhar_humano', 'fim'] },
+  { label: 'Encaminhar', tipos: ['encaminhar_ia', 'encaminhar_humano', 'ir_para_fluxo', 'fim'] },
 ]
 
 const HORARIO_PADRAO = { diasSemana: [false, true, true, true, true, true, false], horaInicio: '09:00', horaFim: '18:00' }
@@ -76,6 +76,7 @@ function rfParaFluxoNode(n: FluxoRFNode): FluxoNode {
     operador: n.data.operador,
     valorComparacao: n.data.valorComparacao,
     pausaSegundos: n.data.pausaSegundos,
+    fluxoDestinoId: n.data.fluxoDestinoId,
   }
 }
 
@@ -97,6 +98,7 @@ export default function FluxoEditorPage() {
   const [edges, setEdges, onEdgesChangeBase] = useEdgesState<Edge>([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [templates, setTemplates] = useState<{ name: string; status: string }[] | null>(null)
+  const [outrosFluxos, setOutrosFluxos] = useState<{ id: string; nome: string }[] | null>(null)
   const [categoriaAberta, setCategoriaAberta] = useState<string | null>(null)
   const paletaRef = useRef<HTMLDivElement>(null)
 
@@ -236,6 +238,25 @@ export default function FluxoEditorPage() {
       .catch(() => setTemplates([]))
   }, [noSelecionado?.type, templates])
 
+  useEffect(() => {
+    if (noSelecionado?.type !== 'ir_para_fluxo' || outrosFluxos !== null) return
+    fetch('/api/fluxo')
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: { fluxos: Fluxo[] }) => setOutrosFluxos(data.fluxos.filter((f) => f.id !== fluxoId).map((f) => ({ id: f.id, nome: f.nome }))))
+      .catch(() => setOutrosFluxos([]))
+  }, [noSelecionado?.type, outrosFluxos, fluxoId])
+
+  // Enriquece só pra exibição (não é salvo) — o nó "ir_para_fluxo" guarda um
+  // id, mas o usuário precisa ver o NOME do fluxo de destino na tela.
+  const nodesParaExibir = useMemo(() => {
+    if (!outrosFluxos) return nodes
+    return nodes.map((n) =>
+      n.type === 'ir_para_fluxo' && n.data.fluxoDestinoId
+        ? { ...n, data: { ...n.data, fluxoDestinoNome: outrosFluxos.find((f) => f.id === n.data.fluxoDestinoId)?.nome } }
+        : n
+    )
+  }, [nodes, outrosFluxos])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-7rem)] text-ink-400">
@@ -336,7 +357,7 @@ export default function FluxoEditorPage() {
       <div className="flex gap-3 flex-1 min-h-0">
         <div className="flex-1 rounded-xl border border-ink-200 overflow-hidden bg-ink-50">
           <ReactFlow
-            nodes={nodes}
+            nodes={nodesParaExibir}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChangeBase}
@@ -771,6 +792,29 @@ export default function FluxoEditorPage() {
                   className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
                 />
                 <p className="text-[11px] text-ink-400 mt-1">Máximo de 60s — o fluxo roda numa função do servidor, não é um agendador de longo prazo.</p>
+              </div>
+            )}
+
+            {noSelecionado.type === 'ir_para_fluxo' && (
+              <div>
+                <label className="block text-xs font-medium text-ink-600 mb-1">Fluxo de destino</label>
+                {outrosFluxos === null ? (
+                  <p className="text-xs text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando fluxos...</p>
+                ) : outrosFluxos.length === 0 ? (
+                  <p className="text-[11px] text-ink-400">Nenhum outro fluxo ainda — crie um novo na lista de fluxos primeiro.</p>
+                ) : (
+                  <select
+                    value={noSelecionado.data.fluxoDestinoId ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { fluxoDestinoId: e.target.value || undefined })}
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  >
+                    <option value="">Selecione...</option>
+                    {outrosFluxos.map((f) => (
+                      <option key={f.id} value={f.id}>{f.nome}</option>
+                    ))}
+                  </select>
+                )}
+                <p className="text-[11px] text-ink-400 mt-1">Esse fluxo termina aqui e a conversa entra no fluxo escolhido desde o início — sem voltar pra cá depois.</p>
               </div>
             )}
 

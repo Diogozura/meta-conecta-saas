@@ -34,6 +34,10 @@ export type FluxoResultado =
   | { acao: 'encaminhar_humano'; acoes: AcaoFluxo[]; setor?: string; motivo?: string }
   // Chegou num nó 'fim' (ou o fluxo terminou sem encaminhar a lugar nenhum) — encerra a conversa.
   | { acao: 'encerrar'; acoes: AcaoFluxo[] }
+  // Chegou num nó 'ir_para_fluxo' — este fluxo termina aqui; quem chama
+  // (fluxoService) entra no fluxo de destino do zero (iniciarFluxo nele) e
+  // segue a partir do resultado DELE. Salto direto, sem volta.
+  | { acao: 'ir_para_fluxo'; acoes: AcaoFluxo[]; fluxoDestinoId: string }
 
 export function encontrarNo(fluxo: FluxoGrafo, id: string): FluxoNode | undefined {
   return fluxo.nodes.find((n) => n.id === id)
@@ -157,6 +161,11 @@ function avancar(fluxo: FluxoGrafo, noId: string, acoesAcumuladas: AcaoFluxo[], 
       return { acao: 'encaminhar_humano', acoes: acoesAcumuladas, setor: no.setor, motivo: no.motivo }
     case 'fim':
       return { acao: 'encerrar', acoes: acoesAcumuladas }
+    case 'ir_para_fluxo':
+      // Sem destino configurado, encerra em vez de travar num nó incompleto.
+      return no.fluxoDestinoId
+        ? { acao: 'ir_para_fluxo', acoes: acoesAcumuladas, fluxoDestinoId: no.fluxoDestinoId }
+        : { acao: 'encerrar', acoes: acoesAcumuladas }
   }
 }
 

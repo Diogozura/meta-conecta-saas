@@ -423,3 +423,29 @@ describe('pacote "lógica e variáveis"', () => {
     })
   })
 })
+
+describe('nó "ir_para_fluxo"', () => {
+  it('encerra este fluxo com a ação "ir_para_fluxo" e o id do destino, sem seguir por nenhuma aresta local', () => {
+    const nodes: FluxoNode[] = [
+      no({ id: 'inicio', tipo: 'inicio' }),
+      no({ id: 'saudacao', tipo: 'mensagem', texto: 'Oi!' }),
+      no({ id: 'pula', tipo: 'ir_para_fluxo', fluxoDestinoId: 'fluxo-b' }),
+    ]
+    const edges: FluxoEdge[] = [
+      aresta({ id: 'e1', origem: 'inicio', destino: 'saudacao' }),
+      aresta({ id: 'e2', origem: 'saudacao', destino: 'pula' }),
+    ]
+    const resultado = iniciarFluxo({ nodes, edges })
+    expect(resultado).toEqual({
+      acao: 'ir_para_fluxo',
+      acoes: [{ tipo: 'texto', texto: 'Oi!' }],
+      fluxoDestinoId: 'fluxo-b',
+    })
+  })
+
+  it('sem destino configurado, encerra em vez de travar', () => {
+    const nodes: FluxoNode[] = [no({ id: 'inicio', tipo: 'inicio' }), no({ id: 'pula', tipo: 'ir_para_fluxo' })]
+    const edges: FluxoEdge[] = [aresta({ id: 'e1', origem: 'inicio', destino: 'pula' })]
+    expect(iniciarFluxo({ nodes, edges })).toEqual({ acao: 'encerrar', acoes: [] })
+  })
+})

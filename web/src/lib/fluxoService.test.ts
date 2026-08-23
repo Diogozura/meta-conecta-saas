@@ -7,6 +7,7 @@ import type { Fluxo, Conversa } from '@/types/database'
 // verdade: webhook → motor → execução de cada ação → Firestore.
 vi.mock('@/lib/firestore', () => ({
   obterFluxoAtivo: vi.fn(),
+  obterFluxoPorId: vi.fn(),
   obterConversa: vi.fn(),
   obterMetaAccess: vi.fn(),
   criarMensagem: vi.fn().mockResolvedValue(undefined),
@@ -115,8 +116,8 @@ describe('processarMensagemComFluxo — primeiro contato', () => {
       [{ id: 'op1', title: '1' }, { id: 'op2', title: '2' }],
     )
     expect(meta.sendListMessage).not.toHaveBeenCalled()
-    // Conversa marcada esperando resposta no nó do menu.
-    expect(firestore.atualizarFluxoConversa).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'menu')
+    // Conversa marcada esperando resposta no nó do menu, presa no fluxo1.
+    expect(firestore.atualizarFluxoConversa).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'menu', 'fluxo1')
     expect(firestore.marcarConversaEmAndamento).toHaveBeenCalledWith(CONTA_ID, NUMERO)
   })
 })
@@ -140,7 +141,7 @@ describe('processarMensagemComFluxo — cliente escolhe "1" (Suporte) e é colet
     await processarMensagemComFluxo(CONTA_ID, NUMERO, '1')
 
     expect(meta.sendTextMessage).toHaveBeenCalledWith('phone1', 'token1', NUMERO, 'Qual seu nome?')
-    expect(firestore.atualizarFluxoConversa).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'pede-nome')
+    expect(firestore.atualizarFluxoConversa).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'pede-nome', 'fluxo1')
   })
 
   it('depois de responder o nome, define vip=sim, avalia a condição como verdadeira, registra a nota interna e encaminha pro setor VIP', async () => {
@@ -173,7 +174,7 @@ describe('processarMensagemComFluxo — opção inválida no menu', () => {
       'phone1', 'token1', NUMERO, 'Escolha: 1 Suporte, 2 Financeiro',
       [{ id: 'op1', title: '1' }, { id: 'op2', title: '2' }],
     )
-    expect(firestore.atualizarFluxoConversa).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'menu')
+    expect(firestore.atualizarFluxoConversa).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'menu', 'fluxo1')
   })
 })
 
@@ -190,12 +191,133 @@ describe('processarMensagemComFluxo — conversa já saiu do fluxo', () => {
 })
 
 describe('processarMensagemComFluxo — sem fluxo ativo', () => {
-  it('devolve false sem chamar nada de Meta/Firestore além da checagem inicial', async () => {
+  it('devolve false sem chamar nada de Meta além da checagem inicial', async () => {
+    vi.mocked(firestore.obterConversa).mockResolvedValue(null)
     vi.mocked(firestore.obterFluxoAtivo).mockResolvedValue(null)
 
     const tratado = await processarMensagemComFluxo(CONTA_ID, NUMERO, 'oi')
 
     expect(tratado).toBe(false)
-    expect(firestore.obterConversa).not.toHaveBeenCalled()
+    expect(meta.sendTextMessage).not.toHaveBeenCalled()
+  })
+})
+
+describe('processarMensagemComFluxo — nó "ir_para_fluxo" (salto pra outro fluxo)', () => {
+  function fluxoA(): Fluxo {
+    return {
+      id: 'fluxo-a',
+      contaId: CONTA_ID,
+      nome: 'Fluxo A',
+      ativo: true,
+      dataCadastro: new Date(),
+      dataAtualizacao: new Date(),
+      nodes: [
+        { id: 'inicio', tipo: 'inicio', posicao: { x: 0, y: 0 } },
+        { id: 'msg-a', tipo: 'mensagem', posicao: { x: 0, y: 0 }, texto: 'Bem-vindo A' },
+        { id: 'pula', tipo: 'ir_para_fluxo', posicao: { x: 0, y: 0 }, fluxoDestinoId: 'fluxo-b' },
+      ],
+      edges: [
+        { id: 'e1', origem: 'inicio', destino: 'msg-a' },
+        { id: 'e2', origem: 'msg-a', destino: 'pula' },
+      ],
+    }
+  }
+
+  function fluxoB(): Fluxo {
+    return {
+      id: 'fluxo-b',
+      contaId: CONTA_ID,
+      nome: 'Fluxo B',
+      ativo: false,
+      dataCadastro: new Date(),
+      dataAtualizacao: new Date(),
+      nodes: [
+        { id: 'inicio', tipo: 'inicio', posicao: { x: 0, y: 0 } },
+        { id: 'msg-b', tipo: 'mensagem', posicao: { x: 0, y: 0 }, texto: 'Oi da B' },
+        {
+          id: 'menu-b', tipo: 'menu', posicao: { x: 0, y: 0 },
+          texto: 'Escolha X ou Y',
+          opcoes: [{ id: 'x', rotulo: 'X' }, { id: 'y', rotulo: 'Y' }],
+        },
+      ],
+      edges: [
+        { id: 'e1', origem: 'inicio', destino: 'msg-b' },
+        { id: 'e2', origem: 'msg-b', destino: 'menu-b' },
+      ],
+    }
+  }
+
+  it('termina o fluxo A e entra direto no fluxo B, mandando as mensagens dos dois em ordem e ficando "preso" no fluxo B (não no ativo da conta)', async () => {
+    vi.mocked(firestore.obterConversa).mockResolvedValue(null)
+    vi.mocked(firestore.obterFluxoAtivo).mockResolvedValue(fluxoA())
+    vi.mocked(firestore.obterFluxoPorId).mockImplementation(async (_contaId, id) => (id === 'fluxo-b' ? fluxoB() : null))
+
+    const tratado = await processarMensagemComFluxo(CONTA_ID, NUMERO, 'oi')
+
+    expect(tratado).toBe(true)
+    expect(firestore.obterFluxoPorId).toHaveBeenCalledWith(CONTA_ID, 'fluxo-b')
+    // Mensagem do fluxo A sai primeiro, depois a do fluxo B.
+    expect(meta.sendTextMessage).toHaveBeenCalledWith('phone1', 'token1', NUMERO, 'Bem-vindo A')
+    expect(meta.sendTextMessage).toHaveBeenCalledWith('phone1', 'token1', NUMERO, 'Oi da B')
+    // O menu do fluxo B (última ação) vira botões nativos.
+    expect(meta.sendButtonsMessage).toHaveBeenCalledWith(
+      'phone1', 'token1', NUMERO, 'Escolha X ou Y',
+      [{ id: 'x', title: 'X' }, { id: 'y', title: 'Y' }],
+    )
+    // Fica marcada no fluxo B (não no fluxo A, que era o ativo da conta).
+    expect(firestore.atualizarFluxoConversa).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'menu-b', 'fluxo-b')
+  })
+
+  it('detecta um ciclo (A leva pra B, B leva de volta pra A) e cai pra IA em vez de travar num loop infinito', async () => {
+    const cicloA: Fluxo = {
+      id: 'fluxo-a2',
+      contaId: CONTA_ID,
+      nome: 'Fluxo A2',
+      ativo: true,
+      dataCadastro: new Date(),
+      dataAtualizacao: new Date(),
+      nodes: [
+        { id: 'inicio', tipo: 'inicio', posicao: { x: 0, y: 0 } },
+        { id: 'msg-a', tipo: 'mensagem', posicao: { x: 0, y: 0 }, texto: 'Msg A' },
+        { id: 'pula', tipo: 'ir_para_fluxo', posicao: { x: 0, y: 0 }, fluxoDestinoId: 'fluxo-b2' },
+      ],
+      edges: [
+        { id: 'e1', origem: 'inicio', destino: 'msg-a' },
+        { id: 'e2', origem: 'msg-a', destino: 'pula' },
+      ],
+    }
+    const cicloB: Fluxo = {
+      id: 'fluxo-b2',
+      contaId: CONTA_ID,
+      nome: 'Fluxo B2',
+      ativo: false,
+      dataCadastro: new Date(),
+      dataAtualizacao: new Date(),
+      nodes: [
+        { id: 'inicio', tipo: 'inicio', posicao: { x: 0, y: 0 } },
+        { id: 'msg-b', tipo: 'mensagem', posicao: { x: 0, y: 0 }, texto: 'Msg B' },
+        { id: 'pula-volta', tipo: 'ir_para_fluxo', posicao: { x: 0, y: 0 }, fluxoDestinoId: 'fluxo-a2' },
+      ],
+      edges: [
+        { id: 'e1', origem: 'inicio', destino: 'msg-b' },
+        { id: 'e2', origem: 'msg-b', destino: 'pula-volta' },
+      ],
+    }
+    vi.mocked(firestore.obterConversa).mockResolvedValue(null)
+    vi.mocked(firestore.obterFluxoAtivo).mockResolvedValue(cicloA)
+    vi.mocked(firestore.obterFluxoPorId).mockImplementation(async (_contaId, id) => {
+      if (id === 'fluxo-b2') return cicloB
+      if (id === 'fluxo-a2') return cicloA
+      return null
+    })
+
+    const tratado = await processarMensagemComFluxo(CONTA_ID, NUMERO, 'oi')
+
+    // Ciclo detectado -> cai pra IA (mesmo fallback de um ciclo dentro do
+    // mesmo fluxo), não trava nem estoura um loop infinito.
+    expect(tratado).toBe(false)
+    expect(meta.sendTextMessage).toHaveBeenCalledWith('phone1', 'token1', NUMERO, 'Msg A')
+    expect(meta.sendTextMessage).toHaveBeenCalledWith('phone1', 'token1', NUMERO, 'Msg B')
+    expect(firestore.atualizarFluxoConversa).toHaveBeenCalledWith(CONTA_ID, NUMERO, '__saiu__', null)
   })
 })

@@ -996,10 +996,11 @@ export async function listarConversas(contaId: string): Promise<Conversa[]> {
 }
 
 /** Guarda em que nó do Fluxo a conversa está parada (aguardando resposta do cliente) — null quando o fluxo terminou/não está em uso. */
-export async function atualizarFluxoConversa(contaId: string, numero: string, noAtualId: string | null): Promise<void> {
+/** `fluxoAtualId` é o fluxo (documento) que essa conversa está progredindo — null = o fluxo ATIVO da conta (comportamento de sempre); só é diferente depois de um nó "ir_para_fluxo". */
+export async function atualizarFluxoConversa(contaId: string, numero: string, noAtualId: string | null, fluxoAtualId: string | null = null): Promise<void> {
   const db = getDb()
   await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
-    { numero: sanitizarNumero(numero), fluxoNoAtualId: noAtualId },
+    { numero: sanitizarNumero(numero), fluxoNoAtualId: noAtualId, fluxoAtualId },
     { merge: true },
   )
 }
@@ -1012,6 +1013,7 @@ export async function encaminharConversaParaFilaPeloFluxo(contaId: string, numer
       numero: sanitizarNumero(numero),
       iaAtiva: false,
       fluxoNoAtualId: FLUXO_SAIU,
+      fluxoAtualId: null,
       setor: setor ?? null,
       motivoTransferencia: motivo ?? (setor ? `Encaminhado pelo fluxo para ${setor}` : 'Encaminhado pelo fluxo de atendimento'),
       dataTransferencia: Timestamp.now(),

@@ -91,6 +91,11 @@ export interface Conversa {
   // resposta do cliente — ausente/null = fluxo não iniciado ou já terminou
   // (conversa seguiu pra IA, humano, ou fim de fluxo).
   fluxoNoAtualId?: string | null
+  // Em qual Fluxo (id do documento) essa conversa está progredindo —
+  // ausente/null = o fluxo ATIVO da conta (comportamento de sempre). Só
+  // aponta pra outro fluxo depois de um nó "ir_para_fluxo" (salto direto,
+  // sem volta — ver lib/fluxoService.ts).
+  fluxoAtualId?: string | null
   // Setor/departamento atribuído por um nó "encaminhar_humano" do fluxo
   // (ex: "Suporte técnico", "Financeiro", "Vendas") — usado pra segmentar a
   // fila de atendimento humano por equipe, não só "todo mundo numa fila só".
@@ -160,6 +165,9 @@ export type FluxoNodeTipo =
   // automáticos (como 'mensagem'); 'condicao_variavel' tem duas saídas fixas
   // ("verdadeiro"/"falso"), igual 'horario' tem "dentro"/"fora".
   | 'definir_variavel' | 'condicao_variavel' | 'pausar'
+  // 'ir_para_fluxo' — encerra este fluxo e entra em outro (salto direto, sem
+  // "voltar" — o fluxo de destino é quem decide como a conversa termina).
+  | 'ir_para_fluxo'
 
 export type OperadorCondicao = 'igual' | 'diferente' | 'contem' | 'vazio' | 'preenchido' | 'maior' | 'menor'
 
@@ -204,6 +212,7 @@ export interface FluxoNode {
   operador?: OperadorCondicao
   valorComparacao?: string
   pausaSegundos?: number       // 'pausar' — limitado a alguns segundos (função serverless, não é um agendador de verdade)
+  fluxoDestinoId?: string      // 'ir_para_fluxo' — id de outro Fluxo dessa mesma conta
 }
 
 export interface FluxoEdge {

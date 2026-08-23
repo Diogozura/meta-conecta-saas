@@ -1,6 +1,7 @@
 import QRCode from 'qrcode'
 import {
   obterFluxoAtivo,
+  obterFluxoPorId,
   obterConversa,
   obterMetaAccess,
   criarMensagem,
@@ -18,7 +19,7 @@ import { enviarPedidoCsat } from '@/lib/csatService'
 import { enviarEmail } from '@/lib/notificacoes'
 import { resolverPhoneNumberId } from '@/lib/canalWhatsapp'
 import { substituirVariaveis, gerarProtocolo } from '@/lib/variaveisFluxo'
-import { FLUXO_SAIU } from '@/types/database'
+import { FLUXO_SAIU, type Fluxo } from '@/types/database'
 
 // Função serverless, não um agendador de verdade — uma pausa longa só
 // prende a execução em segundo plano (via after()) sem trazer benefício
@@ -193,9 +194,6 @@ async function persistirEnvio(contaId: string, numero: string, phoneNumberId: st
  * comportamento de sempre (`processarMensagemComIA`).
  */
 export async function processarMensagemComFluxo(contaId: string, numero: string, textoRecebido: string): Promise<boolean> {
-  const fluxo = await obterFluxoAtivo(contaId)
-  if (!fluxo) return false
-
   const conversa = await obterConversa(contaId, numero)
 
   // Já foi entregue pro agente de IA (ou pra fila humana) por esse fluxo
@@ -203,6 +201,15 @@ export async function processarMensagemComFluxo(contaId: string, numero: string,
   // conversa. Só volta ao fluxo se a conversa for reaberta do zero
   // (garantirConversaAberta reseta esse marcador ao reabrir).
   if (conversa?.fluxoNoAtualId === FLUXO_SAIU) return false
+
+  // Uma conversa parada no meio de um fluxo fica "presa" NESSE fluxo até
+  // terminar — mesmo que um admin troque qual fluxo está ativo no meio do
+  // caminho (ver Conversa.fluxoAtualId). Só entra no fluxo ATIVO da conta
+  // quando não há nada em andamento ainda.
+  let fluxoAtual: Fluxo | null = conversa?.fluxoAtualId
+    ? await obterFluxoPorId(contaId, conversa.fluxoAtualId)
+    : await obterFluxoAtivo(contaId)
+  if (!fluxoAtual) return false
 
   // Se a conversa estava parada num nó "coleta"/"solicitar_localizacao", a
   // resposta que acabou de chegar É o dado sendo coletado — guarda antes de
@@ -212,18 +219,36 @@ export async function processarMensagemComFluxo(contaId: string, numero: string,
   // `conversa` foi lido do Firestore ANTES dessa gravação).
   let dadosColetados = conversa?.dadosColetados ?? {}
   if (conversa?.fluxoNoAtualId) {
-    const noAtual = encontrarNo(fluxo, conversa.fluxoNoAtualId)
+    const noAtual = encontrarNo(fluxoAtual, conversa.fluxoNoAtualId)
     if ((noAtual?.tipo === 'coleta' || noAtual?.tipo === 'solicitar_localizacao') && noAtual.variavel) {
       await salvarDadoColetado(contaId, numero, noAtual.variavel, textoRecebido)
       dadosColetados = { ...dadosColetados, [noAtual.variavel]: textoRecebido }
     }
   }
 
-  const resultado = conversa?.fluxoNoAtualId
-    ? continuarFluxo(fluxo, conversa.fluxoNoAtualId, textoRecebido, new Date(), dadosColetados)
-    : iniciarFluxo(fluxo, new Date(), dadosColetados)
+  let resultado = conversa?.fluxoNoAtualId
+    ? continuarFluxo(fluxoAtual, conversa.fluxoNoAtualId, textoRecebido, new Date(), dadosColetados)
+    : iniciarFluxo(fluxoAtual, new Date(), dadosColetados)
 
-  if (resultado.acoes.length > 0) {
+  // Um nó "ir_para_fluxo" termina o fluxo atual e entra direto no de
+  // destino (iniciarFluxo nele) — sem volta. `fluxosVisitados` evita um
+  // ciclo A -> B -> A travando aqui pra sempre; nesse caso cai pra IA, como
+  // qualquer outro ciclo detectado pelo motor.
+  let todasAcoes = resultado.acoes
+  const fluxosVisitados = new Set<string>([fluxoAtual.id])
+  while (resultado.acao === 'ir_para_fluxo') {
+    const destino = fluxosVisitados.has(resultado.fluxoDestinoId) ? null : await obterFluxoPorId(contaId, resultado.fluxoDestinoId)
+    if (!destino) {
+      resultado = { acao: 'encaminhar_ia', acoes: [] }
+      break
+    }
+    fluxosVisitados.add(destino.id)
+    fluxoAtual = destino
+    resultado = iniciarFluxo(fluxoAtual, new Date(), dadosColetados)
+    todasAcoes = [...todasAcoes, ...resultado.acoes]
+  }
+
+  if (todasAcoes.length > 0) {
     const metaAccessBase = await obterMetaAccess(contaId)
     if (metaAccessBase) {
       // Responde pelo mesmo número em que o cliente escreveu (contas com
@@ -233,13 +258,14 @@ export async function processarMensagemComFluxo(contaId: string, numero: string,
 
       // Última ação de um 'enviar_e_aguardar'/'opcao_invalida' num nó de
       // menu vira botões/lista nativos — as demais (nós automáticos no
-      // caminho até o menu) seguem cada uma com seu próprio tipo de envio.
-      const noDestino = resultado.acao === 'enviar_e_aguardar' || resultado.acao === 'opcao_invalida' ? encontrarNo(fluxo, resultado.noId) : undefined
+      // caminho até o menu, inclusive de outro fluxo depois de um salto)
+      // seguem cada uma com seu próprio tipo de envio.
+      const noDestino = resultado.acao === 'enviar_e_aguardar' || resultado.acao === 'opcao_invalida' ? encontrarNo(fluxoAtual, resultado.noId) : undefined
       const opcoesInterativas = noDestino?.tipo === 'menu' ? (noDestino.opcoes ?? []).filter((o) => o.rotulo.trim()) : []
 
-      for (let i = 0; i < resultado.acoes.length; i++) {
-        const acao = resultado.acoes[i]
-        const ehUltimaEInterativa = i === resultado.acoes.length - 1 && acao.tipo === 'texto' && opcoesInterativas.length > 0
+      for (let i = 0; i < todasAcoes.length; i++) {
+        const acao = todasAcoes[i]
+        const ehUltimaEInterativa = i === todasAcoes.length - 1 && acao.tipo === 'texto' && opcoesInterativas.length > 0
         try {
           if (ehUltimaEInterativa && acao.tipo === 'texto') {
             const envio = await enviarMenuInterativo(metaAccess, numero, acao.texto, opcoesInterativas)
@@ -261,14 +287,14 @@ export async function processarMensagemComFluxo(contaId: string, numero: string,
   switch (resultado.acao) {
     case 'enviar_e_aguardar':
     case 'opcao_invalida':
-      await atualizarFluxoConversa(contaId, numero, resultado.noId)
+      await atualizarFluxoConversa(contaId, numero, resultado.noId, fluxoAtual.id)
       await marcarConversaEmAndamento(contaId, numero)
       return true
 
     case 'encaminhar_ia':
       // Marca como "saiu do fluxo" — a partir daqui é o agente de IA de
       // sempre que responde; o fluxo só reentra se a conversa for reaberta.
-      await atualizarFluxoConversa(contaId, numero, FLUXO_SAIU)
+      await atualizarFluxoConversa(contaId, numero, FLUXO_SAIU, null)
       return false
 
     case 'encaminhar_humano':
@@ -276,7 +302,7 @@ export async function processarMensagemComFluxo(contaId: string, numero: string,
       return true
 
     case 'encerrar':
-      await atualizarFluxoConversa(contaId, numero, null)
+      await atualizarFluxoConversa(contaId, numero, null, null)
       await encerrarConversa(contaId, numero, 'fluxo')
       await enviarPedidoCsat(contaId, numero).catch(() => {})
       return true

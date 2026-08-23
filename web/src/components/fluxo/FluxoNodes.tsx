@@ -1,7 +1,7 @@
 'use client'
 
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
-import { Play, MessageSquare, ListTree, Clock, TextCursorInput, Bot, UserCheck, Square, FileText, Link2, Mail, StickyNote, MapPin, QrCode, Tag, Hash, Variable, GitBranch, Timer } from 'lucide-react'
+import { Play, MessageSquare, ListTree, Clock, TextCursorInput, Bot, UserCheck, Square, FileText, Link2, Mail, StickyNote, MapPin, QrCode, Tag, Hash, Variable, GitBranch, Timer, Workflow } from 'lucide-react'
 import type { FluxoNode, FluxoNodeTipo } from '@/types/database'
 
 // O React Flow exige que `data` seja um Record indexável — a interface
@@ -31,6 +31,7 @@ export const TIPO_INFO: Record<FluxoNodeTipo, { label: string; icon: typeof Play
   definir_variavel: { label: 'Definir variável', icon: Variable, corBorda: 'border-violet-300', corFundo: 'bg-violet-50', corTexto: 'text-violet-700' },
   condicao_variavel: { label: 'Condição', icon: GitBranch, corBorda: 'border-pink-300', corFundo: 'bg-pink-50', corTexto: 'text-pink-700' },
   pausar: { label: 'Pausar', icon: Timer, corBorda: 'border-stone-300', corFundo: 'bg-stone-50', corTexto: 'text-stone-700' },
+  ir_para_fluxo: { label: 'Ir para outro fluxo', icon: Workflow, corBorda: 'border-cyan-400', corFundo: 'bg-cyan-50', corTexto: 'text-cyan-800' },
 }
 
 function NodeShell({ tipo, selected, children }: { tipo: FluxoNodeTipo; selected?: boolean; children: React.ReactNode }) {
@@ -309,6 +310,20 @@ export function FimNode({ selected }: NodeProps<FluxoRFNode>) {
   )
 }
 
+export function IrParaFluxoNode({ data, selected }: NodeProps<FluxoRFNode>) {
+  // Nome do fluxo de destino é resolvido pela página do editor (que tem a
+  // lista de fluxos da conta) e injetado aqui só pra exibição — não é salvo
+  // nesse campo, o que persiste é `fluxoDestinoId`.
+  const nomeDestino = typeof data.fluxoDestinoNome === 'string' ? data.fluxoDestinoNome : undefined
+  return (
+    <NodeShell tipo="ir_para_fluxo" selected={selected}>
+      <Handle type="target" position={Position.Top} className="!bg-cyan-600" />
+      <p className="text-xs text-ink-700 mt-1">{nomeDestino || (data.fluxoDestinoId ? '(fluxo não encontrado)' : 'Clique para escolher o fluxo…')}</p>
+      <p className="text-[10px] text-ink-400 mt-1">Esse fluxo termina aqui — sem volta.</p>
+    </NodeShell>
+  )
+}
+
 export const NODE_TYPES = {
   inicio: InicioNode,
   mensagem: MensagemNode,
@@ -329,4 +344,5 @@ export const NODE_TYPES = {
   definir_variavel: DefinirVariavelNode,
   condicao_variavel: CondicaoVariavelNode,
   pausar: PausarNode,
+  ir_para_fluxo: IrParaFluxoNode,
 }
