@@ -18,7 +18,13 @@ import { enviarPedidoCsat } from '@/lib/csatService'
 import { enviarEmail } from '@/lib/notificacoes'
 import { resolverPhoneNumberId } from '@/lib/canalWhatsapp'
 import { substituirVariaveis, gerarProtocolo } from '@/lib/variaveisFluxo'
-import { FLUXO_SAIU, type Conversa } from '@/types/database'
+import { FLUXO_SAIU } from '@/types/database'
+
+// Função serverless, não um agendador de verdade — uma pausa longa só
+// prende a execução em segundo plano (via after()) sem trazer benefício
+// real, e arrisca estourar o tempo máximo da função. 1 min é generoso o
+// bastante pra um "espera um instante" dentro do fluxo.
+const MAX_PAUSA_SEGUNDOS = 60
 
 /**
  * Escolhe botões (até 3) ou lista (até 10) nativos do WhatsApp pras opções
@@ -67,10 +73,8 @@ async function executarAcao(
   contaId: string,
   numero: string,
   metaAccess: { phoneNumberId: string; businessToken: string },
-  conversa: Conversa | null,
+  dados: Record<string, string>,
 ): Promise<void> {
-  const dados = conversa?.dadosColetados
-
   switch (acao.tipo) {
     case 'texto': {
       const envio = await sendTextMessage(metaAccess.phoneNumberId, metaAccess.businessToken, numero, acao.texto)
@@ -151,6 +155,14 @@ async function executarAcao(
       }
       return
     }
+    case 'variavel':
+      await salvarDadoColetado(contaId, numero, acao.chave, substituirVariaveis(acao.valor, dados))
+      return
+    case 'pausa': {
+      const segundos = Math.min(acao.segundos, MAX_PAUSA_SEGUNDOS)
+      await new Promise((resolve) => setTimeout(resolve, segundos * 1000))
+      return
+    }
   }
 }
 
@@ -194,17 +206,22 @@ export async function processarMensagemComFluxo(contaId: string, numero: string,
 
   // Se a conversa estava parada num nó "coleta"/"solicitar_localizacao", a
   // resposta que acabou de chegar É o dado sendo coletado — guarda antes de
-  // decidir o próximo passo (o motor só decide roteamento, não sabe onde persistir).
+  // decidir o próximo passo (o motor só decide roteamento, não sabe onde
+  // persistir). Atualiza a cópia local também, pra um "condicao_variavel"
+  // logo em seguida no mesmo fluxo já enxergar esse valor fresco (o
+  // `conversa` foi lido do Firestore ANTES dessa gravação).
+  let dadosColetados = conversa?.dadosColetados ?? {}
   if (conversa?.fluxoNoAtualId) {
     const noAtual = encontrarNo(fluxo, conversa.fluxoNoAtualId)
     if ((noAtual?.tipo === 'coleta' || noAtual?.tipo === 'solicitar_localizacao') && noAtual.variavel) {
       await salvarDadoColetado(contaId, numero, noAtual.variavel, textoRecebido)
+      dadosColetados = { ...dadosColetados, [noAtual.variavel]: textoRecebido }
     }
   }
 
   const resultado = conversa?.fluxoNoAtualId
-    ? continuarFluxo(fluxo, conversa.fluxoNoAtualId, textoRecebido)
-    : iniciarFluxo(fluxo)
+    ? continuarFluxo(fluxo, conversa.fluxoNoAtualId, textoRecebido, new Date(), dadosColetados)
+    : iniciarFluxo(fluxo, new Date(), dadosColetados)
 
   if (resultado.acoes.length > 0) {
     const metaAccessBase = await obterMetaAccess(contaId)
@@ -228,7 +245,11 @@ export async function processarMensagemComFluxo(contaId: string, numero: string,
             const envio = await enviarMenuInterativo(metaAccess, numero, acao.texto, opcoesInterativas)
             await persistirEnvio(contaId, numero, metaAccess.phoneNumberId, acao.texto, envio)
           } else {
-            await executarAcao(acao, contaId, numero, metaAccess, conversa)
+            await executarAcao(acao, contaId, numero, metaAccess, dadosColetados)
+            // Uma ação "variavel" nessa mesma passagem já fica visível pras
+            // próximas (ex: "definir_variavel" seguido de "enviar_email"
+            // referenciando o valor que acabou de ser definido).
+            if (acao.tipo === 'variavel') dadosColetados = { ...dadosColetados, [acao.chave]: substituirVariaveis(acao.valor, dadosColetados) }
           }
         } catch (error) {
           console.error('Erro ao executar ação do fluxo de atendimento:', { tipo: acao.tipo, error })

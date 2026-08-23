@@ -24,10 +24,21 @@ import type { Fluxo, FluxoNode, FluxoEdge as FluxoEdgeData, FluxoNodeTipo } from
 const TIPOS_ADICIONAVEIS: FluxoNodeTipo[] = [
   'mensagem', 'menu', 'horario', 'coleta', 'encaminhar_ia', 'encaminhar_humano', 'fim',
   'enviar_template', 'enviar_url', 'enviar_email', 'nota_interna', 'solicitar_localizacao', 'gerar_qrcode', 'adicionar_etiqueta', 'gerar_protocolo',
+  'definir_variavel', 'condicao_variavel', 'pausar',
 ]
 
 const HORARIO_PADRAO = { diasSemana: [false, true, true, true, true, true, false], horaInicio: '09:00', horaFim: '18:00' }
 const DIAS_SEMANA_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+const OPERADORES_CONDICAO: { value: string; label: string; precisaComparacao: boolean }[] = [
+  { value: 'igual', label: 'é igual a', precisaComparacao: true },
+  { value: 'diferente', label: 'é diferente de', precisaComparacao: true },
+  { value: 'contem', label: 'contém', precisaComparacao: true },
+  { value: 'maior', label: 'é maior que (número)', precisaComparacao: true },
+  { value: 'menor', label: 'é menor que (número)', precisaComparacao: true },
+  { value: 'vazio', label: 'está vazio', precisaComparacao: false },
+  { value: 'preenchido', label: 'está preenchido', precisaComparacao: false },
+]
 
 function novoId() {
   return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `no-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -59,6 +70,9 @@ function rfParaFluxoNode(n: FluxoRFNode): FluxoNode {
     emailAssunto: n.data.emailAssunto,
     estiloNota: n.data.estiloNota,
     etiqueta: n.data.etiqueta,
+    operador: n.data.operador,
+    valorComparacao: n.data.valorComparacao,
+    pausaSegundos: n.data.pausaSegundos,
   }
 }
 
@@ -644,6 +658,83 @@ export default function FluxoEditorPage() {
                   className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm resize-none"
                 />
                 <p className="text-[11px] text-ink-400 mt-1">Deixe em branco pra só gerar e guardar o protocolo, sem avisar o cliente. Use {'{{protocolo}}'} no texto pra incluir o número gerado.</p>
+              </div>
+            )}
+
+            {noSelecionado.type === 'definir_variavel' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Chave</label>
+                  <input
+                    value={noSelecionado.data.variavel ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { variavel: e.target.value.trim() })}
+                    placeholder="Ex: origem_lead"
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Valor</label>
+                  <input
+                    value={noSelecionado.data.texto ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { texto: e.target.value })}
+                    placeholder="Ex: instagram, ou {{outra_chave}}"
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  />
+                  <p className="text-[11px] text-ink-400 mt-1">Aceita {'{{chave}}'} pra copiar/combinar outro dado já coletado no fluxo.</p>
+                </div>
+              </>
+            )}
+
+            {noSelecionado.type === 'condicao_variavel' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Chave a checar</label>
+                  <input
+                    value={noSelecionado.data.variavel ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { variavel: e.target.value.trim() })}
+                    placeholder="Ex: idade, cpf, origem_lead..."
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Condição</label>
+                  <select
+                    value={noSelecionado.data.operador ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { operador: (e.target.value || undefined) as FluxoNode['operador'] })}
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  >
+                    <option value="">Selecione...</option>
+                    {OPERADORES_CONDICAO.map((op) => (
+                      <option key={op.value} value={op.value}>{op.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {OPERADORES_CONDICAO.find((op) => op.value === noSelecionado.data.operador)?.precisaComparacao && (
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600 mb-1">Valor de comparação</label>
+                    <input
+                      value={noSelecionado.data.valorComparacao ?? ''}
+                      onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { valorComparacao: e.target.value })}
+                      className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                    />
+                  </div>
+                )}
+                <p className="text-[11px] text-ink-400">Arraste do quadradinho &quot;Verdadeiro&quot;/&quot;Falso&quot; até o próximo nó de cada caminho.</p>
+              </>
+            )}
+
+            {noSelecionado.type === 'pausar' && (
+              <div>
+                <label className="block text-xs font-medium text-ink-600 mb-1">Pausa (segundos)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={noSelecionado.data.pausaSegundos ?? ''}
+                  onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { pausaSegundos: Number(e.target.value) || undefined })}
+                  className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                />
+                <p className="text-[11px] text-ink-400 mt-1">Máximo de 60s — o fluxo roda numa função do servidor, não é um agendador de longo prazo.</p>
               </div>
             )}
 

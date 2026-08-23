@@ -1,7 +1,7 @@
 'use client'
 
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
-import { Play, MessageSquare, ListTree, Clock, TextCursorInput, Bot, UserCheck, Square, FileText, Link2, Mail, StickyNote, MapPin, QrCode, Tag, Hash } from 'lucide-react'
+import { Play, MessageSquare, ListTree, Clock, TextCursorInput, Bot, UserCheck, Square, FileText, Link2, Mail, StickyNote, MapPin, QrCode, Tag, Hash, Variable, GitBranch, Timer } from 'lucide-react'
 import type { FluxoNode, FluxoNodeTipo } from '@/types/database'
 
 // O React Flow exige que `data` seja um Record indexável — a interface
@@ -28,6 +28,9 @@ export const TIPO_INFO: Record<FluxoNodeTipo, { label: string; icon: typeof Play
   gerar_qrcode: { label: 'Gerar QR code', icon: QrCode, corBorda: 'border-slate-300', corFundo: 'bg-slate-50', corTexto: 'text-slate-700' },
   adicionar_etiqueta: { label: 'Adicionar etiqueta', icon: Tag, corBorda: 'border-fuchsia-300', corFundo: 'bg-fuchsia-50', corTexto: 'text-fuchsia-700' },
   gerar_protocolo: { label: 'Gerar protocolo', icon: Hash, corBorda: 'border-orange-300', corFundo: 'bg-orange-50', corTexto: 'text-orange-700' },
+  definir_variavel: { label: 'Definir variável', icon: Variable, corBorda: 'border-violet-300', corFundo: 'bg-violet-50', corTexto: 'text-violet-700' },
+  condicao_variavel: { label: 'Condição', icon: GitBranch, corBorda: 'border-pink-300', corFundo: 'bg-pink-50', corTexto: 'text-pink-700' },
+  pausar: { label: 'Pausar', icon: Timer, corBorda: 'border-stone-300', corFundo: 'bg-stone-50', corTexto: 'text-stone-700' },
 }
 
 function NodeShell({ tipo, selected, children }: { tipo: FluxoNodeTipo; selected?: boolean; children: React.ReactNode }) {
@@ -251,6 +254,52 @@ export function GerarProtocoloNode({ data, selected }: NodeProps<FluxoRFNode>) {
   )
 }
 
+export function DefinirVariavelNode({ data, selected }: NodeProps<FluxoRFNode>) {
+  return (
+    <NodeShell tipo="definir_variavel" selected={selected}>
+      <Handle type="target" position={Position.Top} className="!bg-violet-500" />
+      <p className="text-xs text-ink-700 mt-1 font-mono">{data.variavel || '(defina a chave)'}</p>
+      <p className="text-[10px] text-ink-500 truncate mt-0.5">= {data.texto || '(vazio)'}</p>
+      <Handle type="source" position={Position.Bottom} className="!bg-violet-500" />
+    </NodeShell>
+  )
+}
+
+const ROTULO_OPERADOR: Record<string, string> = {
+  igual: '=', diferente: '≠', contem: 'contém', vazio: 'vazio', preenchido: 'preenchido', maior: '>', menor: '<',
+}
+
+export function CondicaoVariavelNode({ data, selected }: NodeProps<FluxoRFNode>) {
+  return (
+    <NodeShell tipo="condicao_variavel" selected={selected}>
+      <Handle type="target" position={Position.Top} className="!bg-pink-500" />
+      <p className="text-xs text-ink-700 mt-1 font-mono">
+        {data.variavel || '(defina a chave)'} {data.operador ? ROTULO_OPERADOR[data.operador] : ''} {data.valorComparacao ?? ''}
+      </p>
+      <div className="mt-2 space-y-1">
+        <div className="relative flex items-center justify-between gap-2 bg-white border border-emerald-200 rounded-lg px-2 py-1">
+          <span className="text-[11px] font-medium text-emerald-700">Verdadeiro</span>
+          <Handle type="source" position={Position.Right} id="verdadeiro" style={{ position: 'relative', transform: 'none', right: -8 }} className="!bg-emerald-500 !w-2.5 !h-2.5" />
+        </div>
+        <div className="relative flex items-center justify-between gap-2 bg-white border border-red-200 rounded-lg px-2 py-1">
+          <span className="text-[11px] font-medium text-red-700">Falso</span>
+          <Handle type="source" position={Position.Right} id="falso" style={{ position: 'relative', transform: 'none', right: -8 }} className="!bg-red-500 !w-2.5 !h-2.5" />
+        </div>
+      </div>
+    </NodeShell>
+  )
+}
+
+export function PausarNode({ data, selected }: NodeProps<FluxoRFNode>) {
+  return (
+    <NodeShell tipo="pausar" selected={selected}>
+      <Handle type="target" position={Position.Top} className="!bg-stone-500" />
+      <p className="text-xs text-ink-700 mt-1">{data.pausaSegundos ? `${data.pausaSegundos} segundos` : 'Clique para definir a pausa…'}</p>
+      <Handle type="source" position={Position.Bottom} className="!bg-stone-500" />
+    </NodeShell>
+  )
+}
+
 export function FimNode({ selected }: NodeProps<FluxoRFNode>) {
   return (
     <NodeShell tipo="fim" selected={selected}>
@@ -277,4 +326,7 @@ export const NODE_TYPES = {
   gerar_qrcode: GerarQrcodeNode,
   adicionar_etiqueta: AdicionarEtiquetaNode,
   gerar_protocolo: GerarProtocoloNode,
+  definir_variavel: DefinirVariavelNode,
+  condicao_variavel: CondicaoVariavelNode,
+  pausar: PausarNode,
 }

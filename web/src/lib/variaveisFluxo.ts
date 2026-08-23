@@ -1,3 +1,5 @@
+import type { OperadorCondicao } from '@/types/database'
+
 /**
  * Troca "{{chave}}" por Conversa.dadosColetados[chave] num texto — usado
  * pelos nós que podem referenciar dados coletados antes no fluxo (ex: nó
@@ -15,4 +17,35 @@ export function gerarProtocolo(agora: Date = new Date()): string {
   const aamm = agora.toISOString().slice(2, 10).replace(/-/g, '')
   const sufixo = Math.random().toString(36).slice(2, 6).toUpperCase()
   return `${aamm}-${sufixo}`
+}
+
+/**
+ * Avalia um nó "condicao_variavel" — compara o valor coletado (undefined se
+ * a chave nunca foi preenchida) contra `comparacao`. 'maior'/'menor' tratam
+ * valor não-numérico como falso (nunca lança) — mais seguro que travar o
+ * fluxo por causa de um dado que não veio no formato esperado.
+ */
+export function avaliarCondicao(valor: string | undefined, operador: OperadorCondicao, comparacao: string | undefined): boolean {
+  const v = (valor ?? '').trim()
+  const c = (comparacao ?? '').trim()
+
+  switch (operador) {
+    case 'vazio':
+      return v === ''
+    case 'preenchido':
+      return v !== ''
+    case 'igual':
+      return v.toLowerCase() === c.toLowerCase()
+    case 'diferente':
+      return v.toLowerCase() !== c.toLowerCase()
+    case 'contem':
+      return v.toLowerCase().includes(c.toLowerCase())
+    case 'maior':
+    case 'menor': {
+      const nv = Number(v.replace(',', '.'))
+      const nc = Number(c.replace(',', '.'))
+      if (Number.isNaN(nv) || Number.isNaN(nc)) return false
+      return operador === 'maior' ? nv > nc : nv < nc
+    }
+  }
 }

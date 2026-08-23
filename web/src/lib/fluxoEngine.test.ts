@@ -328,3 +328,98 @@ describe('fluxo com nó de solicitar_localizacao', () => {
     expect(resultado).toEqual({ acao: 'encerrar', acoes: [] })
   })
 })
+
+describe('pacote "lógica e variáveis"', () => {
+  function fluxoComUmNoAutomatico(noAutomatico: FluxoNode): Pick<Fluxo, 'nodes' | 'edges'> {
+    const nodes: FluxoNode[] = [no({ id: 'inicio', tipo: 'inicio' }), noAutomatico, no({ id: 'fim', tipo: 'fim' })]
+    const edges: FluxoEdge[] = [
+      aresta({ id: 'e1', origem: 'inicio', destino: noAutomatico.id }),
+      aresta({ id: 'e2', origem: noAutomatico.id, destino: 'fim' }),
+    ]
+    return { nodes, edges }
+  }
+
+  it('definir_variavel gera uma ação "variavel" e segue', () => {
+    const grafo = fluxoComUmNoAutomatico(no({ id: 'set', tipo: 'definir_variavel', variavel: 'origem', texto: 'instagram' }))
+    expect(iniciarFluxo(grafo)).toEqual({ acao: 'encerrar', acoes: [{ tipo: 'variavel', chave: 'origem', valor: 'instagram' }] })
+  })
+
+  it('definir_variavel sem chave não gera ação (mas segue em frente)', () => {
+    const grafo = fluxoComUmNoAutomatico(no({ id: 'set', tipo: 'definir_variavel', texto: 'valor sem chave' }))
+    expect(iniciarFluxo(grafo)).toEqual({ acao: 'encerrar', acoes: [] })
+  })
+
+  it('pausar gera uma ação "pausa" só quando tem segundos configurados', () => {
+    const comPausa = fluxoComUmNoAutomatico(no({ id: 'pausa', tipo: 'pausar', pausaSegundos: 5 }))
+    expect(iniciarFluxo(comPausa)).toEqual({ acao: 'encerrar', acoes: [{ tipo: 'pausa', segundos: 5 }] })
+
+    const semPausa = fluxoComUmNoAutomatico(no({ id: 'pausa', tipo: 'pausar' }))
+    expect(iniciarFluxo(semPausa)).toEqual({ acao: 'encerrar', acoes: [] })
+  })
+
+  /** condicao_variavel -> (verdadeiro) fim-v / (falso) fim-f, checando se "idade" > 18. */
+  function fluxoComCondicao(): Pick<Fluxo, 'nodes' | 'edges'> {
+    const nodes: FluxoNode[] = [
+      no({ id: 'inicio', tipo: 'inicio' }),
+      no({ id: 'cond', tipo: 'condicao_variavel', variavel: 'idade', operador: 'maior', valorComparacao: '18' }),
+      no({ id: 'maior-idade', tipo: 'encaminhar_humano', setor: 'Maiores' }),
+      no({ id: 'menor-idade', tipo: 'encaminhar_humano', setor: 'Menores' }),
+    ]
+    const edges: FluxoEdge[] = [
+      aresta({ id: 'e1', origem: 'inicio', destino: 'cond' }),
+      aresta({ id: 'e2', origem: 'cond', destino: 'maior-idade', opcaoId: 'verdadeiro' }),
+      aresta({ id: 'e3', origem: 'cond', destino: 'menor-idade', opcaoId: 'falso' }),
+    ]
+    return { nodes, edges }
+  }
+
+  it('condicao_variavel segue pro caminho "verdadeiro" quando a condição bate', () => {
+    const resultado = iniciarFluxo(fluxoComCondicao(), new Date(), { idade: '25' })
+    expect(resultado).toEqual({ acao: 'encaminhar_humano', acoes: [], setor: 'Maiores', motivo: undefined })
+  })
+
+  it('condicao_variavel segue pro caminho "falso" quando a condição não bate', () => {
+    const resultado = iniciarFluxo(fluxoComCondicao(), new Date(), { idade: '10' })
+    expect(resultado).toEqual({ acao: 'encaminhar_humano', acoes: [], setor: 'Menores', motivo: undefined })
+  })
+
+  it('condicao_variavel trata a chave nunca coletada como "falso" pra operadores que exigem valor', () => {
+    const resultado = iniciarFluxo(fluxoComCondicao(), new Date(), {})
+    expect(resultado).toEqual({ acao: 'encaminhar_humano', acoes: [], setor: 'Menores', motivo: undefined })
+  })
+
+  it('condicao_variavel sem operador definido cai sempre no caminho "falso"', () => {
+    const grafo = fluxoComCondicao()
+    grafo.nodes = grafo.nodes.map((n) => (n.id === 'cond' ? { ...n, operador: undefined } : n))
+    const resultado = iniciarFluxo(grafo, new Date(), { idade: '99' })
+    expect(resultado).toEqual({ acao: 'encaminhar_humano', acoes: [], setor: 'Menores', motivo: undefined })
+  })
+
+  it('condicao_variavel cai pra IA se o caminho calculado não tem aresta', () => {
+    const grafo = fluxoComCondicao()
+    grafo.edges = grafo.edges.filter((e) => e.opcaoId !== 'falso')
+    const resultado = iniciarFluxo(grafo, new Date(), { idade: '5' })
+    expect(resultado.acao).toBe('encaminhar_ia')
+  })
+
+  it('um "definir_variavel" logo antes de uma "condicao_variavel" já é visto por ela, na mesma passagem', () => {
+    const nodes: FluxoNode[] = [
+      no({ id: 'inicio', tipo: 'inicio' }),
+      no({ id: 'set', tipo: 'definir_variavel', variavel: 'vip', texto: 'sim' }),
+      no({ id: 'cond', tipo: 'condicao_variavel', variavel: 'vip', operador: 'igual', valorComparacao: 'sim' }),
+      no({ id: 'fila-vip', tipo: 'encaminhar_humano', setor: 'VIP' }),
+    ]
+    const edges: FluxoEdge[] = [
+      aresta({ id: 'e1', origem: 'inicio', destino: 'set' }),
+      aresta({ id: 'e2', origem: 'set', destino: 'cond' }),
+      aresta({ id: 'e3', origem: 'cond', destino: 'fila-vip', opcaoId: 'verdadeiro' }),
+    ]
+    const resultado = iniciarFluxo({ nodes, edges })
+    expect(resultado).toEqual({
+      acao: 'encaminhar_humano',
+      acoes: [{ tipo: 'variavel', chave: 'vip', valor: 'sim' }],
+      setor: 'VIP',
+      motivo: undefined,
+    })
+  })
+})

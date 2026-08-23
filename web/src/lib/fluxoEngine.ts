@@ -1,4 +1,5 @@
 import type { Fluxo, FluxoHorario, FluxoNode } from '@/types/database'
+import { avaliarCondicao } from '@/lib/variaveisFluxo'
 
 type FluxoGrafo = Pick<Fluxo, 'nodes' | 'edges'>
 
@@ -17,6 +18,8 @@ export type AcaoFluxo =
   | { tipo: 'etiqueta'; valor: string }
   | { tipo: 'protocolo'; mensagem: string | null }
   | { tipo: 'localizacao'; texto: string }
+  | { tipo: 'variavel'; chave: string; valor: string }
+  | { tipo: 'pausa'; segundos: number }
 
 export type FluxoResultado =
   // Percorreu nós automáticos (mensagem, enviar_template, etc.) até parar
@@ -73,8 +76,8 @@ export function estaDentroDoHorario(horario: FluxoHorario, agora: Date = new Dat
   return minutosDoDia >= inicio && minutosDoDia < fim
 }
 
-/** Percorre o fluxo a partir de um nó, acumulando as ações dos nós automáticos no caminho, até parar num nó que precisa de ação (menu/coleta/localização/ia/humano/fim). */
-function avancar(fluxo: FluxoGrafo, noId: string, acoesAcumuladas: AcaoFluxo[], visitados: Set<string>, agora: Date): FluxoResultado {
+/** Percorre o fluxo a partir de um nó, acumulando as ações dos nós automáticos no caminho, até parar num nó que precisa de ação (menu/coleta/localização/ia/humano/fim). `dados` é Conversa.dadosColetados — lido por 'condicao_variavel' e pelas ações que a essa altura já foram acumuladas nessa mesma passagem (ver 'definir_variavel'). */
+function avancar(fluxo: FluxoGrafo, noId: string, acoesAcumuladas: AcaoFluxo[], visitados: Set<string>, agora: Date, dados: Record<string, string>): FluxoResultado {
   if (visitados.has(noId)) {
     // Ciclo no fluxo (erro de montagem) — não trava em loop infinito, cai pra IA.
     return { acao: 'encaminhar_ia', acoes: acoesAcumuladas }
@@ -87,18 +90,18 @@ function avancar(fluxo: FluxoGrafo, noId: string, acoesAcumuladas: AcaoFluxo[], 
   // Passo automático genérico: acumula uma ação (se o nó estiver preenchido
   // o bastante pra gerar uma) e segue direto pra próxima aresta — mesmo
   // formato de 'mensagem' e todo o pacote "mensageria essencial".
-  function passoAutomatico(acaoNova: AcaoFluxo | null): FluxoResultado {
+  function passoAutomatico(acaoNova: AcaoFluxo | null, dadosAtualizados: Record<string, string> = dados): FluxoResultado {
     const proximas = acaoNova ? [...acoesAcumuladas, acaoNova] : acoesAcumuladas
     const aresta = proximaAresta(fluxo, no!.id)
     if (!aresta) return { acao: 'encerrar', acoes: proximas }
-    return avancar(fluxo, aresta.destino, proximas, visitados, agora)
+    return avancar(fluxo, aresta.destino, proximas, visitados, agora, dadosAtualizados)
   }
 
   switch (no.tipo) {
     case 'inicio': {
       const aresta = proximaAresta(fluxo, no.id)
       if (!aresta) return { acao: 'encaminhar_ia', acoes: acoesAcumuladas }
-      return avancar(fluxo, aresta.destino, acoesAcumuladas, visitados, agora)
+      return avancar(fluxo, aresta.destino, acoesAcumuladas, visitados, agora, dados)
     }
     case 'mensagem':
       return passoAutomatico(no.texto ? { tipo: 'texto', texto: no.texto } : null)
@@ -120,6 +123,21 @@ function avancar(fluxo: FluxoGrafo, noId: string, acoesAcumuladas: AcaoFluxo[], 
       return passoAutomatico(no.etiqueta ? { tipo: 'etiqueta', valor: no.etiqueta } : null)
     case 'gerar_protocolo':
       return passoAutomatico({ tipo: 'protocolo', mensagem: no.texto || null })
+    case 'definir_variavel': {
+      if (!no.variavel) return passoAutomatico(null)
+      const valor = no.texto ?? ''
+      // Atualiza `dados` já nessa mesma passagem — um "condicao_variavel"
+      // logo depois consegue ler o valor que acabou de ser definido.
+      return passoAutomatico({ tipo: 'variavel', chave: no.variavel, valor }, { ...dados, [no.variavel]: valor })
+    }
+    case 'pausar':
+      return passoAutomatico(no.pausaSegundos && no.pausaSegundos > 0 ? { tipo: 'pausa', segundos: no.pausaSegundos } : null)
+    case 'condicao_variavel': {
+      const resultado = no.operador ? avaliarCondicao(dados[no.variavel ?? ''], no.operador, no.valorComparacao) : false
+      const aresta = proximaAresta(fluxo, no.id, resultado ? 'verdadeiro' : 'falso')
+      if (!aresta) return { acao: 'encaminhar_ia', acoes: acoesAcumuladas }
+      return avancar(fluxo, aresta.destino, acoesAcumuladas, visitados, agora, dados)
+    }
     case 'menu':
     case 'coleta':
       return { acao: 'enviar_e_aguardar', acoes: no.texto ? [...acoesAcumuladas, { tipo: 'texto', texto: no.texto }] : acoesAcumuladas, noId: no.id }
@@ -131,7 +149,7 @@ function avancar(fluxo: FluxoGrafo, noId: string, acoesAcumuladas: AcaoFluxo[], 
       const dentro = no.horario ? estaDentroDoHorario(no.horario, agora) : false
       const aresta = proximaAresta(fluxo, no.id, dentro ? 'dentro' : 'fora')
       if (!aresta) return { acao: 'encaminhar_ia', acoes: acoesAcumuladas }
-      return avancar(fluxo, aresta.destino, acoesAcumuladas, visitados, agora)
+      return avancar(fluxo, aresta.destino, acoesAcumuladas, visitados, agora, dados)
     }
     case 'encaminhar_ia':
       return { acao: 'encaminhar_ia', acoes: acoesAcumuladas }
@@ -142,17 +160,17 @@ function avancar(fluxo: FluxoGrafo, noId: string, acoesAcumuladas: AcaoFluxo[], 
   }
 }
 
-/** Início de uma conversa nova — entra pelo nó 'inicio' do fluxo. `agora` é injetável pra testes; em produção é o instante real. */
-export function iniciarFluxo(fluxo: FluxoGrafo, agora: Date = new Date()): FluxoResultado {
+/** Início de uma conversa nova — entra pelo nó 'inicio' do fluxo. `agora` é injetável pra testes; em produção é o instante real. `dadosColetados` é Conversa.dadosColetados, pros nós 'condicao_variavel' já existentes num fluxo reaberto. */
+export function iniciarFluxo(fluxo: FluxoGrafo, agora: Date = new Date(), dadosColetados: Record<string, string> = {}): FluxoResultado {
   const inicio = fluxo.nodes.find((n) => n.tipo === 'inicio')
   if (!inicio) return { acao: 'encaminhar_ia', acoes: [] }
-  return avancar(fluxo, inicio.id, [], new Set(), agora)
+  return avancar(fluxo, inicio.id, [], new Set(), agora, dadosColetados)
 }
 
 /** Conversa já estava parada num 'menu', 'coleta' ou 'solicitar_localizacao' (noAtualId) — decide o próximo passo pela resposta do cliente. */
-export function continuarFluxo(fluxo: FluxoGrafo, noAtualId: string, respostaTexto: string, agora: Date = new Date()): FluxoResultado {
+export function continuarFluxo(fluxo: FluxoGrafo, noAtualId: string, respostaTexto: string, agora: Date = new Date(), dadosColetados: Record<string, string> = {}): FluxoResultado {
   const noAtual = encontrarNo(fluxo, noAtualId)
-  if (!noAtual) return iniciarFluxo(fluxo, agora)
+  if (!noAtual) return iniciarFluxo(fluxo, agora, dadosColetados)
 
   if (noAtual.tipo === 'coleta' || noAtual.tipo === 'solicitar_localizacao') {
     // Aceita qualquer texto como resposta — quem guarda o valor em
@@ -160,12 +178,12 @@ export function continuarFluxo(fluxo: FluxoGrafo, noAtualId: string, respostaTex
     // `variavel` do nó; o motor só decide o próximo passo.
     const aresta = proximaAresta(fluxo, noAtual.id)
     if (!aresta) return { acao: 'encerrar', acoes: [] }
-    return avancar(fluxo, aresta.destino, [], new Set(), agora)
+    return avancar(fluxo, aresta.destino, [], new Set(), agora, dadosColetados)
   }
 
   if (noAtual.tipo !== 'menu') {
     // Estado inconsistente (nó removido/mudou de tipo desde que a conversa parou nele) — reinicia do zero.
-    return iniciarFluxo(fluxo, agora)
+    return iniciarFluxo(fluxo, agora, dadosColetados)
   }
 
   const respostaNormalizada = respostaTexto.trim().toLowerCase()
@@ -176,5 +194,5 @@ export function continuarFluxo(fluxo: FluxoGrafo, noAtualId: string, respostaTex
     return { acao: 'opcao_invalida', acoes: noAtual.texto ? [{ tipo: 'texto', texto: noAtual.texto }] : [], noId: noAtual.id }
   }
 
-  return avancar(fluxo, aresta.destino, [], new Set(), agora)
+  return avancar(fluxo, aresta.destino, [], new Set(), agora, dadosColetados)
 }

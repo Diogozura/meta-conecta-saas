@@ -156,6 +156,12 @@ export type FluxoNodeTipo =
   // 'mensagem') e segue pra próxima aresta, exceto 'solicitar_localizacao'
   // (para e espera, como 'coleta').
   | 'enviar_template' | 'enviar_url' | 'enviar_email' | 'nota_interna' | 'solicitar_localizacao' | 'gerar_qrcode' | 'adicionar_etiqueta' | 'gerar_protocolo'
+  // Pacote "lógica e variáveis" — 'definir_variavel' e 'pausar' são passos
+  // automáticos (como 'mensagem'); 'condicao_variavel' tem duas saídas fixas
+  // ("verdadeiro"/"falso"), igual 'horario' tem "dentro"/"fora".
+  | 'definir_variavel' | 'condicao_variavel' | 'pausar'
+
+export type OperadorCondicao = 'igual' | 'diferente' | 'contem' | 'vazio' | 'preenchido' | 'maior' | 'menor'
 
 // Horário de Brasília (America/Sao_Paulo) — 0=domingo...6=sábado, mesmo índice usado no resto do app (ex: WEEKDAY_LABELS da Agenda).
 export interface FluxoHorario {
@@ -192,6 +198,12 @@ export interface FluxoNode {
   emailAssunto?: string        // 'enviar_email' (corpo vem de `texto`)
   estiloNota?: 'info' | 'alerta' // 'nota_interna' (conteúdo vem de `texto`) — só aparece pro atendente, nunca vai pro WhatsApp
   etiqueta?: string            // 'adicionar_etiqueta' — rótulo adicionado a Conversa.etiquetas
+  // Pacote "lógica e variáveis":
+  // 'definir_variavel' usa `variavel` (chave) + `texto` (valor, aceita "{{outra_chave}}").
+  // 'condicao_variavel' usa `variavel` (chave a checar) + `operador` + `valorComparacao`.
+  operador?: OperadorCondicao
+  valorComparacao?: string
+  pausaSegundos?: number       // 'pausar' — limitado a alguns segundos (função serverless, não é um agendador de verdade)
 }
 
 export interface FluxoEdge {
