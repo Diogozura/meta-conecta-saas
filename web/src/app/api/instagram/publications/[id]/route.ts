@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { getInstagramCredentials, getContainerStatus, publishContainer, InstagramApiError } from '@/lib/instagram'
 import { obterPublicacaoInstagram, atualizarPublicacaoInstagram } from '@/lib/firestore'
+import { deleteInstagramPhoto } from '@/lib/storage'
 
 // GET /api/instagram/publications/[id] - Consulta (e finaliza, se pronto) uma publicação
 // ainda "processando" — o compositor faz polling nesse endpoint enquanto vídeo/reels
@@ -30,12 +31,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (status_code === 'FINISHED') {
       const published = await publishContainer(credentials.accessToken, credentials.igUserId, publicacao.containerId)
       await atualizarPublicacaoInstagram(session.user.contaId, id, { status: 'publicado', mediaId: published.id, publicadoEm: new Date() })
+      if (publicacao.mediaPath) await deleteInstagramPhoto(publicacao.mediaPath)
       return NextResponse.json({ publicacao: { ...publicacao, status: 'publicado', mediaId: published.id } })
     }
 
     if (status_code === 'ERROR' || status_code === 'EXPIRED') {
       const erro = `Processamento falhou (${status_code})`
       await atualizarPublicacaoInstagram(session.user.contaId, id, { status: 'falhou', erro })
+      if (publicacao.mediaPath) await deleteInstagramPhoto(publicacao.mediaPath)
       return NextResponse.json({ publicacao: { ...publicacao, status: 'falhou', erro } })
     }
 

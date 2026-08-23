@@ -142,7 +142,7 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
               )}
               {loadingComments !== m.id && comments[m.id]?.map((c) => (
                 <div key={c.id} className="bg-white rounded-lg border border-ink-200 p-3 space-y-2">
-                  <p className="text-xs text-ink-900"><span className="font-semibold">@{c.username}</span> {c.text}</p>
+                  <p className="text-xs text-ink-900"><span className="font-semibold">{c.username ? `@${c.username}` : 'Usuário do Instagram'}</span> {c.text}</p>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"

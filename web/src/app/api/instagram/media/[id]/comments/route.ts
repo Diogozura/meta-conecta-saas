@@ -6,7 +6,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   try {
     const credentials = await getInstagramCredentials()
-    const comments = await listMediaComments(credentials.accessToken, id)
+    const comments = await listMediaComments(credentials.accessToken, id, { igUserId: credentials.igUserId, username: credentials.username })
     return NextResponse.json({ comments })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido'

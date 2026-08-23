@@ -244,16 +244,32 @@ export interface InstagramComment {
   id: string
   text: string
   username?: string
+  from?: { id: string; username?: string }
   timestamp?: string
 }
 
-/** Lista os comentários de uma publicação. */
-export async function listMediaComments(accessToken: string, mediaId: string): Promise<InstagramComment[]> {
+/**
+ * Lista os comentários de uma publicação. A Graph API só devolve o "username" de quem comentou
+ * quando não é a própria conta profissional comentando (ex: uma resposta enviada por aqui) — nesse
+ * caso ela devolve só um "from.id" igual ao igUserId da conta, sem username. Por isso só preenchemos
+ * com o `owner.username` quando o comentário é realmente da própria conta; nos demais casos (usuário
+ * de fato desconhecido pra API) deixamos undefined em vez de arriscar mostrar o nome errado.
+ */
+export async function listMediaComments(
+  accessToken: string,
+  mediaId: string,
+  owner?: { igUserId: string; username: string },
+): Promise<InstagramComment[]> {
   const data = await igFetch<{ data: InstagramComment[] }>(
-    `${mediaId}/comments?fields=id,text,username,timestamp`,
+    `${mediaId}/comments?fields=id,text,username,timestamp,from`,
     accessToken,
   )
-  return data.data ?? []
+  return (data.data ?? []).map((c) => {
+    if (c.username) return c
+    if (c.from?.username) return { ...c, username: c.from.username }
+    if (owner && c.from?.id === owner.igUserId) return { ...c, username: owner.username }
+    return c
+  })
 }
 
 /** Responde um comentário. */
@@ -303,6 +319,46 @@ export async function publishContainer(accessToken: string, igUserId: string, co
   })
 }
 
+/**
+ * Cria um container de vídeo/reels/story em modo "resumable" — o binário é
+ * enviado depois, direto pra Meta (uploadResumableVideo), sem precisar
+ * hospedar o arquivo em nenhum lugar público. Só existe pra vídeo: a Graph
+ * API não tem upload binário pra foto, essa sempre exige image_url.
+ */
+export async function createResumableMediaContainer(
+  accessToken: string,
+  igUserId: string,
+  mediaType: 'VIDEO' | 'REELS' | 'STORIES',
+  caption?: string,
+): Promise<{ id: string }> {
+  const body: Record<string, string> = { upload_type: 'resumable', media_type: mediaType }
+  if (caption) body.caption = caption
+
+  return igFetch(`${igUserId}/media`, accessToken, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+/** Sobe o binário do vídeo direto pro servidor de upload da Meta (rupload.facebook.com). */
+export async function uploadResumableVideo(accessToken: string, containerId: string, buffer: Buffer): Promise<void> {
+  const url = `https://rupload.facebook.com/ig-api-upload/${IG_GRAPH_API_VERSION}/${containerId}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `OAuth ${accessToken}`,
+      offset: '0',
+      file_size: String(buffer.length),
+    },
+    body: new Uint8Array(buffer),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => null)
+    throw new InstagramApiError(err?.error?.message ?? 'Falha no upload do vídeo para a Meta', err?.error?.code)
+  }
+}
+
 /* ─── Menções (@usuário em comentário ou legenda) ───────────────────────── */
 // A Graph API não tem um endpoint pra "listar menções" — só é possível saber
 // de uma menção quando o webhook (field "mentions") avisa, e então buscar o
@@ -348,14 +404,26 @@ export async function getMentionedMedia(accessToken: string, igUserId: string, m
 export interface InstagramInsightValue {
   name: string
   period: string
-  values: Array<{ value: number; end_time?: string }>
+  values?: Array<{ value: number; end_time?: string }>
+  total_value?: { value: number }
   title?: string
 }
 
-/** Métricas de conta (ex: reach, impressions, profile_views) num período (day/week/days_28). */
-export async function getAccountInsights(accessToken: string, igUserId: string, metrics: string[], period = 'day'): Promise<InstagramInsightValue[]> {
+/**
+ * Métricas de conta (ex: reach, accounts_engaged, likes) num período (day/week/days_28).
+ * Desde a v22 da Graph API, métricas agregadas (não time-series) exigem metric_type=total_value —
+ * ver https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/insights
+ */
+export async function getAccountInsights(
+  accessToken: string,
+  igUserId: string,
+  metrics: string[],
+  period = 'day',
+  metricType?: 'total_value',
+): Promise<InstagramInsightValue[]> {
+  const metricTypeParam = metricType ? `&metric_type=${metricType}` : ''
   const data = await igFetch<{ data: InstagramInsightValue[] }>(
-    `${igUserId}/insights?metric=${metrics.join(',')}&period=${period}`,
+    `${igUserId}/insights?metric=${metrics.join(',')}&period=${period}${metricTypeParam}`,
     accessToken,
   )
   return data.data ?? []
