@@ -244,16 +244,32 @@ export interface InstagramComment {
   id: string
   text: string
   username?: string
+  from?: { id: string; username?: string }
   timestamp?: string
 }
 
-/** Lista os comentários de uma publicação. */
-export async function listMediaComments(accessToken: string, mediaId: string): Promise<InstagramComment[]> {
+/**
+ * Lista os comentários de uma publicação. A Graph API só devolve o "username" de quem comentou
+ * quando não é a própria conta profissional comentando (ex: uma resposta enviada por aqui) — nesse
+ * caso ela devolve só um "from.id" igual ao igUserId da conta, sem username. Por isso só preenchemos
+ * com o `owner.username` quando o comentário é realmente da própria conta; nos demais casos (usuário
+ * de fato desconhecido pra API) deixamos undefined em vez de arriscar mostrar o nome errado.
+ */
+export async function listMediaComments(
+  accessToken: string,
+  mediaId: string,
+  owner?: { igUserId: string; username: string },
+): Promise<InstagramComment[]> {
   const data = await igFetch<{ data: InstagramComment[] }>(
-    `${mediaId}/comments?fields=id,text,username,timestamp`,
+    `${mediaId}/comments?fields=id,text,username,timestamp,from`,
     accessToken,
   )
-  return data.data ?? []
+  return (data.data ?? []).map((c) => {
+    if (c.username) return c
+    if (c.from?.username) return { ...c, username: c.from.username }
+    if (owner && c.from?.id === owner.igUserId) return { ...c, username: owner.username }
+    return c
+  })
 }
 
 /** Responde um comentário. */

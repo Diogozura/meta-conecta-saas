@@ -25,7 +25,7 @@ export async function GET() {
     const [comentariosPorMidia, mencoes] = await Promise.all([
       Promise.all(
         media.map((m) =>
-          listMediaComments(credentials.accessToken, m.id)
+          listMediaComments(credentials.accessToken, m.id, { igUserId: credentials.igUserId, username: credentials.username })
             .then((comments) => comments.map((c) => ({ tipo: 'comentario' as const, id: c.id, text: c.text, username: c.username, timestamp: c.timestamp, mediaThumb: m.thumbnail_url ?? m.media_url }))),
         ),
       ).then((r) => r.flat()).catch(() => []),
