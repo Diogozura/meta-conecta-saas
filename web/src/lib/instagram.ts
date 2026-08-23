@@ -319,6 +319,46 @@ export async function publishContainer(accessToken: string, igUserId: string, co
   })
 }
 
+/**
+ * Cria um container de vídeo/reels/story em modo "resumable" — o binário é
+ * enviado depois, direto pra Meta (uploadResumableVideo), sem precisar
+ * hospedar o arquivo em nenhum lugar público. Só existe pra vídeo: a Graph
+ * API não tem upload binário pra foto, essa sempre exige image_url.
+ */
+export async function createResumableMediaContainer(
+  accessToken: string,
+  igUserId: string,
+  mediaType: 'VIDEO' | 'REELS' | 'STORIES',
+  caption?: string,
+): Promise<{ id: string }> {
+  const body: Record<string, string> = { upload_type: 'resumable', media_type: mediaType }
+  if (caption) body.caption = caption
+
+  return igFetch(`${igUserId}/media`, accessToken, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+/** Sobe o binário do vídeo direto pro servidor de upload da Meta (rupload.facebook.com). */
+export async function uploadResumableVideo(accessToken: string, containerId: string, buffer: Buffer): Promise<void> {
+  const url = `https://rupload.facebook.com/ig-api-upload/${IG_GRAPH_API_VERSION}/${containerId}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `OAuth ${accessToken}`,
+      offset: '0',
+      file_size: String(buffer.length),
+    },
+    body: new Uint8Array(buffer),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => null)
+    throw new InstagramApiError(err?.error?.message ?? 'Falha no upload do vídeo para a Meta', err?.error?.code)
+  }
+}
+
 /* ─── Menções (@usuário em comentário ou legenda) ───────────────────────── */
 // A Graph API não tem um endpoint pra "listar menções" — só é possível saber
 // de uma menção quando o webhook (field "mentions") avisa, e então buscar o

@@ -401,7 +401,7 @@ export interface PublicacaoInstagram {
   containerId?: string           // ID do container de mídia (Graph API)
   mediaId?: string                // ID da publicação, depois de publicada
   tipo: 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES'
-  mediaUrl: string                 // URL pública usada para criar o container
+  mediaPath?: string               // Caminho no Vercel Blob (só foto) — usado pra apagar o arquivo temporário depois
   caption?: string
   status: 'enviando' | 'processando' | 'publicado' | 'falhou'
   erro?: string

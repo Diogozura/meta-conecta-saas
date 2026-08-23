@@ -17,7 +17,6 @@ const TYPE_OPTIONS: { key: PublishType; label: string; icon: typeof ImageIcon; a
 interface Publicacao {
   id: string
   tipo: PublishType
-  mediaUrl: string
   caption?: string
   status: 'enviando' | 'processando' | 'publicado' | 'falhou'
   erro?: string
@@ -42,7 +41,6 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [tipo, setTipo] = useState<PublishType>('IMAGE')
   const [file, setFile] = useState<File | null>(null)
   const [caption, setCaption] = useState('')
-  const [uploading, setUploading] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publicacoes, setPublicacoes] = useState<Publicacao[]>([])
   const [loadingHistory, setLoadingHistory] = useState(true)
@@ -98,21 +96,14 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       return
     }
 
-    setUploading(true)
+    setPublishing(true)
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const uploadRes = await fetch('/api/instagram/media/upload', { method: 'POST', body: formData })
-      const uploadJson = await uploadRes.json()
-      if (!uploadRes.ok) throw new Error(uploadJson.error ?? 'Erro ao subir o arquivo')
-      setUploading(false)
+      formData.append('tipo', tipo)
+      if (caption.trim()) formData.append('caption', caption.trim())
 
-      setPublishing(true)
-      const res = await fetch('/api/instagram/publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mediaUrl: uploadJson.url, caption: caption.trim() || undefined, tipo }),
-      })
+      const res = await fetch('/api/instagram/publish', { method: 'POST', body: formData })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erro ao publicar')
 
@@ -123,7 +114,6 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao publicar')
     } finally {
-      setUploading(false)
       setPublishing(false)
     }
   }
@@ -133,7 +123,6 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   }
 
   const activeType = TYPE_OPTIONS.find((t) => t.key === tipo)!
-  const busy = uploading || publishing
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -184,11 +173,11 @@ export default function PublishTab({ connected }: { connected: boolean }) {
         <div className="flex justify-end">
           <button
             type="submit"
-            disabled={busy || !file}
+            disabled={publishing || !file}
             className="flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
           >
-            {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-            {uploading ? 'Enviando arquivo...' : publishing ? 'Publicando...' : 'Publicar'}
+            {publishing && <Loader2 className="w-4 h-4 animate-spin" />}
+            {publishing ? 'Publicando...' : 'Publicar'}
           </button>
         </div>
       </form>
