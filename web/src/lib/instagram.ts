@@ -364,14 +364,26 @@ export async function getMentionedMedia(accessToken: string, igUserId: string, m
 export interface InstagramInsightValue {
   name: string
   period: string
-  values: Array<{ value: number; end_time?: string }>
+  values?: Array<{ value: number; end_time?: string }>
+  total_value?: { value: number }
   title?: string
 }
 
-/** Métricas de conta (ex: reach, impressions, profile_views) num período (day/week/days_28). */
-export async function getAccountInsights(accessToken: string, igUserId: string, metrics: string[], period = 'day'): Promise<InstagramInsightValue[]> {
+/**
+ * Métricas de conta (ex: reach, accounts_engaged, likes) num período (day/week/days_28).
+ * Desde a v22 da Graph API, métricas agregadas (não time-series) exigem metric_type=total_value —
+ * ver https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/insights
+ */
+export async function getAccountInsights(
+  accessToken: string,
+  igUserId: string,
+  metrics: string[],
+  period = 'day',
+  metricType?: 'total_value',
+): Promise<InstagramInsightValue[]> {
+  const metricTypeParam = metricType ? `&metric_type=${metricType}` : ''
   const data = await igFetch<{ data: InstagramInsightValue[] }>(
-    `${igUserId}/insights?metric=${metrics.join(',')}&period=${period}`,
+    `${igUserId}/insights?metric=${metrics.join(',')}&period=${period}${metricTypeParam}`,
     accessToken,
   )
   return data.data ?? []

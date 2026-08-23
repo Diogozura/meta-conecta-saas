@@ -7,17 +7,23 @@ import { Skeleton } from '@/components/Skeleton'
 interface InsightValue {
   name: string
   title?: string
-  values: Array<{ value: number; end_time?: string }>
+  values?: Array<{ value: number; end_time?: string }>
+  total_value?: { value: number }
 }
 
 const METRIC_LABELS: Record<string, string> = {
   reach: 'Alcance',
-  profile_views: 'Visitas ao perfil',
   accounts_engaged: 'Contas engajadas',
+  total_interactions: 'Interações totais',
+  likes: 'Curtidas',
+  comments: 'Comentários',
+  shares: 'Compartilhamentos',
+  saves: 'Salvamentos',
 }
 
 function totalValue(insight: InsightValue) {
-  return insight.values.reduce((sum, v) => sum + (v.value ?? 0), 0)
+  if (insight.total_value) return insight.total_value.value ?? 0
+  return (insight.values ?? []).reduce((sum, v) => sum + (v.value ?? 0), 0)
 }
 
 export default function InsightsTab({ connected }: { connected: boolean }) {
@@ -48,7 +54,7 @@ export default function InsightsTab({ connected }: { connected: boolean }) {
   if (loading) {
     return (
       <div className="flex flex-wrap gap-4">
-        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 w-40 rounded-xl" />)}
+        {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-24 w-40 rounded-xl" />)}
       </div>
     )
   }
