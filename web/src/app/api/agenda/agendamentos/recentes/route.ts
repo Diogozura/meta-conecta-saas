@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   try {
     session = await auth()
   } catch (error) {
-    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse()
+    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse(error)
     throw error
   }
   if (!session?.user?.contaId) {
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ eventos, serverTime: Date.now() })
   } catch (error) {
-    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse()
+    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse(error)
     console.error('Erro ao buscar agendamentos recentes:', error)
     return NextResponse.json({ error: 'Erro ao buscar agendamentos recentes' }, { status: 500 })
   }

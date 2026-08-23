@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   try {
     session = await auth()
   } catch (error) {
-    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse()
+    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse(error)
     throw error
   }
   if (!session?.user?.contaId) {

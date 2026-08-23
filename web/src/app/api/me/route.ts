@@ -10,7 +10,7 @@ export async function GET() {
   try {
     user = await getBackendUser()
   } catch (error) {
-    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse()
+    if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse(error)
     throw error
   }
   const sessionCookie = await getSessionCookieValue()

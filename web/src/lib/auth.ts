@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { obterIndiceUsuarioPorUid, salvarIndiceUsuarioPorUid, obterUsuario, atualizarUsuario } from './firestore'
-import { isFirestoreQuotaExceededError, FirestoreQuotaExceededError } from './firestoreErrors'
+import { isFirestoreQuotaExceededError, isDailyQuotaExceededError, FirestoreQuotaExceededError } from './firestoreErrors'
 import { validarCodigoTotp } from './totp'
 
 const SESSION_MAX_AGE_MS = 60 * 60 * 24 * 7 * 1000 // 7 dias em ms
@@ -171,7 +171,7 @@ export async function auth() {
       // em vez de um "não autenticado" enganoso — ver isFirestoreQuotaExceededError.
       // Usuário comum continua com o fallback degradado de sempre.
       if (isFirestoreQuotaExceededError(error) && isPlatformAdminEmail(session.email)) {
-        throw new FirestoreQuotaExceededError()
+        throw new FirestoreQuotaExceededError(isDailyQuotaExceededError(error))
       }
       // Se a coleção não existe ainda (5 NOT_FOUND), retorna dados básicos
       console.error('Erro ao buscar dados do usuário:', error)
@@ -237,7 +237,7 @@ export async function auth() {
   } catch (error) {
     if (error instanceof FirestoreQuotaExceededError) throw error
     if (isFirestoreQuotaExceededError(error) && isPlatformAdminEmail(session.email)) {
-      throw new FirestoreQuotaExceededError()
+      throw new FirestoreQuotaExceededError(isDailyQuotaExceededError(error))
     }
     console.error('Erro ao buscar dados do usuário:', error)
     return null
@@ -295,7 +295,7 @@ export async function getBackendUser(): Promise<BackendUserSession | null> {
     }
   } catch (error) {
     if (isFirestoreQuotaExceededError(error) && isPlatformAdminEmail(session.email)) {
-      throw new FirestoreQuotaExceededError()
+      throw new FirestoreQuotaExceededError(isDailyQuotaExceededError(error))
     }
     console.error('Erro ao resolver usuário do backend:', error)
     return null

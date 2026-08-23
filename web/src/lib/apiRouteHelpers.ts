@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { BackendApiError } from '@/lib/companiesApi'
 import { getSessionWithPlatformAdmin } from '@/lib/auth'
+import { FirestoreQuotaExceededError } from '@/lib/firestoreErrors'
 
 /** Repassa o status/detail reais do backend FastAPI para a resposta da API route. */
 export function backendErrorResponse(error: unknown) {
@@ -15,13 +16,15 @@ export function backendErrorResponse(error: unknown) {
  * Resposta padrão pra quando `auth()`/`getBackendUser()` lançam
  * FirestoreQuotaExceededError (só acontece pra admin de plataforma — ver
  * auth.ts). Use no catch de qualquer rota que chama essas funções:
- * `if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse()`.
+ * `if (error instanceof FirestoreQuotaExceededError) return quotaErrorResponse(error)`.
+ *
+ * Repassa `error.message` em vez de um texto fixo — a mensagem já vem
+ * diferenciando cota diária real de um pico repentino de tráfego (ver
+ * FirestoreQuotaExceededError em firestoreErrors.ts), e um texto fixo aqui
+ * duplicaria essa lógica e ficaria desatualizado se ela mudar.
  */
-export function quotaErrorResponse() {
-  return NextResponse.json(
-    { error: 'Passou do limite diário de requisição do Firebase. Tente novamente em alguns minutos.', code: 'firestore_quota_exceeded' },
-    { status: 503 }
-  )
+export function quotaErrorResponse(error: FirestoreQuotaExceededError) {
+  return NextResponse.json({ error: error.message, code: 'firestore_quota_exceeded' }, { status: 503 })
 }
 
 /**
