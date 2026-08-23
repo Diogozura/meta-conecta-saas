@@ -151,13 +151,20 @@ export async function POST(request: Request) {
         // rótulo da opção no motor do fluxo (fluxoEngine) sem mudar nada lá.
         const textoInterativo = msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title
 
+        // Resposta a um nó "Solicitar localização" do fluxo — vira um link
+        // do Google Maps, tanto pro histórico da conversa quanto pro valor
+        // guardado em Conversa.dadosColetados (ver continuarFluxo/coleta).
+        const textoLocalizacao = msg.location
+          ? `📍 ${msg.location.name ? `${msg.location.name} — ` : ''}https://www.google.com/maps?q=${msg.location.latitude},${msg.location.longitude}`
+          : undefined
+
         // Foto, áudio, vídeo, documento ou figurinha — não baixa nem
         // hospeda nada aqui (sem Firebase Storage, que exige plano pago); só
         // guarda o ID da mídia, que continua hospedada na própria Meta. O
         // painel busca os bytes sob demanda via /api/whatsapp/midia/[mediaId].
         const midia = extrairMidiaDoWebhook(msg)
 
-        const corpoTexto = msg.text?.body ?? textoInterativo ?? midia?.caption ?? (midia ? RETULOS_MIDIA_PADRAO[midia.tipo] : undefined)
+        const corpoTexto = msg.text?.body ?? textoInterativo ?? textoLocalizacao ?? midia?.caption ?? (midia ? RETULOS_MIDIA_PADRAO[midia.tipo] : undefined)
 
         // Salva no Firebase (persistência — também é a fonte do polling do painel)
         if (contaId) {
@@ -535,6 +542,8 @@ interface WebhookMessage {
   audio?: WebhookMediaField
   document?: WebhookMediaField
   sticker?: WebhookMediaField
+  // Resposta a um nó "Solicitar localização" do fluxo.
+  location?: { latitude: number; longitude: number; name?: string; address?: string }
 }
 
 interface WebhookPayload {

@@ -1046,6 +1046,24 @@ export async function definirPrioridadeConversa(contaId: string, numero: string,
   )
 }
 
+/** Adiciona uma etiqueta à conversa (nó "adicionar_etiqueta" do fluxo) — sem duplicar se já tiver essa mesma etiqueta. */
+export async function adicionarEtiquetaConversa(contaId: string, numero: string, etiqueta: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), etiquetas: FieldValue.arrayUnion(etiqueta) },
+    { merge: true },
+  )
+}
+
+/** Salva o protocolo gerado por um nó "gerar_protocolo" do fluxo. */
+export async function definirProtocoloConversa(contaId: string, numero: string, protocolo: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conversas').doc(sanitizarNumero(numero)).set(
+    { numero: sanitizarNumero(numero), protocolo },
+    { merge: true },
+  )
+}
+
 /** Marca que o alerta de SLA já foi enviado pra essa espera — evita o cron reenviar e-mail a cada execução enquanto a conversa continuar parada. */
 export async function marcarAlertaSlaEnviado(contaId: string, numero: string): Promise<void> {
   const db = getDb()

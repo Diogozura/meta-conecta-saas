@@ -122,6 +122,13 @@ export interface Conversa {
   // preenchido a partir do metadata do webhook. Toda resposta futura sai
   // pelo mesmo número, em vez de sempre o principal (ver lib/canalWhatsapp.ts).
   canalPhoneNumberId?: string | null
+
+  // Etiquetas adicionadas por um nó "adicionar_etiqueta" do fluxo — só
+  // acumula, sem duplicar (ver lib/firestore.ts adicionarEtiquetaConversa).
+  etiquetas?: string[]
+  // Gerado por um nó "gerar_protocolo" do fluxo — número curto pro cliente
+  // referenciar esse atendimento depois.
+  protocolo?: string
 }
 
 // ─────────────────────────────────────────
@@ -143,7 +150,12 @@ export interface AvaliacaoCsat {
 // com um botão liga/desliga (`ativo`) — sem fluxo configurado ou desligado,
 // o comportamento é o de sempre (mensagem vai direto pro agente de IA).
 // ─────────────────────────────────────────
-export type FluxoNodeTipo = 'inicio' | 'mensagem' | 'menu' | 'horario' | 'coleta' | 'encaminhar_ia' | 'encaminhar_humano' | 'fim'
+export type FluxoNodeTipo =
+  | 'inicio' | 'mensagem' | 'menu' | 'horario' | 'coleta' | 'encaminhar_ia' | 'encaminhar_humano' | 'fim'
+  // Pacote "mensageria essencial" — cada um dá um passo automático (como
+  // 'mensagem') e segue pra próxima aresta, exceto 'solicitar_localizacao'
+  // (para e espera, como 'coleta').
+  | 'enviar_template' | 'enviar_url' | 'enviar_email' | 'nota_interna' | 'solicitar_localizacao' | 'gerar_qrcode' | 'adicionar_etiqueta' | 'gerar_protocolo'
 
 // Horário de Brasília (America/Sao_Paulo) — 0=domingo...6=sábado, mesmo índice usado no resto do app (ex: WEEKDAY_LABELS da Agenda).
 export interface FluxoHorario {
@@ -168,9 +180,18 @@ export interface FluxoNode {
   texto?: string
   opcoes?: { id: string; rotulo: string }[]
   horario?: FluxoHorario
+  // 'coleta' e 'solicitar_localizacao' usam `variavel` pra saber a chave em Conversa.dadosColetados onde guardar a resposta.
   variavel?: string
   setor?: string
   motivo?: string
+  // Pacote "mensageria essencial" — cada campo é usado só pelo tipo indicado:
+  templateNome?: string        // 'enviar_template' — nome do template aprovado na Meta
+  url?: string                 // 'enviar_url' — destino do botão (texto do corpo vem de `texto`)
+  botaoLabel?: string          // 'enviar_url' — rótulo do botão (até ~20 caracteres, limite da Cloud API)
+  emailDestinatario?: string   // 'enviar_email' — endereço literal ou "{{variavel}}" coletada antes no fluxo
+  emailAssunto?: string        // 'enviar_email' (corpo vem de `texto`)
+  estiloNota?: 'info' | 'alerta' // 'nota_interna' (conteúdo vem de `texto`) — só aparece pro atendente, nunca vai pro WhatsApp
+  etiqueta?: string            // 'adicionar_etiqueta' — rótulo adicionado a Conversa.etiquetas
 }
 
 export interface FluxoEdge {
@@ -458,7 +479,11 @@ export interface Mensagem {
   nomeContato?: string          // Nome cadastrado pelo contato no WhatsApp (vem no payload do webhook)
   text: string                  // Conteúdo da mensagem
   timestamp: number             // Unix timestamp em segundos (do Meta)
-  tipo: 'recebida' | 'enviada'  // Direção da mensagem
+  // 'nota' = nota interna gerada por um nó "nota_interna" do fluxo — nunca
+  // sai pro WhatsApp, só aparece no painel pro atendente. Não tem `id` real
+  // da Meta (gerado localmente) nem entra no histórico que a IA vê.
+  tipo: 'recebida' | 'enviada' | 'nota'
+  estiloNota?: 'info' | 'alerta'
   historico?: boolean           // true = importada via sincronização de histórico (Coexistence), não uma mensagem nova
   status?: 'enviada' | 'entregue' | 'lida' | 'falhou'  // Status (para mensagens enviadas)
   // Motivo da falha, quando status === 'falhou' — vem do webhook de status

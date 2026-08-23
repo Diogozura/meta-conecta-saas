@@ -21,7 +21,10 @@ import { ArrowLeft, Plus, Save, Trash2, Loader2, Power } from 'lucide-react'
 import { NODE_TYPES, TIPO_INFO, type FluxoRFNode } from '@/components/fluxo/FluxoNodes'
 import type { Fluxo, FluxoNode, FluxoEdge as FluxoEdgeData, FluxoNodeTipo } from '@/types/database'
 
-const TIPOS_ADICIONAVEIS: FluxoNodeTipo[] = ['mensagem', 'menu', 'horario', 'coleta', 'encaminhar_ia', 'encaminhar_humano', 'fim']
+const TIPOS_ADICIONAVEIS: FluxoNodeTipo[] = [
+  'mensagem', 'menu', 'horario', 'coleta', 'encaminhar_ia', 'encaminhar_humano', 'fim',
+  'enviar_template', 'enviar_url', 'enviar_email', 'nota_interna', 'solicitar_localizacao', 'gerar_qrcode', 'adicionar_etiqueta', 'gerar_protocolo',
+]
 
 const HORARIO_PADRAO = { diasSemana: [false, true, true, true, true, true, false], horaInicio: '09:00', horaFim: '18:00' }
 const DIAS_SEMANA_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -49,6 +52,13 @@ function rfParaFluxoNode(n: FluxoRFNode): FluxoNode {
     variavel: n.data.variavel,
     setor: n.data.setor,
     motivo: n.data.motivo,
+    templateNome: n.data.templateNome,
+    url: n.data.url,
+    botaoLabel: n.data.botaoLabel,
+    emailDestinatario: n.data.emailDestinatario,
+    emailAssunto: n.data.emailAssunto,
+    estiloNota: n.data.estiloNota,
+    etiqueta: n.data.etiqueta,
   }
 }
 
@@ -69,6 +79,7 @@ export default function FluxoEditorPage() {
   const [nodes, setNodes, onNodesChangeBase] = useNodesState<FluxoRFNode>([])
   const [edges, setEdges, onEdgesChangeBase] = useEdgesState<Edge>([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [templates, setTemplates] = useState<{ name: string; status: string }[] | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -188,6 +199,15 @@ export default function FluxoEditorPage() {
   }
 
   const noSelecionado = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) : null
+
+  useEffect(() => {
+    if (noSelecionado?.type !== 'enviar_template' || templates !== null) return
+    fetch('/api/meta/list-templates')
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: { templates: { name: string; status: string }[] }) => setTemplates(data.templates))
+      // Falha vira lista vazia (mostra aviso no painel) — carregamento sob demanda não pode travar o editor.
+      .catch(() => setTemplates([]))
+  }, [noSelecionado?.type, templates])
 
   if (loading) {
     return (
@@ -436,6 +456,195 @@ export default function FluxoEditorPage() {
                   />
                 </div>
               </>
+            )}
+
+            {noSelecionado.type === 'enviar_template' && (
+              <div>
+                <label className="block text-xs font-medium text-ink-600 mb-1">Template aprovado</label>
+                {templates === null ? (
+                  <p className="text-xs text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando templates...</p>
+                ) : templates.length === 0 ? (
+                  <p className="text-[11px] text-ink-400">
+                    Nenhum template encontrado. Crie um em{' '}
+                    <Link href="/dashboard/templates" className="text-brand-700 hover:underline">Configurações → Templates</Link>.
+                  </p>
+                ) : (
+                  <select
+                    value={noSelecionado.data.templateNome ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { templateNome: e.target.value })}
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  >
+                    <option value="">Selecione...</option>
+                    {templates.map((t) => (
+                      <option key={t.name} value={t.name} disabled={t.status !== 'APPROVED'}>
+                        {t.name} {t.status !== 'APPROVED' ? `(${t.status})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <p className="text-[11px] text-ink-400 mt-1">Envia sem variáveis — o template precisa funcionar só com o texto fixo aprovado.</p>
+              </div>
+            )}
+
+            {noSelecionado.type === 'enviar_url' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Texto da mensagem</label>
+                  <textarea
+                    value={noSelecionado.data.texto ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { texto: e.target.value })}
+                    rows={3}
+                    placeholder="Ex: Aqui está o link que você pediu:"
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">URL</label>
+                  <input
+                    value={noSelecionado.data.url ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { url: e.target.value.trim() })}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Rótulo do botão</label>
+                  <input
+                    value={noSelecionado.data.botaoLabel ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { botaoLabel: e.target.value.slice(0, 20) })}
+                    placeholder="Ex: Ver mais"
+                    maxLength={20}
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  />
+                </div>
+              </>
+            )}
+
+            {noSelecionado.type === 'enviar_email' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Destinatário</label>
+                  <input
+                    value={noSelecionado.data.emailDestinatario ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { emailDestinatario: e.target.value })}
+                    placeholder="email@empresa.com ou {{email}}"
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  />
+                  <p className="text-[11px] text-ink-400 mt-1">Pode usar {'{{chave}}'} pra referenciar um dado coletado antes no fluxo (ex: um nó &quot;Coletar dado&quot; que guardou o e-mail do cliente).</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Assunto</label>
+                  <input
+                    value={noSelecionado.data.emailAssunto ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { emailAssunto: e.target.value })}
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Corpo</label>
+                  <textarea
+                    value={noSelecionado.data.texto ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { texto: e.target.value })}
+                    rows={4}
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm resize-none"
+                  />
+                </div>
+              </>
+            )}
+
+            {noSelecionado.type === 'nota_interna' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Conteúdo da nota</label>
+                  <textarea
+                    value={noSelecionado.data.texto ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { texto: e.target.value })}
+                    rows={3}
+                    placeholder="Só o atendente vê isso — nunca vai pro WhatsApp"
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm resize-none"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  {(['info', 'alerta'] as const).map((estilo) => (
+                    <button
+                      key={estilo}
+                      onClick={() => atualizarDadosDoNo(noSelecionado.id, { estiloNota: estilo })}
+                      className={`flex-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        (noSelecionado.data.estiloNota ?? 'info') === estilo
+                          ? 'bg-yellow-100 border-yellow-300 text-yellow-800'
+                          : 'bg-white border-ink-200 text-ink-500 hover:bg-ink-50'
+                      }`}
+                    >
+                      {estilo === 'info' ? 'ℹ️ Informação' : '⚠️ Alerta'}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {noSelecionado.type === 'solicitar_localizacao' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Texto do pedido</label>
+                  <textarea
+                    value={noSelecionado.data.texto ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { texto: e.target.value })}
+                    rows={3}
+                    placeholder="Ex: Pode compartilhar sua localização?"
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 mb-1">Guardar em (chave)</label>
+                  <input
+                    value={noSelecionado.data.variavel ?? ''}
+                    onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { variavel: e.target.value.trim() })}
+                    placeholder="Ex: localizacao"
+                    className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                  />
+                </div>
+              </>
+            )}
+
+            {noSelecionado.type === 'gerar_qrcode' && (
+              <div>
+                <label className="block text-xs font-medium text-ink-600 mb-1">Conteúdo do QR code</label>
+                <textarea
+                  value={noSelecionado.data.texto ?? ''}
+                  onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { texto: e.target.value })}
+                  rows={3}
+                  placeholder="Um link, um código PIX, texto livre..."
+                  className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm resize-none font-mono"
+                />
+                <p className="text-[11px] text-ink-400 mt-1">Aceita {'{{chave}}'} pra usar um dado coletado antes no fluxo.</p>
+              </div>
+            )}
+
+            {noSelecionado.type === 'adicionar_etiqueta' && (
+              <div>
+                <label className="block text-xs font-medium text-ink-600 mb-1">Etiqueta</label>
+                <input
+                  value={noSelecionado.data.etiqueta ?? ''}
+                  onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { etiqueta: e.target.value })}
+                  placeholder="Ex: Lead quente, Reclamação..."
+                  className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm"
+                />
+                <p className="text-[11px] text-ink-400 mt-1">Aparece na conversa, no painel — não é enviada pro cliente.</p>
+              </div>
+            )}
+
+            {noSelecionado.type === 'gerar_protocolo' && (
+              <div>
+                <label className="block text-xs font-medium text-ink-600 mb-1">Mensagem pro cliente (opcional)</label>
+                <textarea
+                  value={noSelecionado.data.texto ?? ''}
+                  onChange={(e) => atualizarDadosDoNo(noSelecionado.id, { texto: e.target.value })}
+                  rows={3}
+                  placeholder="Ex: Seu protocolo é {{protocolo}} — guarde pra referência futura."
+                  className="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm resize-none"
+                />
+                <p className="text-[11px] text-ink-400 mt-1">Deixe em branco pra só gerar e guardar o protocolo, sem avisar o cliente. Use {'{{protocolo}}'} no texto pra incluir o número gerado.</p>
+              </div>
             )}
 
             {noSelecionado.type === 'inicio' && <p className="text-xs text-ink-500">Ponto de partida — toda conversa nova entra por aqui. Conecte a um próximo passo.</p>}

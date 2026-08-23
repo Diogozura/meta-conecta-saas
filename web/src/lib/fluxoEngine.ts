@@ -2,18 +2,35 @@ import type { Fluxo, FluxoHorario, FluxoNode } from '@/types/database'
 
 type FluxoGrafo = Pick<Fluxo, 'nodes' | 'edges'>
 
+/**
+ * Um passo concreto que o fluxo decidiu dar — o motor só monta essa lista
+ * (pura, sem I/O); quem executa de verdade (enviar pro WhatsApp, mandar
+ * e-mail, gravar no Firestore) é lib/fluxoService.ts.
+ */
+export type AcaoFluxo =
+  | { tipo: 'texto'; texto: string }
+  | { tipo: 'template'; nome: string }
+  | { tipo: 'url'; texto: string; url: string; label: string }
+  | { tipo: 'nota'; texto: string; estilo: 'info' | 'alerta' }
+  | { tipo: 'email'; destinatario: string; assunto: string; corpo: string }
+  | { tipo: 'qrcode'; conteudo: string }
+  | { tipo: 'etiqueta'; valor: string }
+  | { tipo: 'protocolo'; mensagem: string | null }
+  | { tipo: 'localizacao'; texto: string }
+
 export type FluxoResultado =
-  // Percorreu nós automáticos (mensagem) até parar num 'menu' — envia as
-  // mensagens acumuladas e espera a próxima mensagem do cliente pra decidir a opção.
-  | { acao: 'enviar_e_aguardar'; mensagens: string[]; noId: string }
+  // Percorreu nós automáticos (mensagem, enviar_template, etc.) até parar
+  // num 'menu'/'coleta'/'solicitar_localizacao' — executa as ações
+  // acumuladas e espera a próxima mensagem do cliente.
+  | { acao: 'enviar_e_aguardar'; acoes: AcaoFluxo[]; noId: string }
   // Resposta do cliente não bateu com nenhuma opção do menu atual — repete o menu.
-  | { acao: 'opcao_invalida'; mensagens: string[]; noId: string }
+  | { acao: 'opcao_invalida'; acoes: AcaoFluxo[]; noId: string }
   // Chegou num nó 'encaminhar_ia' — a partir daqui quem responde é o agente de IA de sempre.
-  | { acao: 'encaminhar_ia'; mensagens: string[] }
+  | { acao: 'encaminhar_ia'; acoes: AcaoFluxo[] }
   // Chegou num nó 'encaminhar_humano' — entra na fila de atendimento humano (com setor, se definido).
-  | { acao: 'encaminhar_humano'; mensagens: string[]; setor?: string; motivo?: string }
+  | { acao: 'encaminhar_humano'; acoes: AcaoFluxo[]; setor?: string; motivo?: string }
   // Chegou num nó 'fim' (ou o fluxo terminou sem encaminhar a lugar nenhum) — encerra a conversa.
-  | { acao: 'encerrar'; mensagens: string[] }
+  | { acao: 'encerrar'; acoes: AcaoFluxo[] }
 
 export function encontrarNo(fluxo: FluxoGrafo, id: string): FluxoNode | undefined {
   return fluxo.nodes.find((n) => n.id === id)
@@ -56,67 +73,93 @@ export function estaDentroDoHorario(horario: FluxoHorario, agora: Date = new Dat
   return minutosDoDia >= inicio && minutosDoDia < fim
 }
 
-/** Percorre o fluxo a partir de um nó, acumulando o texto dos nós 'mensagem' no caminho, até parar num nó que precisa de ação (menu/ia/humano/fim). */
-function avancar(fluxo: FluxoGrafo, noId: string, mensagensAcumuladas: string[], visitados: Set<string>, agora: Date): FluxoResultado {
+/** Percorre o fluxo a partir de um nó, acumulando as ações dos nós automáticos no caminho, até parar num nó que precisa de ação (menu/coleta/localização/ia/humano/fim). */
+function avancar(fluxo: FluxoGrafo, noId: string, acoesAcumuladas: AcaoFluxo[], visitados: Set<string>, agora: Date): FluxoResultado {
   if (visitados.has(noId)) {
     // Ciclo no fluxo (erro de montagem) — não trava em loop infinito, cai pra IA.
-    return { acao: 'encaminhar_ia', mensagens: mensagensAcumuladas }
+    return { acao: 'encaminhar_ia', acoes: acoesAcumuladas }
   }
   visitados.add(noId)
 
   const no = encontrarNo(fluxo, noId)
-  if (!no) return { acao: 'encaminhar_ia', mensagens: mensagensAcumuladas }
+  if (!no) return { acao: 'encaminhar_ia', acoes: acoesAcumuladas }
+
+  // Passo automático genérico: acumula uma ação (se o nó estiver preenchido
+  // o bastante pra gerar uma) e segue direto pra próxima aresta — mesmo
+  // formato de 'mensagem' e todo o pacote "mensageria essencial".
+  function passoAutomatico(acaoNova: AcaoFluxo | null): FluxoResultado {
+    const proximas = acaoNova ? [...acoesAcumuladas, acaoNova] : acoesAcumuladas
+    const aresta = proximaAresta(fluxo, no!.id)
+    if (!aresta) return { acao: 'encerrar', acoes: proximas }
+    return avancar(fluxo, aresta.destino, proximas, visitados, agora)
+  }
 
   switch (no.tipo) {
     case 'inicio': {
       const aresta = proximaAresta(fluxo, no.id)
-      if (!aresta) return { acao: 'encaminhar_ia', mensagens: mensagensAcumuladas }
-      return avancar(fluxo, aresta.destino, mensagensAcumuladas, visitados, agora)
+      if (!aresta) return { acao: 'encaminhar_ia', acoes: acoesAcumuladas }
+      return avancar(fluxo, aresta.destino, acoesAcumuladas, visitados, agora)
     }
-    case 'mensagem': {
-      const proximas = no.texto ? [...mensagensAcumuladas, no.texto] : mensagensAcumuladas
-      const aresta = proximaAresta(fluxo, no.id)
-      if (!aresta) return { acao: 'encerrar', mensagens: proximas }
-      return avancar(fluxo, aresta.destino, proximas, visitados, agora)
-    }
+    case 'mensagem':
+      return passoAutomatico(no.texto ? { tipo: 'texto', texto: no.texto } : null)
+    case 'enviar_template':
+      return passoAutomatico(no.templateNome ? { tipo: 'template', nome: no.templateNome } : null)
+    case 'enviar_url':
+      return passoAutomatico(no.texto && no.url ? { tipo: 'url', texto: no.texto, url: no.url, label: no.botaoLabel || 'Abrir link' } : null)
+    case 'enviar_email':
+      return passoAutomatico(
+        no.texto && no.emailDestinatario
+          ? { tipo: 'email', destinatario: no.emailDestinatario, assunto: no.emailAssunto || 'Mensagem do fluxo de atendimento', corpo: no.texto }
+          : null
+      )
+    case 'nota_interna':
+      return passoAutomatico(no.texto ? { tipo: 'nota', texto: no.texto, estilo: no.estiloNota ?? 'info' } : null)
+    case 'gerar_qrcode':
+      return passoAutomatico(no.texto ? { tipo: 'qrcode', conteudo: no.texto } : null)
+    case 'adicionar_etiqueta':
+      return passoAutomatico(no.etiqueta ? { tipo: 'etiqueta', valor: no.etiqueta } : null)
+    case 'gerar_protocolo':
+      return passoAutomatico({ tipo: 'protocolo', mensagem: no.texto || null })
     case 'menu':
     case 'coleta':
-      return { acao: 'enviar_e_aguardar', mensagens: no.texto ? [...mensagensAcumuladas, no.texto] : mensagensAcumuladas, noId: no.id }
+      return { acao: 'enviar_e_aguardar', acoes: no.texto ? [...acoesAcumuladas, { tipo: 'texto', texto: no.texto }] : acoesAcumuladas, noId: no.id }
+    case 'solicitar_localizacao':
+      return { acao: 'enviar_e_aguardar', acoes: no.texto ? [...acoesAcumuladas, { tipo: 'localizacao', texto: no.texto }] : acoesAcumuladas, noId: no.id }
     case 'horario': {
       // Sem configuração válida, trata como "fora do horário" (mais seguro
       // que atender fora de hora por engano num nó mal preenchido).
       const dentro = no.horario ? estaDentroDoHorario(no.horario, agora) : false
       const aresta = proximaAresta(fluxo, no.id, dentro ? 'dentro' : 'fora')
-      if (!aresta) return { acao: 'encaminhar_ia', mensagens: mensagensAcumuladas }
-      return avancar(fluxo, aresta.destino, mensagensAcumuladas, visitados, agora)
+      if (!aresta) return { acao: 'encaminhar_ia', acoes: acoesAcumuladas }
+      return avancar(fluxo, aresta.destino, acoesAcumuladas, visitados, agora)
     }
     case 'encaminhar_ia':
-      return { acao: 'encaminhar_ia', mensagens: mensagensAcumuladas }
+      return { acao: 'encaminhar_ia', acoes: acoesAcumuladas }
     case 'encaminhar_humano':
-      return { acao: 'encaminhar_humano', mensagens: mensagensAcumuladas, setor: no.setor, motivo: no.motivo }
+      return { acao: 'encaminhar_humano', acoes: acoesAcumuladas, setor: no.setor, motivo: no.motivo }
     case 'fim':
-      return { acao: 'encerrar', mensagens: mensagensAcumuladas }
+      return { acao: 'encerrar', acoes: acoesAcumuladas }
   }
 }
 
 /** Início de uma conversa nova — entra pelo nó 'inicio' do fluxo. `agora` é injetável pra testes; em produção é o instante real. */
 export function iniciarFluxo(fluxo: FluxoGrafo, agora: Date = new Date()): FluxoResultado {
   const inicio = fluxo.nodes.find((n) => n.tipo === 'inicio')
-  if (!inicio) return { acao: 'encaminhar_ia', mensagens: [] }
+  if (!inicio) return { acao: 'encaminhar_ia', acoes: [] }
   return avancar(fluxo, inicio.id, [], new Set(), agora)
 }
 
-/** Conversa já estava parada num 'menu' ou 'coleta' (noAtualId) — decide o próximo passo pela resposta do cliente. */
+/** Conversa já estava parada num 'menu', 'coleta' ou 'solicitar_localizacao' (noAtualId) — decide o próximo passo pela resposta do cliente. */
 export function continuarFluxo(fluxo: FluxoGrafo, noAtualId: string, respostaTexto: string, agora: Date = new Date()): FluxoResultado {
   const noAtual = encontrarNo(fluxo, noAtualId)
   if (!noAtual) return iniciarFluxo(fluxo, agora)
 
-  if (noAtual.tipo === 'coleta') {
+  if (noAtual.tipo === 'coleta' || noAtual.tipo === 'solicitar_localizacao') {
     // Aceita qualquer texto como resposta — quem guarda o valor em
     // Conversa.dadosColetados é o chamador (fluxoService), que sabe o
     // `variavel` do nó; o motor só decide o próximo passo.
     const aresta = proximaAresta(fluxo, noAtual.id)
-    if (!aresta) return { acao: 'encerrar', mensagens: [] }
+    if (!aresta) return { acao: 'encerrar', acoes: [] }
     return avancar(fluxo, aresta.destino, [], new Set(), agora)
   }
 
@@ -130,7 +173,7 @@ export function continuarFluxo(fluxo: FluxoGrafo, noAtualId: string, respostaTex
   const aresta = opcaoEscolhida ? fluxo.edges.find((e) => e.origem === noAtual.id && e.opcaoId === opcaoEscolhida.id) : undefined
 
   if (!opcaoEscolhida || !aresta) {
-    return { acao: 'opcao_invalida', mensagens: noAtual.texto ? [noAtual.texto] : [], noId: noAtual.id }
+    return { acao: 'opcao_invalida', acoes: noAtual.texto ? [{ tipo: 'texto', texto: noAtual.texto }] : [], noId: noAtual.id }
   }
 
   return avancar(fluxo, aresta.destino, [], new Set(), agora)

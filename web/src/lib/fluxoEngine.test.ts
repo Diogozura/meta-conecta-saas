@@ -44,20 +44,23 @@ describe('iniciarFluxo', () => {
     const resultado = iniciarFluxo(fluxoMenuSetores())
     expect(resultado).toEqual({
       acao: 'enviar_e_aguardar',
-      mensagens: ['Olá! Bem-vindo à Acme Internet.', 'Digite 1 para Suporte técnico, 2 para Financeiro ou 3 para falar com um atendente.'],
+      acoes: [
+        { tipo: 'texto', texto: 'Olá! Bem-vindo à Acme Internet.' },
+        { tipo: 'texto', texto: 'Digite 1 para Suporte técnico, 2 para Financeiro ou 3 para falar com um atendente.' },
+      ],
       noId: 'menu-principal',
     })
   })
 
   it('encaminha pra IA quando não há nó inicio', () => {
     const resultado = iniciarFluxo({ nodes: [], edges: [] })
-    expect(resultado).toEqual({ acao: 'encaminhar_ia', mensagens: [] })
+    expect(resultado).toEqual({ acao: 'encaminhar_ia', acoes: [] })
   })
 
   it('encerra a conversa quando uma mensagem não tem aresta de saída', () => {
     const nodes: FluxoNode[] = [no({ id: 'inicio', tipo: 'inicio' }), no({ id: 'fim-msg', tipo: 'mensagem', texto: 'Até mais!' })]
     const edges: FluxoEdge[] = [aresta({ id: 'e1', origem: 'inicio', destino: 'fim-msg' })]
-    expect(iniciarFluxo({ nodes, edges })).toEqual({ acao: 'encerrar', mensagens: ['Até mais!'] })
+    expect(iniciarFluxo({ nodes, edges })).toEqual({ acao: 'encerrar', acoes: [{ tipo: 'texto', texto: 'Até mais!' }] })
   })
 
   it('detecta ciclo e cai pra IA em vez de travar', () => {
@@ -75,17 +78,17 @@ describe('iniciarFluxo', () => {
 describe('continuarFluxo', () => {
   it('roteia pra IA quando o cliente digita a opção 1', () => {
     const resultado = continuarFluxo(fluxoMenuSetores(), 'menu-principal', '1')
-    expect(resultado).toEqual({ acao: 'encaminhar_ia', mensagens: [] })
+    expect(resultado).toEqual({ acao: 'encaminhar_ia', acoes: [] })
   })
 
   it('roteia pro setor Financeiro quando o cliente digita a opção 2', () => {
     const resultado = continuarFluxo(fluxoMenuSetores(), 'menu-principal', '2')
-    expect(resultado).toEqual({ acao: 'encaminhar_humano', mensagens: [], setor: 'Financeiro', motivo: 'Cliente escolheu Financeiro no menu' })
+    expect(resultado).toEqual({ acao: 'encaminhar_humano', acoes: [], setor: 'Financeiro', motivo: 'Cliente escolheu Financeiro no menu' })
   })
 
   it('roteia pra fila humana genérica (sem setor) quando o cliente digita a opção 3', () => {
     const resultado = continuarFluxo(fluxoMenuSetores(), 'menu-principal', '3')
-    expect(resultado).toEqual({ acao: 'encaminhar_humano', mensagens: [], setor: undefined, motivo: undefined })
+    expect(resultado).toEqual({ acao: 'encaminhar_humano', acoes: [], setor: undefined, motivo: undefined })
   })
 
   it('ignora espaços e maiúsculas/minúsculas ao comparar a opção digitada', () => {
@@ -97,7 +100,7 @@ describe('continuarFluxo', () => {
     const resultado = continuarFluxo(fluxoMenuSetores(), 'menu-principal', '9')
     expect(resultado).toEqual({
       acao: 'opcao_invalida',
-      mensagens: ['Digite 1 para Suporte técnico, 2 para Financeiro ou 3 para falar com um atendente.'],
+      acoes: [{ tipo: 'texto', texto: 'Digite 1 para Suporte técnico, 2 para Financeiro ou 3 para falar com um atendente.' }],
       noId: 'menu-principal',
     })
   })
@@ -172,13 +175,13 @@ function fluxoComHorario(): Pick<Fluxo, 'nodes' | 'edges'> {
 
 describe('fluxo com nó de horário', () => {
   it('segue pra IA quando está dentro do horário configurado', () => {
-    expect(iniciarFluxo(fluxoComHorario(), SP_MEIO_DIA)).toEqual({ acao: 'encaminhar_ia', mensagens: [] })
+    expect(iniciarFluxo(fluxoComHorario(), SP_MEIO_DIA)).toEqual({ acao: 'encaminhar_ia', acoes: [] })
   })
 
   it('segue pro setor de plantão quando está fora do horário configurado', () => {
     expect(iniciarFluxo(fluxoComHorario(), SP_NOITE)).toEqual({
       acao: 'encaminhar_humano',
-      mensagens: [],
+      acoes: [],
       setor: 'Plantão',
       motivo: 'Fora do horário comercial',
     })
@@ -187,7 +190,7 @@ describe('fluxo com nó de horário', () => {
   it('cai pra IA se o nó de horário não tem aresta pro resultado calculado', () => {
     const grafo = fluxoComHorario()
     grafo.edges = grafo.edges.filter((e) => e.opcaoId !== 'fora')
-    expect(iniciarFluxo(grafo, SP_NOITE)).toEqual({ acao: 'encaminhar_ia', mensagens: [] })
+    expect(iniciarFluxo(grafo, SP_NOITE)).toEqual({ acao: 'encaminhar_ia', acoes: [] })
   })
 })
 
@@ -207,12 +210,12 @@ function fluxoComColeta(): Pick<Fluxo, 'nodes' | 'edges'> {
 
 describe('fluxo com nó de coleta', () => {
   it('para no nó de coleta e envia a pergunta, esperando qualquer resposta', () => {
-    expect(iniciarFluxo(fluxoComColeta())).toEqual({ acao: 'enviar_e_aguardar', mensagens: ['Qual seu CPF?'], noId: 'pede-cpf' })
+    expect(iniciarFluxo(fluxoComColeta())).toEqual({ acao: 'enviar_e_aguardar', acoes: [{ tipo: 'texto', texto: 'Qual seu CPF?' }], noId: 'pede-cpf' })
   })
 
   it('aceita qualquer texto como resposta (não é um menu de opções fixas) e segue em frente', () => {
     const resultado = continuarFluxo(fluxoComColeta(), 'pede-cpf', '123.456.789-00')
-    expect(resultado).toEqual({ acao: 'encaminhar_ia', mensagens: [] })
+    expect(resultado).toEqual({ acao: 'encaminhar_ia', acoes: [] })
   })
 
   it('aceita até resposta vazia/qualquer coisa — coleta não valida formato, só captura', () => {
@@ -223,11 +226,105 @@ describe('fluxo com nó de coleta', () => {
   it('encerra se o nó de coleta não tem aresta de saída', () => {
     const grafo = fluxoComColeta()
     grafo.edges = grafo.edges.filter((e) => e.origem !== 'pede-cpf')
-    expect(continuarFluxo(grafo, 'pede-cpf', 'qualquer coisa')).toEqual({ acao: 'encerrar', mensagens: [] })
+    expect(continuarFluxo(grafo, 'pede-cpf', 'qualquer coisa')).toEqual({ acao: 'encerrar', acoes: [] })
   })
 
   it('reinicia o fluxo se o nó salvo não existe mais', () => {
     const resultado = continuarFluxo(fluxoComColeta(), 'no-removido', 'resposta')
     expect(resultado.acao).toBe('enviar_e_aguardar')
+  })
+})
+
+describe('pacote "mensageria essencial" — nós automáticos geram a ação certa e seguem em frente', () => {
+  function fluxoComUmNoAutomatico(noAutomatico: FluxoNode): Pick<Fluxo, 'nodes' | 'edges'> {
+    const nodes: FluxoNode[] = [no({ id: 'inicio', tipo: 'inicio' }), noAutomatico, no({ id: 'fim', tipo: 'fim' })]
+    const edges: FluxoEdge[] = [
+      aresta({ id: 'e1', origem: 'inicio', destino: noAutomatico.id }),
+      aresta({ id: 'e2', origem: noAutomatico.id, destino: 'fim' }),
+    ]
+    return { nodes, edges }
+  }
+
+  it('enviar_template gera uma ação "template" e segue', () => {
+    const grafo = fluxoComUmNoAutomatico(no({ id: 'tpl', tipo: 'enviar_template', templateNome: 'boas_vindas' }))
+    expect(iniciarFluxo(grafo)).toEqual({ acao: 'encerrar', acoes: [{ tipo: 'template', nome: 'boas_vindas' }] })
+  })
+
+  it('enviar_template sem nome escolhido não gera ação nenhuma (mas segue em frente)', () => {
+    const grafo = fluxoComUmNoAutomatico(no({ id: 'tpl', tipo: 'enviar_template' }))
+    expect(iniciarFluxo(grafo)).toEqual({ acao: 'encerrar', acoes: [] })
+  })
+
+  it('enviar_url gera uma ação "url" com texto, link e rótulo do botão', () => {
+    const grafo = fluxoComUmNoAutomatico(no({ id: 'url', tipo: 'enviar_url', texto: 'Veja nosso catálogo:', url: 'https://exemplo.com', botaoLabel: 'Ver mais' }))
+    expect(iniciarFluxo(grafo)).toEqual({
+      acao: 'encerrar',
+      acoes: [{ tipo: 'url', texto: 'Veja nosso catálogo:', url: 'https://exemplo.com', label: 'Ver mais' }],
+    })
+  })
+
+  it('enviar_url sem rótulo definido cai pro rótulo padrão "Abrir link"', () => {
+    const grafo = fluxoComUmNoAutomatico(no({ id: 'url', tipo: 'enviar_url', texto: 'Veja:', url: 'https://exemplo.com' }))
+    const resultado = iniciarFluxo(grafo)
+    expect(resultado.acoes).toEqual([{ tipo: 'url', texto: 'Veja:', url: 'https://exemplo.com', label: 'Abrir link' }])
+  })
+
+  it('enviar_email gera uma ação "email" com destinatário, assunto e corpo', () => {
+    const grafo = fluxoComUmNoAutomatico(no({ id: 'mail', tipo: 'enviar_email', emailDestinatario: 'a@b.com', emailAssunto: 'Novo lead', texto: 'Chegou um lead novo' }))
+    expect(iniciarFluxo(grafo)).toEqual({
+      acao: 'encerrar',
+      acoes: [{ tipo: 'email', destinatario: 'a@b.com', assunto: 'Novo lead', corpo: 'Chegou um lead novo' }],
+    })
+  })
+
+  it('nota_interna gera uma ação "nota" com o estilo escolhido (padrão "info")', () => {
+    const grafo = fluxoComUmNoAutomatico(no({ id: 'nota', tipo: 'nota_interna', texto: 'Cliente parece irritado', estiloNota: 'alerta' }))
+    expect(iniciarFluxo(grafo)).toEqual({ acao: 'encerrar', acoes: [{ tipo: 'nota', texto: 'Cliente parece irritado', estilo: 'alerta' }] })
+  })
+
+  it('gerar_qrcode gera uma ação "qrcode" com o conteúdo a codificar', () => {
+    const grafo = fluxoComUmNoAutomatico(no({ id: 'qr', tipo: 'gerar_qrcode', texto: 'https://exemplo.com/pix' }))
+    expect(iniciarFluxo(grafo)).toEqual({ acao: 'encerrar', acoes: [{ tipo: 'qrcode', conteudo: 'https://exemplo.com/pix' }] })
+  })
+
+  it('adicionar_etiqueta gera uma ação "etiqueta"', () => {
+    const grafo = fluxoComUmNoAutomatico(no({ id: 'tag', tipo: 'adicionar_etiqueta', etiqueta: 'Lead quente' }))
+    expect(iniciarFluxo(grafo)).toEqual({ acao: 'encerrar', acoes: [{ tipo: 'etiqueta', valor: 'Lead quente' }] })
+  })
+
+  it('gerar_protocolo sempre gera uma ação "protocolo", com ou sem mensagem', () => {
+    const comMensagem = fluxoComUmNoAutomatico(no({ id: 'proto', tipo: 'gerar_protocolo', texto: 'Seu protocolo: {{protocolo}}' }))
+    expect(iniciarFluxo(comMensagem)).toEqual({ acao: 'encerrar', acoes: [{ tipo: 'protocolo', mensagem: 'Seu protocolo: {{protocolo}}' }] })
+
+    const semMensagem = fluxoComUmNoAutomatico(no({ id: 'proto', tipo: 'gerar_protocolo' }))
+    expect(iniciarFluxo(semMensagem)).toEqual({ acao: 'encerrar', acoes: [{ tipo: 'protocolo', mensagem: null }] })
+  })
+})
+
+describe('fluxo com nó de solicitar_localizacao', () => {
+  function fluxoComLocalizacao(): Pick<Fluxo, 'nodes' | 'edges'> {
+    const nodes: FluxoNode[] = [
+      no({ id: 'inicio', tipo: 'inicio' }),
+      no({ id: 'pede-local', tipo: 'solicitar_localizacao', texto: 'Pode compartilhar sua localização?', variavel: 'localizacao' }),
+      no({ id: 'fim', tipo: 'fim' }),
+    ]
+    const edges: FluxoEdge[] = [
+      aresta({ id: 'e1', origem: 'inicio', destino: 'pede-local' }),
+      aresta({ id: 'e2', origem: 'pede-local', destino: 'fim' }),
+    ]
+    return { nodes, edges }
+  }
+
+  it('para no nó e gera uma ação "localizacao" (não "texto") pra virar o botão nativo de compartilhar local', () => {
+    expect(iniciarFluxo(fluxoComLocalizacao())).toEqual({
+      acao: 'enviar_e_aguardar',
+      acoes: [{ tipo: 'localizacao', texto: 'Pode compartilhar sua localização?' }],
+      noId: 'pede-local',
+    })
+  })
+
+  it('aceita qualquer resposta (como coleta) e segue em frente', () => {
+    const resultado = continuarFluxo(fluxoComLocalizacao(), 'pede-local', '📍 https://www.google.com/maps?q=-23.5,-46.6')
+    expect(resultado).toEqual({ acao: 'encerrar', acoes: [] })
   })
 })

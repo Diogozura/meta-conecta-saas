@@ -215,6 +215,72 @@ export async function sendListMessage(
   return res.json()
 }
 
+/** Envia mensagem com um botão de call-to-action que abre uma URL — a Cloud API não tem botão de "copiar" fora de templates, só link. */
+export async function sendCtaUrlMessage(
+  phoneNumberId: string,
+  accessToken: string,
+  to: string,
+  bodyText: string,
+  url: string,
+  buttonLabel: string,
+) {
+  const res = await fetch(`${GRAPH_API}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'cta_url',
+        body: { text: bodyText },
+        action: { name: 'cta_url', parameters: { display_text: buttonLabel, url } },
+      },
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new MetaApiError(err?.error?.message ?? 'Falha ao enviar mensagem com link', err?.error?.code)
+  }
+  return res.json()
+}
+
+/** Envia mensagem com um botão que abre o seletor de localização do WhatsApp — a resposta do cliente chega como uma mensagem type "location" (ver webhook). */
+export async function sendLocationRequestMessage(
+  phoneNumberId: string,
+  accessToken: string,
+  to: string,
+  bodyText: string,
+) {
+  const res = await fetch(`${GRAPH_API}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'location_request_message',
+        body: { text: bodyText },
+        action: { name: 'send_location' },
+      },
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new MetaApiError(err?.error?.message ?? 'Falha ao solicitar localização', err?.error?.code)
+  }
+  return res.json()
+}
+
 export interface MediaInfo {
   url: string
   mimeType: string
