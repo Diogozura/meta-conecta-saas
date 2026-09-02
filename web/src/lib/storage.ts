@@ -11,14 +11,19 @@
 
 import { put, del } from '@vercel/blob'
 
-/** Sobe uma foto em `instagram/{contaId}/{timestamp}` e devolve a URL pública do Blob. */
+/**
+ * Sobe uma foto em `instagram/{contaId}/{timestamp}[-suffix]` e devolve a URL pública do Blob.
+ * O `suffix` evita colisão de nome quando várias fotos de um carrossel (ou a capa de um Reels)
+ * são enviadas no mesmo milissegundo.
+ */
 export async function uploadInstagramPhoto(
   contaId: string,
   buffer: Buffer,
   contentType: string,
+  suffix?: string,
 ): Promise<{ url: string; path: string }> {
   const ext = contentType === 'image/png' ? 'png' : 'jpg'
-  const pathname = `instagram/${contaId}/${Date.now()}.${ext}`
+  const pathname = `instagram/${contaId}/${Date.now()}${suffix ? `-${suffix}` : ''}.${ext}`
 
   const blob = await put(pathname, buffer, {
     access: 'public',

@@ -32,6 +32,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const published = await publishContainer(credentials.accessToken, credentials.igUserId, publicacao.containerId)
       await atualizarPublicacaoInstagram(session.user.contaId, id, { status: 'publicado', mediaId: published.id, publicadoEm: new Date() })
       if (publicacao.mediaPath) await deleteInstagramPhoto(publicacao.mediaPath)
+      await Promise.all((publicacao.mediaPaths ?? []).map((p) => deleteInstagramPhoto(p)))
+      if (publicacao.coverPath) await deleteInstagramPhoto(publicacao.coverPath)
       return NextResponse.json({ publicacao: { ...publicacao, status: 'publicado', mediaId: published.id } })
     }
 
@@ -39,6 +41,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const erro = `Processamento falhou (${status_code})`
       await atualizarPublicacaoInstagram(session.user.contaId, id, { status: 'falhou', erro })
       if (publicacao.mediaPath) await deleteInstagramPhoto(publicacao.mediaPath)
+      await Promise.all((publicacao.mediaPaths ?? []).map((p) => deleteInstagramPhoto(p)))
+      if (publicacao.coverPath) await deleteInstagramPhoto(publicacao.coverPath)
       return NextResponse.json({ publicacao: { ...publicacao, status: 'falhou', erro } })
     }
 

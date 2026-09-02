@@ -442,9 +442,16 @@ export interface PublicacaoInstagram {
   contaId: string
   containerId?: string           // ID do container de mídia (Graph API)
   mediaId?: string                // ID da publicação, depois de publicada
-  tipo: 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES'
+  tipo: 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES' | 'CAROUSEL'
   mediaPath?: string               // Caminho no Vercel Blob (só foto) — usado pra apagar o arquivo temporário depois
+  mediaPaths?: string[]            // Mesma coisa, mas pra carrossel (um por foto)
+  coverPath?: string               // Caminho no Vercel Blob da capa personalizada (só Reels)
+  itemCount?: number               // Quantidade de itens do carrossel
   caption?: string
+  altText?: string
+  collaborators?: string[]
+  isAiGenerated?: boolean
+  shareToFeed?: boolean            // Só Reels: também aparece no Feed além da aba Reels
   status: 'enviando' | 'processando' | 'publicado' | 'falhou'
   erro?: string
   dataCriacao: Date
