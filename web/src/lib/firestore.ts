@@ -1656,3 +1656,9 @@ export async function listarPublicacoesInstagram(contaId: string, limit = 30): P
   return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as PublicacaoInstagram))
 }
 
+/** Remove só o registro do histórico do painel — não apaga a publicação real no Instagram. */
+export async function excluirPublicacaoInstagram(contaId: string, publicacaoId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('publicacoesInstagram').doc(publicacaoId).delete()
+}
+
