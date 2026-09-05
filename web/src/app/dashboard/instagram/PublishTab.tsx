@@ -21,20 +21,28 @@ import {
   Send,
   Hash,
   Layers,
+  Droplet,
+  FileText,
+  PenLine,
+  AlertTriangle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
 import CropEditor, { CropThumb, exportCroppedFile, DEFAULT_CROP, type CropSettings } from './CropEditor'
+import { encontrarHashtagsArriscadas } from '@/lib/hashtagsArriscadas'
 
 type PublishType = 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES' | 'CAROUSEL'
 type WizardStep = 'upload' | 'crop' | 'share'
-type BlockKey = 'collaborators' | 'altText' | 'ai' | 'hashtags'
+type BlockKey = 'collaborators' | 'altText' | 'ai' | 'hashtags' | 'watermark' | 'captionTemplate' | 'signature'
 
 const BLOCK_DEFS: { key: BlockKey; label: string; icon: typeof Users }[] = [
   { key: 'collaborators', label: 'Colaboradores', icon: Users },
   { key: 'altText', label: 'Texto alternativo', icon: Type },
   { key: 'ai', label: 'Conteúdo por IA', icon: Sparkles },
   { key: 'hashtags', label: 'Hashtags salvas', icon: Hash },
+  { key: 'captionTemplate', label: 'Modelo de legenda', icon: FileText },
+  { key: 'watermark', label: 'Marca d’água', icon: Droplet },
+  { key: 'signature', label: 'Assinatura', icon: PenLine },
 ]
 
 interface ConjuntoHashtags {
@@ -42,6 +50,24 @@ interface ConjuntoHashtags {
   nome: string
   hashtags: string
 }
+
+interface ModeloLegenda {
+  id: string
+  nome: string
+  gancho: string
+  corpo: string
+  cta: string
+}
+
+interface InstagramPublishConfig {
+  assinatura?: string
+  assinaturaAtiva?: boolean
+  marcaDaguaUrl?: string
+  marcaDaguaAtiva?: boolean
+}
+
+const HASHTAG_LIMIT = 30
+const MENTION_LIMIT = 20
 
 const INTERVALO_LOTE_OPTIONS = [
   { value: 1, label: 'Diariamente' },
@@ -143,6 +169,16 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [lotePrimeiraData, setLotePrimeiraData] = useState('')
   const [loteIntervalo, setLoteIntervalo] = useState(1)
   const [loteSaving, setLoteSaving] = useState(false)
+  const [publishConfig, setPublishConfig] = useState<InstagramPublishConfig>({})
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [applyWatermark, setApplyWatermark] = useState(false)
+  const [modelosLegenda, setModelosLegenda] = useState<ModeloLegenda[] | null>(null)
+  const [novoModeloNome, setNovoModeloNome] = useState('')
+  const [novoModeloGancho, setNovoModeloGancho] = useState('')
+  const [novoModeloCorpo, setNovoModeloCorpo] = useState('')
+  const [novoModeloCta, setNovoModeloCta] = useState('')
+  const [assinaturaInput, setAssinaturaInput] = useState('')
+  const [assinaturaAutoInput, setAssinaturaAutoInput] = useState(false)
 
   const activeType = TYPE_OPTIONS.find((t) => t.key === tipo)!
   const isCarousel = tipo === 'CAROUSEL'
@@ -157,6 +193,9 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   useEffect(() => () => { if (coverPreview) URL.revokeObjectURL(coverPreview) }, [coverPreview])
 
   const collaboratorsCount = collaboratorsInput.split(',').map((u) => u.trim()).filter(Boolean).length
+  const hashtagCount = useMemo(() => (caption.match(/#[\p{L}0-9_]+/gu) ?? []).length, [caption])
+  const mentionCount = useMemo(() => (caption.match(/@[\p{L}0-9_.]+/gu) ?? []).length, [caption])
+  const hashtagsArriscadas = useMemo(() => encontrarHashtagsArriscadas(caption), [caption])
 
   async function loadHistory() {
     try {
@@ -178,6 +217,25 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       return
     }
     loadHistory()
+  }, [connected])
+
+  // Carrega a assinatura/marca d'água salvas da conta — e já pré-preenche a legenda com a
+  // assinatura se "incluir automaticamente" estiver ativo (fica só como texto normal, editável).
+  useEffect(() => {
+    if (!connected) return
+    fetch('/api/conta/instagram-publish-config')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { config: InstagramPublishConfig } | null) => {
+        const config = data?.config ?? {}
+        setPublishConfig(config)
+        setAssinaturaInput(config.assinatura ?? '')
+        setAssinaturaAutoInput(!!config.assinaturaAtiva)
+        setApplyWatermark(!!config.marcaDaguaAtiva)
+        if (config.assinaturaAtiva && config.assinatura) {
+          setCaption((prev) => (prev ? prev : config.assinatura!))
+        }
+      })
+      .catch(() => {})
   }, [connected])
 
   // Continua consultando publicações "processando" (vídeo/reels/carrossel ainda processando na Meta)
@@ -203,7 +261,10 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   }, [publicacoes])
 
   function addFiles(list: FileList | File[]) {
-    const incoming = Array.from(list).map((file) => ({ file, crop: { ...DEFAULT_CROP } }))
+    // Stories/Reels têm um formato vertical único de verdade (9:16) — feed é mais tolerante
+    // (a Meta aceita de 4:5 a 1.91:1), então só forçamos um aspecto padrão nesses dois tipos.
+    const aspectoPadrao = tipo === 'STORIES' || tipo === 'REELS' ? '9:16' : DEFAULT_CROP.aspect
+    const incoming = Array.from(list).map((file) => ({ file, crop: { ...DEFAULT_CROP, aspect: aspectoPadrao } }))
     if (incoming.length === 0) return
     if (isCarousel) {
       setItems((prev) => [...prev, ...incoming].slice(0, MAX_CAROUSEL_ITEMS))
@@ -261,6 +322,71 @@ export default function PublishTab({ connected }: { connected: boolean }) {
         .then((data: { conjuntos: ConjuntoHashtags[] } | null) => setConjuntosHashtags(data?.conjuntos ?? []))
         .catch(() => setConjuntosHashtags([]))
     }
+    if (key === 'captionTemplate' && modelosLegenda === null) {
+      fetch('/api/caption-templates')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { modelos: ModeloLegenda[] } | null) => setModelosLegenda(data?.modelos ?? []))
+        .catch(() => setModelosLegenda([]))
+    }
+  }
+
+  function aplicarModeloLegenda(m: ModeloLegenda) {
+    const texto = [m.gancho, m.corpo, m.cta].filter(Boolean).join('\n\n')
+    if (caption.trim() && !window.confirm('Substituir a legenda atual pelo modelo escolhido?')) return
+    setCaption(texto)
+  }
+
+  async function handleCriarModeloLegenda() {
+    if (!novoModeloNome.trim() || (!novoModeloGancho.trim() && !novoModeloCorpo.trim() && !novoModeloCta.trim())) return
+    try {
+      const res = await fetch('/api/caption-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: novoModeloNome.trim(), gancho: novoModeloGancho.trim(), corpo: novoModeloCorpo.trim(), cta: novoModeloCta.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao salvar')
+      setModelosLegenda((prev) => [...(prev ?? []), json.modelo])
+      setNovoModeloNome('')
+      setNovoModeloGancho('')
+      setNovoModeloCorpo('')
+      setNovoModeloCta('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar modelo de legenda')
+    }
+  }
+
+  async function handleSalvarAssinatura() {
+    try {
+      const res = await fetch('/api/conta/instagram-publish-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assinatura: assinaturaInput, assinaturaAtiva: assinaturaAutoInput }),
+      })
+      if (!res.ok) throw new Error('Erro ao salvar assinatura')
+      setPublishConfig((prev) => ({ ...prev, assinatura: assinaturaInput, assinaturaAtiva: assinaturaAutoInput }))
+      toast.success('Assinatura salva.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar assinatura')
+    }
+  }
+
+  async function handleUploadLogo(file: File) {
+    setUploadingLogo(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/conta/instagram-publish-config/logo', { method: 'POST', body: formData })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao subir o logo')
+      setPublishConfig((prev) => ({ ...prev, marcaDaguaUrl: json.marcaDaguaUrl, marcaDaguaAtiva: true }))
+      setApplyWatermark(true)
+      toast.success('Logo salvo — vai aparecer como marca d’água nas publicações.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao subir o logo')
+    } finally {
+      setUploadingLogo(false)
+    }
   }
 
   function inserirHashtags(texto: string) {
@@ -311,8 +437,9 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   }
 
   async function buildFormData(): Promise<FormData> {
+    const marcaDagua = { url: publishConfig.marcaDaguaUrl ?? '', ativa: applyWatermark && !!publishConfig.marcaDaguaUrl }
     const finalFiles = await Promise.all(
-      items.map((it) => (isImageFile(it.file) ? exportCroppedFile(it.file, it.crop) : Promise.resolve(it.file))),
+      items.map((it) => (isImageFile(it.file) ? exportCroppedFile(it.file, it.crop, marcaDagua) : Promise.resolve(it.file))),
     )
 
     const formData = new FormData()
@@ -879,7 +1006,16 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                   className="w-full px-4 py-2 border border-ink-300 rounded-lg focus:ring-2 focus:ring-brand-400 focus:border-transparent text-sm"
                   placeholder="Escreva uma legenda (opcional)... use #hashtags e @menções"
                 />
-                <p className="mt-1 text-xs text-ink-400">Máx. 2.200 caracteres, 30 hashtags e 20 menções.</p>
+                <p className="mt-1 text-xs flex flex-wrap gap-x-3">
+                  <span className={hashtagCount > HASHTAG_LIMIT ? 'text-red-600 font-medium' : 'text-ink-400'}>{hashtagCount}/{HASHTAG_LIMIT} hashtags</span>
+                  <span className={mentionCount > MENTION_LIMIT ? 'text-red-600 font-medium' : 'text-ink-400'}>{mentionCount}/{MENTION_LIMIT} menções</span>
+                </p>
+                {hashtagsArriscadas.length > 0 && (
+                  <p className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-md px-2.5 py-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>Frequentemente sinalizadas por uso excessivo (não é confirmação de shadowban): {hashtagsArriscadas.map((h) => `#${h}`).join(', ')}</span>
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1004,6 +1140,92 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                     <button type="button" onClick={handleCriarConjuntoHashtags} className="px-2 py-1 bg-brand-600 text-white text-xs rounded hover:bg-brand-700 shrink-0">
                       Salvar
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {enabledBlocks.has('captionTemplate') && (
+                <div className="rounded-lg border border-ink-200 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-1.5 text-sm text-ink-700"><FileText className="w-3.5 h-3.5 text-ink-400" /> Modelo de legenda</label>
+                    <button type="button" onClick={() => removeBlock('captionTemplate')} className="text-ink-400 hover:text-red-600" aria-label="Remover modelo de legenda"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                  {modelosLegenda === null && <p className="text-xs text-ink-400">Carregando...</p>}
+                  {modelosLegenda?.length === 0 && <p className="text-xs text-ink-400">Nenhum modelo salvo ainda — crie um abaixo.</p>}
+                  {modelosLegenda && modelosLegenda.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {modelosLegenda.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => aplicarModeloLegenda(m)}
+                          className="px-2.5 py-1 rounded-full bg-ink-100 hover:bg-brand-100 hover:text-brand-700 text-xs text-ink-700 transition-colors"
+                          title={[m.gancho, m.corpo, m.cta].filter(Boolean).join(' · ')}
+                        >
+                          {m.nome}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="space-y-1.5 pt-2 border-t border-ink-100">
+                    <input type="text" value={novoModeloNome} onChange={(e) => setNovoModeloNome(e.target.value)} placeholder="Nome do modelo" className="w-full px-2 py-1 border border-ink-200 rounded text-xs" />
+                    <input type="text" value={novoModeloGancho} onChange={(e) => setNovoModeloGancho(e.target.value)} placeholder="Gancho (primeira frase)" className="w-full px-2 py-1 border border-ink-200 rounded text-xs" />
+                    <input type="text" value={novoModeloCorpo} onChange={(e) => setNovoModeloCorpo(e.target.value)} placeholder="Corpo" className="w-full px-2 py-1 border border-ink-200 rounded text-xs" />
+                    <div className="flex items-center gap-1.5">
+                      <input type="text" value={novoModeloCta} onChange={(e) => setNovoModeloCta(e.target.value)} placeholder="Chamada pra ação" className="flex-1 px-2 py-1 border border-ink-200 rounded text-xs" />
+                      <button type="button" onClick={handleCriarModeloLegenda} className="px-2 py-1 bg-brand-600 text-white text-xs rounded hover:bg-brand-700 shrink-0">Salvar</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {enabledBlocks.has('watermark') && (
+                <div className="rounded-lg border border-ink-200 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-1.5 text-sm text-ink-700"><Droplet className="w-3.5 h-3.5 text-ink-400" /> Marca d’água</label>
+                    <button type="button" onClick={() => removeBlock('watermark')} className="text-ink-400 hover:text-red-600" aria-label="Remover marca d’água"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                  {publishConfig.marcaDaguaUrl ? (
+                    <div className="flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- preview do logo já hospedado, não passa pelo otimizador do Next */}
+                      <img src={publishConfig.marcaDaguaUrl} alt="" className="w-10 h-10 object-contain rounded border border-ink-200 bg-white shrink-0" />
+                      <label className="flex items-center gap-2 text-xs text-ink-600 cursor-pointer">
+                        <input type="checkbox" checked={applyWatermark} onChange={(e) => setApplyWatermark(e.target.checked)} className="w-4 h-4 accent-brand-600" />
+                        Aplicar nesta publicação (canto inferior direito)
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="inline-flex items-center gap-2 px-3 py-2 border border-dashed border-ink-300 rounded-lg cursor-pointer hover:bg-ink-50 text-xs text-ink-600">
+                      {uploadingLogo ? <Loader2 className="w-4 h-4 animate-spin text-ink-400" /> : <UploadCloud className="w-4 h-4 text-ink-400" />}
+                      {uploadingLogo ? 'Enviando...' : 'Enviar logo da empresa'}
+                      <input type="file" accept="image/jpeg,image/png" className="hidden" disabled={uploadingLogo} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadLogo(f) }} />
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {enabledBlocks.has('signature') && (
+                <div className="rounded-lg border border-ink-200 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-1.5 text-sm text-ink-700"><PenLine className="w-3.5 h-3.5 text-ink-400" /> Assinatura</label>
+                    <button type="button" onClick={() => removeBlock('signature')} className="text-ink-400 hover:text-red-600" aria-label="Remover assinatura"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                  <textarea
+                    value={assinaturaInput}
+                    onChange={(e) => setAssinaturaInput(e.target.value)}
+                    rows={2}
+                    placeholder="Ex: 📍 São Paulo | zybot.com.br"
+                    className="w-full px-2.5 py-1.5 border border-ink-200 rounded text-xs"
+                  />
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 text-xs text-ink-600 cursor-pointer">
+                      <input type="checkbox" checked={assinaturaAutoInput} onChange={(e) => setAssinaturaAutoInput(e.target.checked)} className="w-4 h-4 accent-brand-600" />
+                      Incluir automaticamente em novos posts
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setCaption((prev) => (prev ? `${prev}\n\n${assinaturaInput}` : assinaturaInput))} className="text-xs text-ink-600 hover:text-brand-700">Inserir agora</button>
+                      <button type="button" onClick={handleSalvarAssinatura} className="px-2 py-1 bg-brand-600 text-white text-xs rounded hover:bg-brand-700">Salvar padrão</button>
+                    </div>
                   </div>
                 </div>
               )}

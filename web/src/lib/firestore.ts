@@ -5,7 +5,7 @@
 
 import { getFirestore, Timestamp, Query, Filter, FieldValue } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, ContaAiConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, ConjuntoHashtags, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
+import { Conta, ContaAiConfig, InstagramPublishConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, ConjuntoHashtags, ModeloLegenda, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -1198,6 +1198,43 @@ export async function atualizarConjuntoHashtags(contaId: string, id: string, dat
 export async function excluirConjuntoHashtags(contaId: string, id: string): Promise<void> {
   const db = getDb()
   await db.collection('contas').doc(contaId).collection('conjuntosHashtags').doc(id).delete()
+}
+
+// ─────────────────────────────────────────
+// MODELOS DE LEGENDA (Subcoleção: contas/{contaId}/modelosLegenda)
+// ─────────────────────────────────────────
+
+export async function criarModeloLegenda(contaId: string, data: Omit<ModeloLegenda, 'id' | 'contaId' | 'dataCadastro'>): Promise<ModeloLegenda> {
+  const db = getDb()
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('modelosLegenda').add({ contaId, ...data, dataCadastro: now })
+  return { id: docRef.id, contaId, ...data, dataCadastro: now.toDate() }
+}
+
+export async function listarModelosLegenda(contaId: string): Promise<ModeloLegenda[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('modelosLegenda').orderBy('nome', 'asc').get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as ModeloLegenda))
+}
+
+export async function atualizarModeloLegenda(contaId: string, id: string, data: Partial<Pick<ModeloLegenda, 'nome' | 'gancho' | 'corpo' | 'cta'>>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('modelosLegenda').doc(id).update(data)
+}
+
+export async function excluirModeloLegenda(contaId: string, id: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('modelosLegenda').doc(id).delete()
+}
+
+// ─────────────────────────────────────────
+// CONFIGURAÇÃO DE PUBLICAÇÃO DO INSTAGRAM (campo instagramPublishConfig em Conta)
+// ─────────────────────────────────────────
+
+export async function atualizarInstagramPublishConfig(contaId: string, data: Partial<InstagramPublishConfig>): Promise<void> {
+  const db = getDb()
+  const atual = (await db.collection('contas').doc(contaId).get()).data()?.instagramPublishConfig ?? {}
+  await db.collection('contas').doc(contaId).update({ instagramPublishConfig: { ...atual, ...data } })
 }
 
 // ─────────────────────────────────────────

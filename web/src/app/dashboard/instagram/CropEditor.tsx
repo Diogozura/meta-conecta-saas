@@ -3,25 +3,42 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Maximize2, ZoomIn } from 'lucide-react'
 
-export type AspectKey = 'original' | '1:1' | '4:5' | '16:9'
+export type AspectKey = 'original' | '1:1' | '4:5' | '16:9' | '9:16'
+
+export interface OverlayTextSettings {
+  text: string
+  xPct: number
+  yPct: number
+  sizePx: number
+  color: string
+}
 
 export interface CropSettings {
   aspect: AspectKey
   zoom: number
   panX: number
   panY: number
+  brightness: number // 100 = normal
+  contrast: number // 100 = normal
+  saturation: number // 100 = normal
+  overlayText?: OverlayTextSettings
 }
 
-export const DEFAULT_CROP: CropSettings = { aspect: 'original', zoom: 1, panX: 0, panY: 0 }
+export const DEFAULT_CROP: CropSettings = { aspect: 'original', zoom: 1, panX: 0, panY: 0, brightness: 100, contrast: 100, saturation: 100 }
 
 const ASPECT_OPTIONS: { key: AspectKey; label: string; ratio?: number }[] = [
   { key: 'original', label: 'Original' },
   { key: '1:1', label: '1:1', ratio: 1 },
   { key: '4:5', label: '4:5', ratio: 4 / 5 },
   { key: '16:9', label: '16:9', ratio: 16 / 9 },
+  { key: '9:16', label: '9:16', ratio: 9 / 16 },
 ]
 
 const STAGE_WIDTH = 340
+
+function buildFilterCss(s: Pick<CropSettings, 'brightness' | 'contrast' | 'saturation'>): string {
+  return `brightness(${s.brightness}%) contrast(${s.contrast}%) saturate(${s.saturation}%)`
+}
 
 function useImageSize(url: string) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null)
@@ -68,8 +85,24 @@ export function CropThumb({ url, settings, size = 64 }: { url: string; settings:
         alt=""
         draggable={false}
         className="absolute top-0 left-0 max-w-none"
-        style={{ width: scaledW, height: scaledH, transform: `translate(${settings.panX * factor}px, ${settings.panY * factor}px)` }}
+        style={{ width: scaledW, height: scaledH, transform: `translate(${settings.panX * factor}px, ${settings.panY * factor}px)`, filter: buildFilterCss(settings) }}
       />
+      {settings.overlayText?.text && (
+        <span
+          className="absolute font-bold whitespace-pre-wrap pointer-events-none"
+          style={{
+            left: `${settings.overlayText.xPct * 100}%`,
+            top: `${settings.overlayText.yPct * 100}%`,
+            fontSize: settings.overlayText.sizePx * factor,
+            color: settings.overlayText.color,
+            transform: 'translate(-50%, -50%)',
+            textShadow: '0 1px 2px rgba(0,0,0,0.6)',
+            maxWidth: '90%',
+          }}
+        >
+          {settings.overlayText.text}
+        </span>
+      )}
     </div>
   )
 }
@@ -86,6 +119,7 @@ export default function CropEditor({ url, settings, onChange }: CropEditorProps)
   const ratio = stageRatio(settings.aspect, natural)
   const stageH = Math.round(STAGE_WIDTH / ratio)
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null)
+  const textDragRef = useRef<{ startX: number; startY: number; xPct: number; yPct: number } | null>(null)
 
   const baseScale = useMemo(() => {
     if (!natural) return 1
@@ -120,6 +154,32 @@ export default function CropEditor({ url, settings, onChange }: CropEditorProps)
     dragRef.current = null
   }
 
+  function onTextPointerDown(e: React.PointerEvent) {
+    e.stopPropagation()
+    if (!settings.overlayText) return
+    ;(e.target as Element).setPointerCapture(e.pointerId)
+    textDragRef.current = { startX: e.clientX, startY: e.clientY, xPct: settings.overlayText.xPct, yPct: settings.overlayText.yPct }
+  }
+
+  function onTextPointerMove(e: React.PointerEvent) {
+    e.stopPropagation()
+    if (!textDragRef.current || !settings.overlayText) return
+    const xPct = Math.min(1, Math.max(0, textDragRef.current.xPct + (e.clientX - textDragRef.current.startX) / STAGE_WIDTH))
+    const yPct = Math.min(1, Math.max(0, textDragRef.current.yPct + (e.clientY - textDragRef.current.startY) / stageH))
+    onChange({ ...settings, overlayText: { ...settings.overlayText, xPct, yPct } })
+  }
+
+  function onTextPointerUp(e: React.PointerEvent) {
+    e.stopPropagation()
+    textDragRef.current = null
+  }
+
+  function setOverlayText(patch: Partial<OverlayTextSettings>) {
+    const base = settings.overlayText ?? { text: '', xPct: 0.5, yPct: 0.5, sizePx: 28, color: '#ffffff' }
+    const next = { ...base, ...patch }
+    onChange({ ...settings, overlayText: next.text ? next : undefined })
+  }
+
   return (
     <div className="flex flex-col items-center gap-4">
       <div
@@ -136,8 +196,29 @@ export default function CropEditor({ url, settings, onChange }: CropEditorProps)
           alt=""
           draggable={false}
           className="absolute top-0 left-0 max-w-none"
-          style={{ width: scaledW, height: scaledH, transform: `translate(${settings.panX}px, ${settings.panY}px)` }}
+          style={{ width: scaledW, height: scaledH, transform: `translate(${settings.panX}px, ${settings.panY}px)`, filter: buildFilterCss(settings) }}
         />
+        {settings.overlayText?.text && (
+          <div
+            onPointerDown={onTextPointerDown}
+            onPointerMove={onTextPointerMove}
+            onPointerUp={onTextPointerUp}
+            className="absolute font-bold whitespace-pre-wrap select-none"
+            style={{
+              left: `${settings.overlayText.xPct * 100}%`,
+              top: `${settings.overlayText.yPct * 100}%`,
+              fontSize: settings.overlayText.sizePx,
+              color: settings.overlayText.color,
+              transform: 'translate(-50%, -50%)',
+              textShadow: '0 1px 3px rgba(0,0,0,0.6)',
+              maxWidth: '90%',
+              cursor: 'move',
+              touchAction: 'none',
+            }}
+          >
+            {settings.overlayText.text}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap justify-center">
@@ -168,13 +249,76 @@ export default function CropEditor({ url, settings, onChange }: CropEditorProps)
           className="w-full accent-brand-600"
         />
       </div>
+
+      <div className="w-full max-w-xs space-y-2 border-t border-ink-100 pt-3">
+        {([
+          { key: 'brightness' as const, label: 'Brilho', min: 60, max: 140 },
+          { key: 'contrast' as const, label: 'Contraste', min: 60, max: 140 },
+          { key: 'saturation' as const, label: 'Saturação', min: 0, max: 200 },
+        ]).map((s) => (
+          <div key={s.key} className="flex items-center gap-3">
+            <span className="text-xs text-ink-500 w-16 shrink-0">{s.label}</span>
+            <input
+              type="range"
+              min={s.min}
+              max={s.max}
+              value={settings[s.key]}
+              onChange={(e) => onChange({ ...settings, [s.key]: Number(e.target.value) })}
+              className="w-full accent-brand-600"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="w-full max-w-xs space-y-2 border-t border-ink-100 pt-3">
+        <label className="text-xs font-medium text-ink-600">Texto sobreposto (opcional)</label>
+        <input
+          type="text"
+          value={settings.overlayText?.text ?? ''}
+          onChange={(e) => setOverlayText({ text: e.target.value })}
+          placeholder="Escreva algo pra sobrepor na imagem"
+          className="w-full px-2.5 py-1.5 border border-ink-200 rounded text-sm"
+        />
+        {settings.overlayText?.text && (
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={14}
+              max={64}
+              value={settings.overlayText.sizePx}
+              onChange={(e) => setOverlayText({ sizePx: Number(e.target.value) })}
+              className="flex-1 accent-brand-600"
+            />
+            <div className="flex gap-1.5 shrink-0">
+              {['#ffffff', '#000000', '#16a34a'].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setOverlayText({ color: c })}
+                  className={`w-5 h-5 rounded-full border-2 ${settings.overlayText?.color === c ? 'border-brand-600' : 'border-ink-200'}`}
+                  style={{ background: c }}
+                  aria-label={`Cor ${c}`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-/** Gera o arquivo final já cortado, renderizando a região visível do palco em um canvas. */
-export async function exportCroppedFile(file: File, settings: CropSettings): Promise<File> {
-  if (settings.aspect === 'original' && settings.zoom === 1 && settings.panX === 0 && settings.panY === 0) {
+/**
+ * Gera o arquivo final já cortado, renderizando a região visível do palco em um canvas —
+ * aplica filtro (brilho/contraste/saturação), texto sobreposto e marca d'água, nessa ordem
+ * (o filtro é resetado antes de desenhar texto/marca, senão os dois saem borrados/tingidos).
+ */
+export async function exportCroppedFile(file: File, settings: CropSettings, marcaDagua?: { url: string; ativa: boolean }): Promise<File> {
+  const isDefaultCrop = settings.aspect === 'original' && settings.zoom === 1 && settings.panX === 0 && settings.panY === 0
+  const isDefaultFilter = settings.brightness === 100 && settings.contrast === 100 && settings.saturation === 100
+  const hasOverlay = !!settings.overlayText?.text.trim()
+  const hasWatermark = !!(marcaDagua?.ativa && marcaDagua.url)
+  if (isDefaultCrop && isDefaultFilter && !hasOverlay && !hasWatermark) {
     return file
   }
 
@@ -205,7 +349,40 @@ export async function exportCroppedFile(file: File, settings: CropSettings): Pro
     canvas.height = outputH
     const ctx = canvas.getContext('2d')
     if (!ctx) return file
+
+    ctx.filter = buildFilterCss(settings)
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outputW, outputH)
+    ctx.filter = 'none'
+
+    if (settings.overlayText?.text.trim()) {
+      const scale = outputW / STAGE_WIDTH
+      ctx.font = `bold ${settings.overlayText.sizePx * scale}px sans-serif`
+      ctx.fillStyle = settings.overlayText.color
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.shadowColor = 'rgba(0,0,0,0.6)'
+      ctx.shadowBlur = 6 * scale
+      ctx.fillText(settings.overlayText.text, settings.overlayText.xPct * outputW, settings.overlayText.yPct * outputH, outputW * 0.9)
+      ctx.shadowBlur = 0
+    }
+
+    if (hasWatermark) {
+      const logo = await new Promise<HTMLImageElement | null>((resolve) => {
+        const image = new Image()
+        image.crossOrigin = 'anonymous'
+        image.onload = () => resolve(image)
+        image.onerror = () => resolve(null)
+        image.src = marcaDagua!.url
+      })
+      if (logo) {
+        const logoW = outputW * 0.18
+        const logoH = logoW * (logo.naturalHeight / logo.naturalWidth)
+        const margin = outputW * 0.03
+        ctx.globalAlpha = 0.75
+        ctx.drawImage(logo, outputW - logoW - margin, outputH - logoH - margin, logoW, logoH)
+        ctx.globalAlpha = 1
+      }
+    }
 
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
     if (!blob) return file

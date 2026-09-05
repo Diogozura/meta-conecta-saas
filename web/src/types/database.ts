@@ -25,6 +25,16 @@ export interface Conta {
   // Colunas do Kanban do CRM leve — ausente/vazio = usa ETAPAS_PADRAO
   // (ver lib/funil.ts), mesmo padrão "ausente = default" do resto da conta.
   funilEtapas?: FunilEtapa[]
+  // Marca d'água e assinatura padrão aplicadas nas publicações do Instagram
+  // (ver PublishTab.tsx) — configurável por conta, não por publicação.
+  instagramPublishConfig?: InstagramPublishConfig
+}
+
+export interface InstagramPublishConfig {
+  assinatura?: string
+  assinaturaAtiva?: boolean
+  marcaDaguaUrl?: string
+  marcaDaguaAtiva?: boolean
 }
 
 export interface ServicosContratados {
@@ -375,12 +385,26 @@ export interface ConjuntoHashtags {
 }
 
 // ─────────────────────────────────────────
+// ModeloLegenda (Subcoleção: contas/{contaId}/modelosLegenda) — estrutura de
+// legenda reutilizável (gancho + corpo + chamada pra ação) pro Instagram.
+// ─────────────────────────────────────────
+export interface ModeloLegenda {
+  id: string
+  contaId: string
+  nome: string // ex: "Lançamento de produto" — só pra identificar na lista
+  gancho: string
+  corpo: string
+  cta: string
+  dataCadastro: Date
+}
+
+// ─────────────────────────────────────────
 // RegistroAuditoria (Subcoleção: contas/{contaId}/auditoria) — log
 // append-only de quem mudou o quê nas configurações sensíveis da conta
 // (fluxo de atendimento, respostas rápidas, equipe/atendentes). Não cobre
 // TUDO no sistema, só o que afeta como a conta atende os clientes.
 // ─────────────────────────────────────────
-export type AuditoriaEntidade = 'fluxo' | 'resposta_rapida' | 'atendente' | 'dados_cliente' | 'conjunto_hashtags'
+export type AuditoriaEntidade = 'fluxo' | 'resposta_rapida' | 'atendente' | 'dados_cliente' | 'conjunto_hashtags' | 'modelo_legenda'
 export type AuditoriaAcao = 'criar' | 'atualizar' | 'excluir' | 'ativar' | 'convidar'
 
 export interface RegistroAuditoria {

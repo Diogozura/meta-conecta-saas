@@ -55,6 +55,18 @@ const MEDIA_EXTENSIONS: Record<string, string> = {
  * onde o arquivo (foto ou vídeo) precisa ficar hospedado por mais tempo até o container ser
  * criado de verdade na hora de publicar (ver `lib/instagramPublish.ts`).
  */
+/**
+ * Sobe o logo usado como marca d'água nas publicações do Instagram (ver
+ * PublishTab.tsx). Nome de arquivo fixo (não leva timestamp) — subir um novo
+ * logo substitui o anterior no lugar, em vez de acumular arquivos órfãos.
+ */
+export async function uploadLogoMarca(contaId: string, buffer: Buffer, contentType: string): Promise<{ url: string; path: string }> {
+  const ext = contentType === 'image/png' ? 'png' : 'jpg'
+  const pathname = `instagram/${contaId}/marca-dagua.${ext}`
+  const blob = await put(pathname, buffer, { access: 'public', contentType, addRandomSuffix: false })
+  return { url: blob.url, path: blob.pathname }
+}
+
 export async function uploadInstagramMedia(
   contaId: string,
   buffer: Buffer,
