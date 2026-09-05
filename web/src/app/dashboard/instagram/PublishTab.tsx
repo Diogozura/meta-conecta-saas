@@ -12,7 +12,6 @@ import {
   X,
   ArrowLeft,
   ArrowRight,
-  ChevronDown,
   Sparkles,
   Users,
   Type,
@@ -24,6 +23,13 @@ import CropEditor, { CropThumb, exportCroppedFile, DEFAULT_CROP, type CropSettin
 
 type PublishType = 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES' | 'CAROUSEL'
 type WizardStep = 'upload' | 'crop' | 'share'
+type BlockKey = 'collaborators' | 'altText' | 'ai'
+
+const BLOCK_DEFS: { key: BlockKey; label: string; icon: typeof Users }[] = [
+  { key: 'collaborators', label: 'Colaboradores', icon: Users },
+  { key: 'altText', label: 'Texto alternativo', icon: Type },
+  { key: 'ai', label: 'Conteúdo por IA', icon: Sparkles },
+]
 
 const MIN_CAROUSEL_ITEMS = 2
 const MAX_CAROUSEL_ITEMS = 10
@@ -82,7 +88,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [isAiGenerated, setIsAiGenerated] = useState(false)
   const [shareToFeed, setShareToFeed] = useState(true)
   const [coverFile, setCoverFile] = useState<File | null>(null)
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [enabledBlocks, setEnabledBlocks] = useState<Set<BlockKey>>(new Set())
   const [dragActive, setDragActive] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publicacoes, setPublicacoes] = useState<Publicacao[]>([])
@@ -180,6 +186,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     setItems([])
     setStep('upload')
     if (next !== 'REELS') setCoverFile(null)
+    if (next !== 'IMAGE') setEnabledBlocks((prev) => { const next2 = new Set(prev); next2.delete('altText'); return next2 })
   }
 
   function resetForm() {
@@ -192,6 +199,18 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     setIsAiGenerated(false)
     setShareToFeed(true)
     setCoverFile(null)
+    setEnabledBlocks(new Set())
+  }
+
+  function addBlock(key: BlockKey) {
+    setEnabledBlocks((prev) => new Set(prev).add(key))
+  }
+
+  function removeBlock(key: BlockKey) {
+    setEnabledBlocks((prev) => { const next = new Set(prev); next.delete(key); return next })
+    if (key === 'collaborators') setCollaboratorsInput('')
+    if (key === 'altText') setAltText('')
+    if (key === 'ai') setIsAiGenerated(false)
   }
 
   function goToCropOrShare() {
@@ -537,56 +556,73 @@ export default function PublishTab({ connected }: { connected: boolean }) {
               </div>
             )}
 
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowAdvanced((v) => !v)}
-                className="flex items-center gap-1.5 text-sm font-medium text-ink-600 hover:text-ink-900"
-              >
-                <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
-                Opções avançadas
-              </button>
-
-              {showAdvanced && (
-                <div className="mt-3 space-y-4 rounded-lg border border-ink-200 p-4">
-                  {tipo === 'IMAGE' && (
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="flex items-center gap-1.5 text-sm text-ink-700"><Type className="w-3.5 h-3.5 text-ink-400" /> Texto alternativo</label>
-                        <span className={`text-xs ${altText.length > ALT_TEXT_LIMIT ? 'text-red-600' : 'text-ink-400'}`}>{altText.length}/{ALT_TEXT_LIMIT}</span>
-                      </div>
-                      <input
-                        type="text"
-                        value={altText}
-                        onChange={(e) => setAltText(e.target.value)}
-                        maxLength={ALT_TEXT_LIMIT}
-                        placeholder="Descreva a imagem para leitores de tela"
-                        className="w-full px-3 py-2 border border-ink-300 rounded-lg focus:ring-2 focus:ring-brand-400 focus:border-transparent text-sm"
-                      />
+            <div className="space-y-3">
+              {enabledBlocks.has('altText') && tipo === 'IMAGE' && (
+                <div className="rounded-lg border border-ink-200 p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="flex items-center gap-1.5 text-sm text-ink-700"><Type className="w-3.5 h-3.5 text-ink-400" /> Texto alternativo</label>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs ${altText.length > ALT_TEXT_LIMIT ? 'text-red-600' : 'text-ink-400'}`}>{altText.length}/{ALT_TEXT_LIMIT}</span>
+                      <button type="button" onClick={() => removeBlock('altText')} className="text-ink-400 hover:text-red-600" aria-label="Remover texto alternativo"><X className="w-3.5 h-3.5" /></button>
                     </div>
-                  )}
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="flex items-center gap-1.5 text-sm text-ink-700"><Users className="w-3.5 h-3.5 text-ink-400" /> Colaboradores</label>
-                      <span className={`text-xs ${collaboratorsCount > 3 ? 'text-red-600' : 'text-ink-400'}`}>{collaboratorsCount}/3</span>
-                    </div>
-                    <input
-                      type="text"
-                      value={collaboratorsInput}
-                      onChange={(e) => setCollaboratorsInput(e.target.value)}
-                      placeholder="usuario1, usuario2"
-                      className="w-full px-3 py-2 border border-ink-300 rounded-lg focus:ring-2 focus:ring-brand-400 focus:border-transparent text-sm"
-                    />
-                    <p className="mt-1 text-xs text-ink-400">Até 3 @usuários, separados por vírgula. Eles precisam aceitar o convite pra aparecer como autores.</p>
                   </div>
+                  <input
+                    type="text"
+                    value={altText}
+                    onChange={(e) => setAltText(e.target.value)}
+                    maxLength={ALT_TEXT_LIMIT}
+                    placeholder="Descreva a imagem para leitores de tela"
+                    className="w-full px-3 py-2 border border-ink-300 rounded-lg focus:ring-2 focus:ring-brand-400 focus:border-transparent text-sm"
+                  />
+                </div>
+              )}
 
+              {enabledBlocks.has('collaborators') && (
+                <div className="rounded-lg border border-ink-200 p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="flex items-center gap-1.5 text-sm text-ink-700"><Users className="w-3.5 h-3.5 text-ink-400" /> Colaboradores</label>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs ${collaboratorsCount > 3 ? 'text-red-600' : 'text-ink-400'}`}>{collaboratorsCount}/3</span>
+                      <button type="button" onClick={() => removeBlock('collaborators')} className="text-ink-400 hover:text-red-600" aria-label="Remover colaboradores"><X className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </div>
+                  <input
+                    type="text"
+                    value={collaboratorsInput}
+                    onChange={(e) => setCollaboratorsInput(e.target.value)}
+                    placeholder="usuario1, usuario2"
+                    className="w-full px-3 py-2 border border-ink-300 rounded-lg focus:ring-2 focus:ring-brand-400 focus:border-transparent text-sm"
+                  />
+                  <p className="mt-1 text-xs text-ink-400">Até 3 @usuários, separados por vírgula. Eles precisam aceitar o convite pra aparecer como autores.</p>
+                </div>
+              )}
+
+              {enabledBlocks.has('ai') && (
+                <div className="rounded-lg border border-ink-200 p-3 flex items-center justify-between">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={isAiGenerated} onChange={(e) => setIsAiGenerated(e.target.checked)} className="w-4 h-4 accent-brand-600" />
                     <span className="flex items-center gap-1.5 text-sm text-ink-700"><Sparkles className="w-3.5 h-3.5 text-ink-400" /> Conteúdo gerado por IA</span>
                   </label>
+                  <button type="button" onClick={() => removeBlock('ai')} className="text-ink-400 hover:text-red-600" aria-label="Remover selo de IA"><X className="w-3.5 h-3.5" /></button>
                 </div>
               )}
+
+              <div className="flex flex-wrap gap-2">
+                {BLOCK_DEFS.filter((b) => (b.key !== 'altText' || tipo === 'IMAGE') && !enabledBlocks.has(b.key)).map((b) => {
+                  const Icon = b.icon
+                  return (
+                    <button
+                      key={b.key}
+                      type="button"
+                      onClick={() => addBlock(b.key)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-dashed border-ink-300 text-xs font-medium text-ink-600 hover:border-brand-400 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      + {b.label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </>
         )}
