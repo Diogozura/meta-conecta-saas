@@ -1,9 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, MessageCircle, Send } from 'lucide-react'
+import { Loader2, MessageCircle, Send, MessageSquareText } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
+
+interface RespostaRapida {
+  id: string
+  atalho: string
+  texto: string
+}
 
 interface Media {
   id: string
@@ -36,6 +42,8 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
   const [loadingComments, setLoadingComments] = useState<string | null>(null)
   const [replyText, setReplyText] = useState<Record<string, string>>({})
   const [replying, setReplying] = useState<string | null>(null)
+  const [respostasRapidas, setRespostasRapidas] = useState<RespostaRapida[] | null>(null)
+  const [respostasAbertoPara, setRespostasAbertoPara] = useState<string | null>(null)
 
   useEffect(() => {
     if (!connected) {
@@ -73,6 +81,22 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
     } finally {
       setLoadingComments(null)
     }
+  }
+
+  function toggleRespostasRapidas(commentId: string) {
+    const abrindo = respostasAbertoPara !== commentId
+    setRespostasAbertoPara(abrindo ? commentId : null)
+    if (abrindo && respostasRapidas === null) {
+      fetch('/api/respostas-rapidas')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { respostas: RespostaRapida[] } | null) => setRespostasRapidas(data?.respostas ?? []))
+        .catch(() => setRespostasRapidas([]))
+    }
+  }
+
+  function inserirRespostaRapida(commentId: string, texto: string) {
+    setReplyText((prev) => ({ ...prev, [commentId]: texto }))
+    setRespostasAbertoPara(null)
   }
 
   async function handleReply(mediaId: string, commentId: string) {
@@ -143,21 +167,49 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
               {loadingComments !== m.id && comments[m.id]?.map((c) => (
                 <div key={c.id} className="bg-white rounded-lg border border-ink-200 p-3 space-y-2">
                   <p className="text-xs text-ink-900"><span className="font-semibold">{c.username ? `@${c.username}` : 'Usuário do Instagram'}</span> {c.text}</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={replyText[c.id] ?? ''}
-                      onChange={(e) => setReplyText((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                      placeholder="Responder..."
-                      className="flex-1 px-2.5 py-1.5 border border-ink-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-brand-400"
-                    />
-                    <button
-                      onClick={() => handleReply(m.id, c.id)}
-                      disabled={replying === c.id || !replyText[c.id]?.trim()}
-                      className="p-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors shrink-0"
-                    >
-                      {replying === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                    </button>
+                  <div className="relative">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleRespostasRapidas(c.id)}
+                        className="p-1.5 text-ink-400 hover:text-brand-600 rounded-lg hover:bg-ink-100 transition-colors shrink-0"
+                        title="Respostas rápidas"
+                      >
+                        <MessageSquareText className="w-3.5 h-3.5" />
+                      </button>
+                      <input
+                        type="text"
+                        value={replyText[c.id] ?? ''}
+                        onChange={(e) => setReplyText((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                        placeholder="Responder..."
+                        className="flex-1 px-2.5 py-1.5 border border-ink-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-brand-400"
+                      />
+                      <button
+                        onClick={() => handleReply(m.id, c.id)}
+                        disabled={replying === c.id || !replyText[c.id]?.trim()}
+                        className="p-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors shrink-0"
+                      >
+                        {replying === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+
+                    {respostasAbertoPara === c.id && (
+                      <div className="absolute z-10 top-full mt-1 left-0 right-0 bg-white border border-ink-200 rounded-lg shadow-lg p-2 space-y-1 max-h-40 overflow-y-auto">
+                        {respostasRapidas === null && <p className="text-xs text-ink-400 px-1">Carregando...</p>}
+                        {respostasRapidas?.length === 0 && <p className="text-xs text-ink-400 px-1">Nenhuma resposta rápida cadastrada (veja Conversas no WhatsApp).</p>}
+                        {respostasRapidas?.map((r) => (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => inserirRespostaRapida(c.id, r.texto)}
+                            className="w-full text-left px-2 py-1 rounded hover:bg-ink-50"
+                          >
+                            <span className="text-[11px] font-semibold text-brand-700">/{r.atalho}</span>{' '}
+                            <span className="text-xs text-ink-600">{r.texto}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

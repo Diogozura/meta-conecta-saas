@@ -4,20 +4,22 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { Inbox, MessageCircle, Send, BarChart3, LayoutGrid } from 'lucide-react'
+import { Inbox, MessageCircle, Send, BarChart3, LayoutGrid, Calendar } from 'lucide-react'
 import ActivityPanel from './ActivityPanel'
 import InboxTab from './InboxTab'
 import CommentsTab from './CommentsTab'
 import PublishTab from './PublishTab'
 import InsightsTab from './InsightsTab'
+import CalendarTab from './CalendarTab'
 
-type IgTab = 'visao-geral' | 'inbox' | 'comentarios' | 'publicar' | 'metricas'
+type IgTab = 'visao-geral' | 'inbox' | 'comentarios' | 'publicar' | 'calendario' | 'metricas'
 
 const igTabs: { key: IgTab; label: string; icon: typeof Inbox }[] = [
   { key: 'visao-geral', label: 'Visão geral', icon: LayoutGrid },
   { key: 'inbox', label: 'Caixa de entrada', icon: Inbox },
   { key: 'comentarios', label: 'Comentários', icon: MessageCircle },
   { key: 'publicar', label: 'Publicar', icon: Send },
+  { key: 'calendario', label: 'Calendário', icon: Calendar },
   { key: 'metricas', label: 'Métricas', icon: BarChart3 },
 ]
 
@@ -104,6 +106,7 @@ function InstagramPageInner() {
       {tab === 'inbox' && <InboxTab connected={connected} />}
       {tab === 'comentarios' && <CommentsTab connected={connected} />}
       {tab === 'publicar' && <PublishTab connected={connected} />}
+      {tab === 'calendario' && <CalendarTab connected={connected} />}
       {tab === 'metricas' && <InsightsTab connected={connected} />}
     </div>
   )

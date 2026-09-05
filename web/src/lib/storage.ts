@@ -42,3 +42,33 @@ export async function deleteInstagramPhoto(path: string): Promise<void> {
     console.warn('Não foi possível apagar a foto temporária do Instagram (Vercel Blob):', path, err)
   }
 }
+
+const MEDIA_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+}
+
+/**
+ * Igual a `uploadInstagramPhoto`, mas aceita vídeo também — usada pra rascunho/agendamento,
+ * onde o arquivo (foto ou vídeo) precisa ficar hospedado por mais tempo até o container ser
+ * criado de verdade na hora de publicar (ver `lib/instagramPublish.ts`).
+ */
+export async function uploadInstagramMedia(
+  contaId: string,
+  buffer: Buffer,
+  contentType: string,
+  suffix?: string,
+): Promise<{ url: string; path: string }> {
+  const ext = MEDIA_EXTENSIONS[contentType] ?? (contentType.startsWith('video/') ? 'mp4' : 'jpg')
+  const pathname = `instagram/${contaId}/agendado-${Date.now()}${suffix ? `-${suffix}` : ''}.${ext}`
+
+  const blob = await put(pathname, buffer, {
+    access: 'public',
+    contentType,
+    addRandomSuffix: false,
+  })
+
+  return { url: blob.url, path: blob.pathname }
+}

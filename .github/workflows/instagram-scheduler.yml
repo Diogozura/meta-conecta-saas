@@ -1,0 +1,21 @@
+name: Instagram scheduled publish
+
+# Dispara a rota de cron do Instagram (agendamentos/rascunhos) a cada 10 minutos.
+# Existe porque o Vercel Hobby só permite cron nativo 1x/dia — esse workflow
+# roda em vez do cron do Vercel para esse endpoint específico.
+#
+# Requer o secret CRON_SECRET nas Settings > Secrets and variables > Actions
+# do repositório, com o MESMO valor da env var CRON_SECRET configurada no Vercel.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar rota de cron do Instagram
+        run: |
+          curl -fsS -X GET "https://www.zybot.com.br/api/cron/instagram-publicacoes" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

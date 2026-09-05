@@ -1671,6 +1671,30 @@ export async function excluirPublicacaoInstagram(contaId: string, publicacaoId: 
   await db.collection('contas').doc(contaId).collection('publicacoesInstagram').doc(publicacaoId).delete()
 }
 
+/**
+ * Publicações pendentes de uma conta pro cron de agendamento: agendamentos já
+ * vencidos (prontos pra criar o container) e publicações que ficaram
+ * "processando" num tick anterior (só precisam ser consultadas de novo).
+ * Filtra `agendadoPara` em memória (em vez de num `where` de intervalo) de
+ * propósito — evita depender de um índice composto novo no Firestore, e o
+ * volume por conta é pequeno o suficiente pra não importar.
+ */
+export async function listarPublicacoesInstagramPendentes(contaId: string, agora: Date): Promise<PublicacaoInstagram[]> {
+  const db = getDb()
+  const colecao = db.collection('contas').doc(contaId).collection('publicacoesInstagram')
+
+  const [agendadas, processando] = await Promise.all([
+    colecao.where('status', '==', 'agendado').get(),
+    colecao.where('status', '==', 'processando').get(),
+  ])
+
+  const vencidas = agendadas.docs
+    .map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as PublicacaoInstagram))
+    .filter((p) => p.agendadoPara && new Date(p.agendadoPara) <= agora)
+
+  return [...vencidas, ...processando.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as PublicacaoInstagram))]
+}
+
 // ─────────────────────────────────────────
 // TICKETS (Subcoleção: contas/{contaId}/tickets) — chamados de suporte/SAC,
 // separados da Conversa (ver types/database.ts Ticket).

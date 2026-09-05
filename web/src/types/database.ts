@@ -491,6 +491,12 @@ export interface MencaoInstagram {
 // Publicação Instagram (Subcoleção: contas/{contaId}/publicacoesInstagram)
 // Histórico de posts/reels/vídeos/stories publicados pelo painel.
 // ─────────────────────────────────────────
+export interface PublicacaoInstagramMediaItem {
+  url: string
+  path: string
+  isVideo: boolean
+}
+
 export interface PublicacaoInstagram {
   id: string
   contaId: string
@@ -500,13 +506,19 @@ export interface PublicacaoInstagram {
   mediaPath?: string               // Caminho no Vercel Blob (só foto) — usado pra apagar o arquivo temporário depois
   mediaPaths?: string[]            // Mesma coisa, mas pra carrossel (um por foto)
   coverPath?: string               // Caminho no Vercel Blob da capa personalizada (só Reels)
+  // Rascunho/agendamento: arquivo(s) já hospedados desde a criação (URL + path
+  // pro Blob), porque o container na Meta só é criado na hora de publicar de
+  // verdade (containers não publicados expiram em 24h na API da Meta).
+  mediaItems?: PublicacaoInstagramMediaItem[]
+  coverItem?: { url: string; path: string }
   itemCount?: number               // Quantidade de itens do carrossel
   caption?: string
   altText?: string
   collaborators?: string[]
   isAiGenerated?: boolean
   shareToFeed?: boolean            // Só Reels: também aparece no Feed além da aba Reels
-  status: 'enviando' | 'processando' | 'publicado' | 'falhou'
+  status: 'rascunho' | 'agendado' | 'enviando' | 'processando' | 'publicado' | 'falhou'
+  agendadoPara?: Date | null       // Quando o cron deve publicar (status 'agendado')
   erro?: string
   dataCriacao: Date
   publicadoEm?: Date

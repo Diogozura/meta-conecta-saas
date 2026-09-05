@@ -9,6 +9,6 @@ export async function GET() {
     return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   }
 
-  const publicacoes = await listarPublicacoesInstagram(session.user.contaId)
+  const publicacoes = await listarPublicacoesInstagram(session.user.contaId, 100)
   return NextResponse.json({ publicacoes })
 }

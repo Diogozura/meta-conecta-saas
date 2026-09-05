@@ -53,6 +53,32 @@ const PERIOD_OPTIONS: { key: 'day' | 'week' | 'days_28'; label: string }[] = [
   { key: 'days_28', label: 'Este mês' },
 ]
 
+const MIN_POSTS_MELHOR_HORARIO = 5
+
+/**
+ * Estimativa própria de melhor horário pra postar, calculada a partir dos posts recentes já
+ * buscados (curtidas + comentários), já que a Graph API não expõe um breakdown por hora do dia
+ * pras métricas de conta — só o total agregado do período (ver getAccountInsights). Usa a hora
+ * local do navegador de quem está vendo o painel como aproximação do fuso da conta.
+ */
+function calcularMelhorHorario(media: InstagramMedia[]): { hora: number; engajamento: number }[] | null {
+  const comData = media.filter((m) => m.timestamp)
+  if (comData.length < MIN_POSTS_MELHOR_HORARIO) return null
+
+  const porHora = new Map<number, { soma: number; qtd: number }>()
+  for (const m of comData) {
+    const hora = new Date(m.timestamp!).getHours()
+    const engajamento = (m.like_count ?? 0) + (m.comments_count ?? 0) * 2
+    const atual = porHora.get(hora) ?? { soma: 0, qtd: 0 }
+    porHora.set(hora, { soma: atual.soma + engajamento, qtd: atual.qtd + 1 })
+  }
+
+  return Array.from(porHora.entries())
+    .map(([hora, { soma, qtd }]) => ({ hora, engajamento: soma / qtd }))
+    .sort((a, b) => b.engajamento - a.engajamento)
+    .slice(0, 3)
+}
+
 function totalValue(insight: InsightValue) {
   if (insight.total_value) return insight.total_value.value ?? 0
   return (insight.values ?? []).reduce((sum, v) => sum + (v.value ?? 0), 0)
@@ -203,6 +229,23 @@ export default function InsightsTab({ connected }: { connected: boolean }) {
           )}
         </>
       )}
+
+      {!loadingMedia && media.length > 0 && (() => {
+        const melhores = calcularMelhorHorario(media)
+        if (!melhores) return null
+        return (
+          <div className="bg-white rounded-xl border border-ink-200 p-6">
+            <p className="text-sm text-ink-500 mb-3">Melhor horário pra postar, com base no engajamento dos últimos {media.length} posts.</p>
+            <div className="flex flex-wrap gap-2">
+              {melhores.map((h) => (
+                <span key={h.hora} className="px-3 py-1.5 rounded-full bg-brand-50 text-brand-700 text-sm font-medium">
+                  {String(h.hora).padStart(2, '0')}h–{String((h.hora + 1) % 24).padStart(2, '0')}h
+                </span>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       <div>
         <h3 className="text-sm font-semibold text-ink-800 mb-3">Conteúdo que você compartilhou</h3>
