@@ -181,16 +181,53 @@ async function igFetch<T>(path: string, accessToken: string, init?: RequestInit)
 export interface InstagramConversationSummary {
   id: string
   updated_time?: string
-  participants?: { data: Array<{ id: string; username?: string }> }
+  participants?: { data: Array<{ id: string; username?: string; profile_pic?: string }> }
 }
 
-/** Lista as conversas (threads de DM) da conta conectada. */
-export async function listConversations(accessToken: string): Promise<InstagramConversationSummary[]> {
+/**
+ * Foto de perfil + nome de um usuário do Instagram, via IGSID (Instagram-scoped ID). Só funciona
+ * pra quem já mandou mensagem pra conta — é o mesmo endpoint de "perfil do usuário" da API de
+ * mensageria do Messenger/Instagram (ver docs "Instagram Platform > Messaging > User Profile API").
+ * Não existe endpoint equivalente pra autor de comentário/menção (ver listMediaComments).
+ */
+export async function getInstagramUserProfile(
+  accessToken: string,
+  igsid: string,
+): Promise<{ id: string; name?: string; username?: string; profile_pic?: string }> {
+  return igFetch(`${igsid}?fields=name,username,profile_pic`, accessToken)
+}
+
+/** Lista as conversas (threads de DM) da conta conectada, com foto de perfil do outro participante. */
+export async function listConversations(accessToken: string, igUserId: string): Promise<InstagramConversationSummary[]> {
   const data = await igFetch<{ data: InstagramConversationSummary[] }>(
     'me/conversations?platform=instagram&fields=id,updated_time,participants{id,username}',
     accessToken,
   )
-  return data.data ?? []
+  const conversations = data.data ?? []
+
+  const otherIds = new Set<string>()
+  for (const c of conversations) {
+    for (const p of c.participants?.data ?? []) {
+      if (p.id !== igUserId) otherIds.add(p.id)
+    }
+  }
+
+  const profilePicById = new Map(
+    await Promise.all(
+      Array.from(otherIds).map((id) =>
+        getInstagramUserProfile(accessToken, id)
+          .then((p): [string, string | undefined] => [id, p.profile_pic])
+          .catch(() => [id, undefined] as [string, string | undefined]),
+      ),
+    ),
+  )
+
+  return conversations.map((c) => ({
+    ...c,
+    participants: c.participants && {
+      data: c.participants.data.map((p) => ({ ...p, profile_pic: profilePicById.get(p.id) })),
+    },
+  }))
 }
 
 export interface InstagramMessage {

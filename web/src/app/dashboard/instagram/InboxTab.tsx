@@ -8,7 +8,19 @@ import { Skeleton } from '@/components/Skeleton'
 interface ConversationSummary {
   id: string
   updated_time?: string
-  participants?: { data: Array<{ id: string; username?: string }> }
+  participants?: { data: Array<{ id: string; username?: string; profile_pic?: string }> }
+}
+
+function Avatar({ name, profilePic, className }: { name: string; profilePic?: string; className: string }) {
+  if (profilePic) {
+    // eslint-disable-next-line @next/next/no-img-element -- foto vem da CDN da Meta, sem domínio fixo pra configurar no next/image
+    return <img src={profilePic} alt="" className={`${className} rounded-full object-cover`} />
+  }
+  return (
+    <div className={`${className} bg-brand-100 rounded-full flex items-center justify-center`}>
+      <span className="text-xs font-bold text-brand-700">{name[0]?.toUpperCase()}</span>
+    </div>
+  )
 }
 
 interface ThreadMessage {
@@ -142,8 +154,8 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                 onClick={() => setSelectedId(c.id)}
                 className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${selectedId === c.id ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'}`}
               >
-                <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
-                  <span className="text-xs font-bold text-brand-700">{name[0]?.toUpperCase()}</span>
+                <div className="shrink-0">
+                  <Avatar name={name} profilePic={other?.profile_pic} className="w-9 h-9" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-ink-900 truncate">@{name}</p>
@@ -162,8 +174,8 @@ export default function InboxTab({ connected }: { connected: boolean }) {
               <button onClick={() => setSelectedId(null)} className="lg:hidden -ml-1 p-1.5 rounded-lg text-ink-500 hover:bg-ink-100 transition-colors shrink-0" aria-label="Voltar">
                 <ArrowLeft className="w-5 h-5" />
               </button>
-              <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
-                <span className="text-xs font-bold text-brand-700">{(recipient?.username ?? recipient?.id ?? '?')[0]?.toUpperCase()}</span>
+              <div className="shrink-0">
+                <Avatar name={recipient?.username ?? recipient?.id ?? '?'} profilePic={recipient?.profile_pic} className="w-9 h-9" />
               </div>
               <p className="text-sm font-semibold text-ink-900">{recipient ? `@${recipient.username ?? recipient.id}` : 'Contato desconhecido'}</p>
             </div>

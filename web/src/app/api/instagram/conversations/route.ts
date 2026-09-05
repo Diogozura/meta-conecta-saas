@@ -5,7 +5,7 @@ import { getInstagramCredentials, listConversations, InstagramApiError } from '@
 export async function GET() {
   try {
     const credentials = await getInstagramCredentials()
-    const conversations = await listConversations(credentials.accessToken)
+    const conversations = await listConversations(credentials.accessToken, credentials.igUserId)
     return NextResponse.json({ conversations })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido'
