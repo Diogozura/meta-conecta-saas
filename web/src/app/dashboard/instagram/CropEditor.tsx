@@ -1,7 +1,24 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Anton, Caveat } from 'next/font/google'
 import { Maximize2, ZoomIn } from 'lucide-react'
+
+const antonFont = Anton({ weight: '400', subsets: ['latin'] })
+const caveatFont = Caveat({ weight: '700', subsets: ['latin'] })
+
+export type OverlayFontKey = 'sans' | 'display' | 'script' | 'mono'
+
+const FONT_OPTIONS: { key: OverlayFontKey; label: string; family: string }[] = [
+  { key: 'sans', label: 'Padrão', family: 'system-ui, sans-serif' },
+  { key: 'display', label: 'Impacto', family: antonFont.style.fontFamily },
+  { key: 'script', label: 'Manuscrita', family: caveatFont.style.fontFamily },
+  { key: 'mono', label: 'Datilografia', family: 'var(--font-geist-mono), monospace' },
+]
+
+function fontFamilyFor(key: OverlayFontKey | undefined): string {
+  return FONT_OPTIONS.find((f) => f.key === key)?.family ?? FONT_OPTIONS[0].family
+}
 
 export type AspectKey = 'original' | '1:1' | '4:5' | '16:9' | '9:16'
 
@@ -11,6 +28,7 @@ export interface OverlayTextSettings {
   yPct: number
   sizePx: number
   color: string
+  font?: OverlayFontKey
 }
 
 export interface CropSettings {
@@ -95,6 +113,7 @@ export function CropThumb({ url, settings, size = 64 }: { url: string; settings:
             top: `${settings.overlayText.yPct * 100}%`,
             fontSize: settings.overlayText.sizePx * factor,
             color: settings.overlayText.color,
+            fontFamily: fontFamilyFor(settings.overlayText.font),
             transform: 'translate(-50%, -50%)',
             textShadow: '0 1px 2px rgba(0,0,0,0.6)',
             maxWidth: '90%',
@@ -209,6 +228,7 @@ export default function CropEditor({ url, settings, onChange }: CropEditorProps)
               top: `${settings.overlayText.yPct * 100}%`,
               fontSize: settings.overlayText.sizePx,
               color: settings.overlayText.color,
+              fontFamily: fontFamilyFor(settings.overlayText.font),
               transform: 'translate(-50%, -50%)',
               textShadow: '0 1px 3px rgba(0,0,0,0.6)',
               maxWidth: '90%',
@@ -280,28 +300,54 @@ export default function CropEditor({ url, settings, onChange }: CropEditorProps)
           className="w-full px-2.5 py-1.5 border border-ink-200 rounded text-sm"
         />
         {settings.overlayText?.text && (
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={14}
-              max={64}
-              value={settings.overlayText.sizePx}
-              onChange={(e) => setOverlayText({ sizePx: Number(e.target.value) })}
-              className="flex-1 accent-brand-600"
-            />
-            <div className="flex gap-1.5 shrink-0">
-              {['#ffffff', '#000000', '#16a34a'].map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setOverlayText({ color: c })}
-                  className={`w-5 h-5 rounded-full border-2 ${settings.overlayText?.color === c ? 'border-brand-600' : 'border-ink-200'}`}
-                  style={{ background: c }}
-                  aria-label={`Cor ${c}`}
+          <>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={14}
+                max={64}
+                value={settings.overlayText.sizePx}
+                onChange={(e) => setOverlayText({ sizePx: Number(e.target.value) })}
+                className="flex-1 accent-brand-600"
+              />
+              <div className="flex gap-1.5 shrink-0 items-center">
+                {['#ffffff', '#000000', '#16a34a', '#ef4444', '#3b82f6', '#f59e0b'].map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setOverlayText({ color: c })}
+                    className={`w-5 h-5 rounded-full border-2 ${settings.overlayText?.color === c ? 'border-brand-600' : 'border-ink-200'}`}
+                    style={{ background: c }}
+                    aria-label={`Cor ${c}`}
+                  />
+                ))}
+                <input
+                  type="color"
+                  value={settings.overlayText.color}
+                  onChange={(e) => setOverlayText({ color: e.target.value })}
+                  className="w-5 h-5 rounded-full border-2 border-ink-200 cursor-pointer overflow-hidden p-0"
+                  title="Outra cor"
                 />
+              </div>
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {FONT_OPTIONS.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setOverlayText({ font: f.key })}
+                  style={{ fontFamily: f.family }}
+                  className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
+                    (settings.overlayText?.font ?? 'sans') === f.key
+                      ? 'bg-brand-600 border-brand-600 text-white'
+                      : 'bg-white border-ink-200 text-ink-600 hover:bg-ink-50'
+                  }`}
+                >
+                  {f.label}
+                </button>
               ))}
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
@@ -356,7 +402,7 @@ export async function exportCroppedFile(file: File, settings: CropSettings, marc
 
     if (settings.overlayText?.text.trim()) {
       const scale = outputW / STAGE_WIDTH
-      ctx.font = `bold ${settings.overlayText.sizePx * scale}px sans-serif`
+      ctx.font = `bold ${settings.overlayText.sizePx * scale}px ${fontFamilyFor(settings.overlayText.font)}`
       ctx.fillStyle = settings.overlayText.color
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'

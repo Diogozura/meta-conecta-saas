@@ -1676,6 +1676,18 @@ export async function listarComentariosPorMedia(contaId: string, mediaId: string
 }
 
 /**
+ * Usernames de quem já comentou nas publicações da conta — não é busca de
+ * usuário (a Graph API do Instagram não expõe isso), só quem já interagiu.
+ * Usado pra sugerir colaboradores no compositor.
+ */
+export async function listarUsernamesComentaristas(contaId: string, limit = 200): Promise<string[]> {
+  const db = getDb()
+  const snapshot = await db.collection('comentariosInstagram').where('contaId', '==', contaId).limit(limit).get()
+  const usernames = snapshot.docs.map((doc) => (doc.data() as ComentarioInstagram).from).filter(Boolean)
+  return Array.from(new Set(usernames))
+}
+
+/**
  * Marca um comentário como respondido — usa `set` com merge (não `update`)
  * porque o comentário pode nunca ter sido persistido via webhook (ex:
  * comentário antigo, de antes da integração), então o doc pode não existir ainda.

@@ -179,6 +179,8 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [novoModeloCta, setNovoModeloCta] = useState('')
   const [assinaturaInput, setAssinaturaInput] = useState('')
   const [assinaturaAutoInput, setAssinaturaAutoInput] = useState(false)
+  const [collabSuggestions, setCollabSuggestions] = useState<string[] | null>(null)
+  const [showCollabDropdown, setShowCollabDropdown] = useState(false)
 
   const activeType = TYPE_OPTIONS.find((t) => t.key === tipo)!
   const isCarousel = tipo === 'CAROUSEL'
@@ -328,6 +330,25 @@ export default function PublishTab({ connected }: { connected: boolean }) {
         .then((data: { modelos: ModeloLegenda[] } | null) => setModelosLegenda(data?.modelos ?? []))
         .catch(() => setModelosLegenda([]))
     }
+    if (key === 'collaborators' && collabSuggestions === null) {
+      fetch('/api/instagram/collaborator-suggestions')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { usernames: string[] } | null) => setCollabSuggestions(data?.usernames ?? []))
+        .catch(() => setCollabSuggestions([]))
+    }
+  }
+
+  // Segmento sendo digitado agora (depois da última vírgula) — é nele que o autocomplete filtra.
+  function collabCurrentSegment(): string {
+    const parts = collaboratorsInput.split(',')
+    return parts[parts.length - 1].trim().replace(/^@/, '').toLowerCase()
+  }
+
+  function pickCollaborator(username: string) {
+    const parts = collaboratorsInput.split(',')
+    parts[parts.length - 1] = ` ${username}`
+    setCollaboratorsInput(parts.join(',').replace(/^ /, '') + ', ')
+    setShowCollabDropdown(false)
   }
 
   function aplicarModeloLegenda(m: ModeloLegenda) {
@@ -1069,25 +1090,45 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                 </div>
               )}
 
-              {enabledBlocks.has('collaborators') && (
-                <div className="rounded-lg border border-ink-200 p-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="flex items-center gap-1.5 text-sm text-ink-700"><Users className="w-3.5 h-3.5 text-ink-400" /> Colaboradores</label>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs ${collaboratorsCount > 3 ? 'text-red-600' : 'text-ink-400'}`}>{collaboratorsCount}/3</span>
-                      <button type="button" onClick={() => removeBlock('collaborators')} className="text-ink-400 hover:text-red-600" aria-label="Remover colaboradores"><X className="w-3.5 h-3.5" /></button>
+              {enabledBlocks.has('collaborators') && (() => {
+                const segmento = collabCurrentSegment()
+                const sugestoes = segmento && collabSuggestions
+                  ? collabSuggestions.filter((u) => u.toLowerCase().includes(segmento)).slice(0, 6)
+                  : []
+                return (
+                  <div className="rounded-lg border border-ink-200 p-3 relative">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="flex items-center gap-1.5 text-sm text-ink-700"><Users className="w-3.5 h-3.5 text-ink-400" /> Colaboradores</label>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs ${collaboratorsCount > 3 ? 'text-red-600' : 'text-ink-400'}`}>{collaboratorsCount}/3</span>
+                        <button type="button" onClick={() => removeBlock('collaborators')} className="text-ink-400 hover:text-red-600" aria-label="Remover colaboradores"><X className="w-3.5 h-3.5" /></button>
+                      </div>
                     </div>
+                    <input
+                      type="text"
+                      value={collaboratorsInput}
+                      onChange={(e) => { setCollaboratorsInput(e.target.value); setShowCollabDropdown(true) }}
+                      onFocus={() => setShowCollabDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowCollabDropdown(false), 150)}
+                      placeholder="usuario1, usuario2"
+                      className="w-full px-3 py-2 border border-ink-300 rounded-lg focus:ring-2 focus:ring-brand-400 focus:border-transparent text-sm"
+                    />
+                    {showCollabDropdown && sugestoes.length > 0 && (
+                      <div className="absolute z-10 left-3 right-3 mt-1 bg-white border border-ink-200 rounded-lg shadow-lg py-1 max-h-40 overflow-y-auto">
+                        {sugestoes.map((u) => (
+                          <button key={u} type="button" onMouseDown={() => pickCollaborator(u)} className="w-full text-left px-3 py-1.5 text-sm text-ink-700 hover:bg-ink-50">
+                            @{u}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <p className="mt-1 text-xs text-ink-400">
+                      Até 3 @usuários, separados por vírgula. Eles precisam aceitar o convite pra aparecer como autores.
+                      {collabSuggestions !== null && ' Sugestões vêm de quem já comentou ou te chamou no direct — o Instagram não permite buscar qualquer usuário.'}
+                    </p>
                   </div>
-                  <input
-                    type="text"
-                    value={collaboratorsInput}
-                    onChange={(e) => setCollaboratorsInput(e.target.value)}
-                    placeholder="usuario1, usuario2"
-                    className="w-full px-3 py-2 border border-ink-300 rounded-lg focus:ring-2 focus:ring-brand-400 focus:border-transparent text-sm"
-                  />
-                  <p className="mt-1 text-xs text-ink-400">Até 3 @usuários, separados por vírgula. Eles precisam aceitar o convite pra aparecer como autores.</p>
-                </div>
-              )}
+                )
+              })()}
 
               {enabledBlocks.has('ai') && (
                 <div className="rounded-lg border border-ink-200 p-3 flex items-center justify-between">
