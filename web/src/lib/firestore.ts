@@ -5,7 +5,7 @@
 
 import { getFirestore, Timestamp, Query, Filter, FieldValue } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, ContaAiConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
+import { Conta, ContaAiConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, ConjuntoHashtags, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -1174,6 +1174,33 @@ export async function excluirRespostaRapida(contaId: string, id: string): Promis
 }
 
 // ─────────────────────────────────────────
+// CONJUNTOS DE HASHTAGS (Subcoleção: contas/{contaId}/conjuntosHashtags)
+// ─────────────────────────────────────────
+
+export async function criarConjuntoHashtags(contaId: string, data: Omit<ConjuntoHashtags, 'id' | 'contaId' | 'dataCadastro'>): Promise<ConjuntoHashtags> {
+  const db = getDb()
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('conjuntosHashtags').add({ contaId, ...data, dataCadastro: now })
+  return { id: docRef.id, contaId, ...data, dataCadastro: now.toDate() }
+}
+
+export async function listarConjuntosHashtags(contaId: string): Promise<ConjuntoHashtags[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('conjuntosHashtags').orderBy('nome', 'asc').get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as ConjuntoHashtags))
+}
+
+export async function atualizarConjuntoHashtags(contaId: string, id: string, data: Partial<Pick<ConjuntoHashtags, 'nome' | 'hashtags'>>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conjuntosHashtags').doc(id).update(data)
+}
+
+export async function excluirConjuntoHashtags(contaId: string, id: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('conjuntosHashtags').doc(id).delete()
+}
+
+// ─────────────────────────────────────────
 // FLUXO (Subcoleção: contas/{contaId}/fluxos) — uma conta pode manter vários
 // fluxos desenhados (ex: "Padrão", "Black Friday", "Recesso de fim de ano"),
 // mas no máximo 1 fica `ativo` por vez — é esse que o webhook usa.
@@ -1567,6 +1594,26 @@ export async function listarMensagensInstagramRecebidasDesde(contaId: string, si
     .sort((a, b) => (a.dataCriacao as unknown as Timestamp).toMillis() - (b.dataCriacao as unknown as Timestamp).toMillis())
 }
 
+/**
+ * Conversas de DM cuja última mensagem foi do cliente ("recebida") e ainda não
+ * teve alerta de pendência enviado — usado pelo cron da "central de
+ * pendências". Reaproveita `listarMensagensInstagram` (mesma coleção que já
+ * alimenta a Caixa de entrada), agrupando por `conversationId` em memória.
+ */
+export async function listarMensagensInstagramPendentes(contaId: string, limit = 500): Promise<MensagemInstagram[]> {
+  const recentes = await listarMensagensInstagram(contaId, limit)
+  const ultimaPorConversa = new Map<string, MensagemInstagram>()
+  for (const m of recentes) {
+    if (!ultimaPorConversa.has(m.conversationId)) ultimaPorConversa.set(m.conversationId, m)
+  }
+  return Array.from(ultimaPorConversa.values()).filter((m) => m.tipo === 'recebida' && !m.alertaPendenciaEnviadoEm)
+}
+
+export async function marcarAlertaPendenciaMensagem(mensagemId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('mensagensInstagram').doc(mensagemId).set({ alertaPendenciaEnviadoEm: Timestamp.now() }, { merge: true })
+}
+
 // ─────────────────────────────────────────
 // COMENTÁRIOS INSTAGRAM
 // ─────────────────────────────────────────
@@ -1602,6 +1649,30 @@ export async function marcarComentarioRespondido(contaId: string, mediaId: strin
     { contaId, mediaId, respondido: true },
     { merge: true },
   )
+}
+
+/**
+ * Comentários sem resposta e sem alerta de pendência ainda enviado — usado
+ * pelo cron da "central de pendências". Sem `orderBy` de propósito (só um
+ * `where` de igualdade, pra não precisar de índice composto novo no
+ * Firestore) — filtra e ordena (mais antigo primeiro) em memória, o que
+ * também é o critério certo pra destacar quem está esperando há mais tempo.
+ */
+export async function listarComentariosInstagramPendentes(contaId: string, limit = 500): Promise<ComentarioInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('comentariosInstagram')
+    .where('contaId', '==', contaId)
+    .limit(limit)
+    .get()
+  return snapshot.docs
+    .map((doc) => ({ ...doc.data() } as ComentarioInstagram))
+    .filter((c) => !c.respondido && !c.alertaPendenciaEnviadoEm)
+    .sort((a, b) => a.timestamp - b.timestamp)
+}
+
+export async function marcarAlertaPendenciaComentario(comentarioId: string): Promise<void> {
+  const db = getDb()
+  await db.collection('comentariosInstagram').doc(comentarioId).set({ alertaPendenciaEnviadoEm: Timestamp.now() }, { merge: true })
 }
 
 // ─────────────────────────────────────────

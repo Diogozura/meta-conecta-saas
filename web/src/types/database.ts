@@ -363,12 +363,24 @@ export interface RespostaRapida {
 }
 
 // ─────────────────────────────────────────
+// ConjuntoHashtags (Subcoleção: contas/{contaId}/conjuntosHashtags) — grupos
+// de hashtags prontos pra inserir na legenda do Instagram com 1 clique.
+// ─────────────────────────────────────────
+export interface ConjuntoHashtags {
+  id: string
+  contaId: string
+  nome: string // ex: "Promoção" — só pra identificar na lista
+  hashtags: string // texto livre, ex: "#promo #moda #ofertas"
+  dataCadastro: Date
+}
+
+// ─────────────────────────────────────────
 // RegistroAuditoria (Subcoleção: contas/{contaId}/auditoria) — log
 // append-only de quem mudou o quê nas configurações sensíveis da conta
 // (fluxo de atendimento, respostas rápidas, equipe/atendentes). Não cobre
 // TUDO no sistema, só o que afeta como a conta atende os clientes.
 // ─────────────────────────────────────────
-export type AuditoriaEntidade = 'fluxo' | 'resposta_rapida' | 'atendente' | 'dados_cliente'
+export type AuditoriaEntidade = 'fluxo' | 'resposta_rapida' | 'atendente' | 'dados_cliente' | 'conjunto_hashtags'
 export type AuditoriaAcao = 'criar' | 'atualizar' | 'excluir' | 'ativar' | 'convidar'
 
 export interface RegistroAuditoria {
@@ -452,6 +464,9 @@ export interface MensagemInstagram {
   text: string
   timestamp: number             // Unix timestamp em segundos
   tipo: 'recebida' | 'enviada'
+  // Dedupe do alerta de "pendência" (DM sem resposta há muito tempo) — só
+  // marcado na mensagem 'recebida' mais recente de cada conversationId.
+  alertaPendenciaEnviadoEm?: Date
   dataCriacao: Date
 }
 
@@ -467,6 +482,9 @@ export interface ComentarioInstagram {
   text: string
   timestamp: number
   respondido?: boolean
+  // Dedupe do alerta de "pendência" (comentário sem resposta há muito tempo)
+  // — mesmo padrão de alertaSlaEnviadoEm em Conversa, evita reenviar todo dia.
+  alertaPendenciaEnviadoEm?: Date
   dataCriacao: Date
 }
 

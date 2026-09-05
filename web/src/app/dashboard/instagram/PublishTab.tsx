@@ -19,6 +19,8 @@ import {
   Copy,
   Pencil,
   Send,
+  Hash,
+  Layers,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
@@ -26,12 +28,25 @@ import CropEditor, { CropThumb, exportCroppedFile, DEFAULT_CROP, type CropSettin
 
 type PublishType = 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES' | 'CAROUSEL'
 type WizardStep = 'upload' | 'crop' | 'share'
-type BlockKey = 'collaborators' | 'altText' | 'ai'
+type BlockKey = 'collaborators' | 'altText' | 'ai' | 'hashtags'
 
 const BLOCK_DEFS: { key: BlockKey; label: string; icon: typeof Users }[] = [
   { key: 'collaborators', label: 'Colaboradores', icon: Users },
   { key: 'altText', label: 'Texto alternativo', icon: Type },
   { key: 'ai', label: 'Conteúdo por IA', icon: Sparkles },
+  { key: 'hashtags', label: 'Hashtags salvas', icon: Hash },
+]
+
+interface ConjuntoHashtags {
+  id: string
+  nome: string
+  hashtags: string
+}
+
+const INTERVALO_LOTE_OPTIONS = [
+  { value: 1, label: 'Diariamente' },
+  { value: 2, label: 'A cada 2 dias' },
+  { value: 7, label: 'Semanalmente' },
 ]
 
 const MIN_CAROUSEL_ITEMS = 2
@@ -119,6 +134,15 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [savingEdit, setSavingEdit] = useState(false)
   const [forcingId, setForcingId] = useState<string | null>(null)
   const [generatingCaption, setGeneratingCaption] = useState(false)
+  const [conjuntosHashtags, setConjuntosHashtags] = useState<ConjuntoHashtags[] | null>(null)
+  const [novoHashtagNome, setNovoHashtagNome] = useState('')
+  const [novoHashtagTexto, setNovoHashtagTexto] = useState('')
+  const [loteAberto, setLoteAberto] = useState(false)
+  const [loteFiles, setLoteFiles] = useState<File[]>([])
+  const [loteCaption, setLoteCaption] = useState('')
+  const [lotePrimeiraData, setLotePrimeiraData] = useState('')
+  const [loteIntervalo, setLoteIntervalo] = useState(1)
+  const [loteSaving, setLoteSaving] = useState(false)
 
   const activeType = TYPE_OPTIONS.find((t) => t.key === tipo)!
   const isCarousel = tipo === 'CAROUSEL'
@@ -231,6 +255,34 @@ export default function PublishTab({ connected }: { connected: boolean }) {
 
   function addBlock(key: BlockKey) {
     setEnabledBlocks((prev) => new Set(prev).add(key))
+    if (key === 'hashtags' && conjuntosHashtags === null) {
+      fetch('/api/hashtag-sets')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { conjuntos: ConjuntoHashtags[] } | null) => setConjuntosHashtags(data?.conjuntos ?? []))
+        .catch(() => setConjuntosHashtags([]))
+    }
+  }
+
+  function inserirHashtags(texto: string) {
+    setCaption((prev) => (prev.trim() ? `${prev.trim()} ${texto}` : texto))
+  }
+
+  async function handleCriarConjuntoHashtags() {
+    if (!novoHashtagNome.trim() || !novoHashtagTexto.trim()) return
+    try {
+      const res = await fetch('/api/hashtag-sets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: novoHashtagNome.trim(), hashtags: novoHashtagTexto.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao salvar')
+      setConjuntosHashtags((prev) => [...(prev ?? []), json.conjunto])
+      setNovoHashtagNome('')
+      setNovoHashtagTexto('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar conjunto de hashtags')
+    }
   }
 
   function removeBlock(key: BlockKey) {
@@ -352,6 +404,40 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     }
   }
 
+  async function handleImportarLote() {
+    if (loteFiles.length === 0) {
+      toast.error('Selecione ao menos uma imagem.')
+      return
+    }
+    if (!lotePrimeiraData) {
+      toast.error('Escolha a data do primeiro post.')
+      return
+    }
+    setLoteSaving(true)
+    try {
+      const formData = new FormData()
+      loteFiles.forEach((f) => formData.append('files', f))
+      if (loteCaption.trim()) formData.append('caption', loteCaption.trim())
+      formData.append('primeiraData', new Date(lotePrimeiraData).toISOString())
+      formData.append('intervaloDias', String(loteIntervalo))
+
+      const res = await fetch('/api/instagram/publish/schedule/batch', { method: 'POST', body: formData })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao importar')
+
+      toast.success(`${json.criadas.length} publicações agendadas!`)
+      setLoteAberto(false)
+      setLoteFiles([])
+      setLoteCaption('')
+      setLotePrimeiraData('')
+      await loadHistory()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao importar em lote')
+    } finally {
+      setLoteSaving(false)
+    }
+  }
+
   function handleDuplicate(p: Publicacao) {
     switchTipo(p.tipo)
     setCaption(p.caption ?? '')
@@ -441,6 +527,76 @@ export default function PublishTab({ connected }: { connected: boolean }) {
 
   return (
     <div className="max-w-3xl space-y-8">
+      <div className="bg-white rounded-xl border border-ink-200 p-4">
+        <button type="button" onClick={() => setLoteAberto((v) => !v)} className="flex items-center gap-2 text-sm font-medium text-ink-700 hover:text-brand-700">
+          <Layers className="w-4 h-4" /> Importar em lote (várias fotos de uma vez)
+        </button>
+
+        {loteAberto && (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs text-ink-500">Cada foto vira um post agendado (só imagem, sem recorte), espaçado automaticamente a partir da primeira data.</p>
+
+            <label className="flex flex-col items-center justify-center gap-1.5 px-4 py-6 border-2 border-dashed border-ink-300 rounded-lg cursor-pointer hover:bg-ink-50">
+              <UploadCloud className="w-5 h-5 text-ink-400" />
+              <span className="text-sm text-ink-600">{loteFiles.length > 0 ? `${loteFiles.length} imagem(ns) selecionada(s)` : 'Escolher imagens'}</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                multiple
+                className="hidden"
+                onChange={(e) => setLoteFiles(e.target.files ? Array.from(e.target.files) : [])}
+              />
+            </label>
+
+            <textarea
+              value={loteCaption}
+              onChange={(e) => setLoteCaption(e.target.value)}
+              rows={2}
+              placeholder="Legenda compartilhada por todos os posts (opcional)"
+              className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+            />
+
+            <div className="flex gap-2">
+              <input
+                type="datetime-local"
+                value={lotePrimeiraData}
+                onChange={(e) => setLotePrimeiraData(e.target.value)}
+                min={new Date().toISOString().slice(0, 16)}
+                className="flex-1 px-3 py-2 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+              />
+              <select
+                value={loteIntervalo}
+                onChange={(e) => setLoteIntervalo(Number(e.target.value))}
+                className="px-3 py-2 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+              >
+                {INTERVALO_LOTE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+
+            {loteFiles.length > 0 && lotePrimeiraData && (
+              <ul className="text-xs text-ink-500 space-y-0.5 max-h-32 overflow-y-auto">
+                {loteFiles.map((f, i) => {
+                  const d = new Date(new Date(lotePrimeiraData).getTime() + i * loteIntervalo * 86400000)
+                  return <li key={i}>Post {i + 1} → {d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</li>
+                })}
+              </ul>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setLoteAberto(false)} className="px-3 py-2 text-sm text-ink-600 hover:text-ink-900">Cancelar</button>
+              <button
+                type="button"
+                onClick={handleImportarLote}
+                disabled={loteSaving}
+                className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
+              >
+                {loteSaving ? 'Agendando...' : `Agendar ${loteFiles.length || ''} posts`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       <form onSubmit={handlePublish} className="bg-white rounded-xl border border-ink-200 p-6 space-y-5">
         {step === 'upload' && (
           <>
@@ -804,6 +960,51 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                     <span className="flex items-center gap-1.5 text-sm text-ink-700"><Sparkles className="w-3.5 h-3.5 text-ink-400" /> Conteúdo gerado por IA</span>
                   </label>
                   <button type="button" onClick={() => removeBlock('ai')} className="text-ink-400 hover:text-red-600" aria-label="Remover selo de IA"><X className="w-3.5 h-3.5" /></button>
+                </div>
+              )}
+
+              {enabledBlocks.has('hashtags') && (
+                <div className="rounded-lg border border-ink-200 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-1.5 text-sm text-ink-700"><Hash className="w-3.5 h-3.5 text-ink-400" /> Hashtags salvas</label>
+                    <button type="button" onClick={() => removeBlock('hashtags')} className="text-ink-400 hover:text-red-600" aria-label="Remover hashtags"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                  {conjuntosHashtags === null && <p className="text-xs text-ink-400">Carregando...</p>}
+                  {conjuntosHashtags?.length === 0 && <p className="text-xs text-ink-400">Nenhum conjunto salvo ainda — crie um abaixo.</p>}
+                  {conjuntosHashtags && conjuntosHashtags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {conjuntosHashtags.map((h) => (
+                        <button
+                          key={h.id}
+                          type="button"
+                          onClick={() => inserirHashtags(h.hashtags)}
+                          className="px-2.5 py-1 rounded-full bg-ink-100 hover:bg-brand-100 hover:text-brand-700 text-xs text-ink-700 transition-colors"
+                          title={h.hashtags}
+                        >
+                          {h.nome}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5 pt-2 border-t border-ink-100">
+                    <input
+                      type="text"
+                      value={novoHashtagNome}
+                      onChange={(e) => setNovoHashtagNome(e.target.value)}
+                      placeholder="Nome"
+                      className="w-24 px-2 py-1 border border-ink-200 rounded text-xs"
+                    />
+                    <input
+                      type="text"
+                      value={novoHashtagTexto}
+                      onChange={(e) => setNovoHashtagTexto(e.target.value)}
+                      placeholder="#tag1 #tag2 #tag3"
+                      className="flex-1 px-2 py-1 border border-ink-200 rounded text-xs"
+                    />
+                    <button type="button" onClick={handleCriarConjuntoHashtags} className="px-2 py-1 bg-brand-600 text-white text-xs rounded hover:bg-brand-700 shrink-0">
+                      Salvar
+                    </button>
+                  </div>
                 </div>
               )}
 

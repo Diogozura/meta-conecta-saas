@@ -44,6 +44,52 @@ export function emailConviteAtendente(params: { nomeConta: string; nomeConvidado
   }
 }
 
+export interface PendenciaInstagramItem {
+  tipo: 'comentario' | 'mensagem'
+  username?: string
+  text: string
+  esperaHoras: number
+}
+
+/** Um e-mail por conta reunindo todas as pendências do dia (não um por item) — evita spam. */
+export function emailPendenciasInstagram(params: { itens: PendenciaInstagramItem[] }): { assunto: string; corpoHtml: string } {
+  const linhas = params.itens
+    .map((i) => `<li><strong>${i.tipo === 'comentario' ? 'Comentário' : 'Mensagem'}</strong>${i.username ? ` de @${i.username}` : ''} há ${i.esperaHoras}h sem resposta: "${i.text}"</li>`)
+    .join('')
+  return {
+    assunto: `⚠️ ${params.itens.length} pendência${params.itens.length > 1 ? 's' : ''} no Instagram sem resposta`,
+    corpoHtml: `
+      <p>Você tem comentários e/ou mensagens diretas do Instagram esperando resposta há mais de um dia:</p>
+      <ul>${linhas}</ul>
+      <p>Acesse o painel, aba Instagram, pra responder.</p>
+    `.trim(),
+  }
+}
+
+export interface RelatorioSemanalInstagramParams {
+  seguidores?: number
+  crescimentoSemana?: number
+  curtidas: number
+  comentarios: number
+  publicacoesNaSemana: number
+}
+
+export function emailRelatorioSemanalInstagram(params: RelatorioSemanalInstagramParams): { assunto: string; corpoHtml: string } {
+  return {
+    assunto: '📊 Seu resumo semanal do Instagram',
+    corpoHtml: `
+      <p>Resumo dos últimos 7 dias da sua conta do Instagram:</p>
+      <ul>
+        ${params.seguidores !== undefined ? `<li><strong>Seguidores:</strong> ${params.seguidores.toLocaleString('pt-BR')}${params.crescimentoSemana !== undefined ? ` (${params.crescimentoSemana >= 0 ? '+' : ''}${params.crescimentoSemana} na semana)` : ''}</li>` : ''}
+        <li><strong>Publicações feitas:</strong> ${params.publicacoesNaSemana}</li>
+        <li><strong>Curtidas recebidas:</strong> ${params.curtidas.toLocaleString('pt-BR')}</li>
+        <li><strong>Comentários recebidos:</strong> ${params.comentarios.toLocaleString('pt-BR')}</li>
+      </ul>
+      <p>Acesse o painel, aba Instagram &gt; Métricas, pra ver mais detalhes.</p>
+    `.trim(),
+  }
+}
+
 export function emailAlertaSla(params: { numero: string; setor: string; esperaMinutos: number; prioridade?: 'normal' | 'alta' | 'urgente' }): { assunto: string; corpoHtml: string } {
   const prioridadeLabel = params.prioridade && params.prioridade !== 'normal' ? ` (prioridade ${params.prioridade})` : ''
   return {
