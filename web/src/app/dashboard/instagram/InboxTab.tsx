@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { ArrowLeft, Loader2, Send } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, Loader2, Send, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
 
@@ -61,6 +61,7 @@ function lerUltimasVisitas(): Record<string, string> {
 export default function InboxTab({ connected }: { connected: boolean }) {
   const [me, setMe] = useState<{ id: string | null; username: string | null }>({ id: null, username: null })
   const [ultimasVisitas, setUltimasVisitas] = useState<Record<string, string>>(() => (typeof window !== 'undefined' ? lerUltimasVisitas() : {}))
+  const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null)
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -118,6 +119,26 @@ export default function InboxTab({ connected }: { connected: boolean }) {
     })
   }
 
+  // Agrupa conversas pelo mesmo participante — a Meta às vezes cria mais de uma thread
+  // (id diferente) pra mesma pessoa (ex: uma pasta de "Solicitações" e outra da caixa
+  // principal). Agrupar evita mostrar a mesma pessoa duas vezes na lista.
+  const grupos = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; profilePic?: string; conversations: ConversationSummary[]; mostRecentTime?: string }>()
+    for (const c of conversations) {
+      const other = otherParticipant(c, me)
+      const key = other?.username ?? other?.id ?? c.id
+      const existing = map.get(key)
+      if (existing) {
+        existing.conversations.push(c)
+        if (!existing.profilePic && other?.profile_pic) existing.profilePic = other.profile_pic
+        if (c.updated_time && (!existing.mostRecentTime || c.updated_time > existing.mostRecentTime)) existing.mostRecentTime = c.updated_time
+      } else {
+        map.set(key, { key, name: other?.username ?? other?.id ?? 'Contato desconhecido', profilePic: other?.profile_pic, conversations: [c], mostRecentTime: c.updated_time })
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (b.mostRecentTime ?? '').localeCompare(a.mostRecentTime ?? ''))
+  }, [conversations, me])
+
   const selectedConv = conversations.find((c) => c.id === selectedId)
   const recipient = selectedConv ? otherParticipant(selectedConv, me) : null
 
@@ -168,24 +189,47 @@ export default function InboxTab({ connected }: { connected: boolean }) {
           {!loadingConversations && conversations.length === 0 && (
             <div className="py-10 text-center text-ink-400 text-xs">Nenhuma conversa ainda.</div>
           )}
-          {!loadingConversations && conversations.map((c) => {
-            const other = otherParticipant(c, me)
-            const name = other?.username ?? other?.id ?? 'Contato desconhecido'
-            const naoLida = !!c.updated_time && (!ultimasVisitas[c.id] || new Date(c.updated_time) > new Date(ultimasVisitas[c.id]))
+          {!loadingConversations && grupos.map((g) => {
+            const multiplas = g.conversations.length > 1
+            const expandido = expandedGroupKey === g.key
+            const algumaNaoLida = g.conversations.some(
+              (c) => !!c.updated_time && (!ultimasVisitas[c.id] || new Date(c.updated_time) > new Date(ultimasVisitas[c.id])),
+            )
             return (
-              <div
-                key={c.id}
-                onClick={() => selecionarConversa(c.id)}
-                className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${selectedId === c.id ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'}`}
-              >
-                <div className="shrink-0 relative">
-                  <Avatar name={name} profilePic={other?.profile_pic} className="w-9 h-9" />
-                  {naoLida && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-600 border-2 border-white" />}
+              <div key={g.key}>
+                <div
+                  onClick={() => (multiplas ? setExpandedGroupKey(expandido ? null : g.key) : selecionarConversa(g.conversations[0].id))}
+                  className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${
+                    !multiplas && selectedId === g.conversations[0].id ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'
+                  }`}
+                >
+                  <div className="shrink-0 relative">
+                    <Avatar name={g.name} profilePic={g.profilePic} className="w-9 h-9" />
+                    {algumaNaoLida && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-600 border-2 border-white" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs truncate flex items-center gap-1.5 ${algumaNaoLida ? 'font-bold text-ink-900' : 'font-semibold text-ink-900'}`}>
+                      @{g.name}
+                      {multiplas && <span className="text-[10px] font-medium text-ink-500 bg-ink-100 rounded-full px-1.5 shrink-0">{g.conversations.length}</span>}
+                    </p>
+                    <p className={`text-[11px] truncate mt-0.5 ${algumaNaoLida ? 'text-brand-700 font-medium' : 'text-ink-500'}`}>{formatTime(g.mostRecentTime)}</p>
+                  </div>
+                  {multiplas && <ChevronDown className={`w-4 h-4 text-ink-400 shrink-0 transition-transform ${expandido ? 'rotate-180' : ''}`} />}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-xs truncate ${naoLida ? 'font-bold text-ink-900' : 'font-semibold text-ink-900'}`}>@{name}</p>
-                  <p className={`text-[11px] truncate mt-0.5 ${naoLida ? 'text-brand-700 font-medium' : 'text-ink-500'}`}>{formatTime(c.updated_time)}</p>
-                </div>
+
+                {multiplas && expandido && g.conversations.map((c) => {
+                  const naoLida = !!c.updated_time && (!ultimasVisitas[c.id] || new Date(c.updated_time) > new Date(ultimasVisitas[c.id]))
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => selecionarConversa(c.id)}
+                      className={`flex items-center gap-2 pl-12 pr-3 py-2 cursor-pointer transition-colors ${selectedId === c.id ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'}`}
+                    >
+                      {naoLida && <span className="w-2 h-2 rounded-full bg-brand-600 shrink-0" />}
+                      <span className={`text-[11px] ${naoLida ? 'font-semibold text-ink-800' : 'text-ink-500'}`}>{formatTime(c.updated_time)}</span>
+                    </div>
+                  )
+                })}
               </div>
             )
           })}
