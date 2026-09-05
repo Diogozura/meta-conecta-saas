@@ -45,8 +45,22 @@ function formatTime(iso?: string) {
   return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
+// A Graph API do Instagram não expõe nenhum campo de "lida/não lida" pra conversas ou
+// mensagens — a única saída é controlar isso por aqui: guarda a última vez que cada
+// conversa foi aberta (localStorage, por navegador) e compara com `updated_time`.
+const LAST_SEEN_KEY = 'ig-inbox-last-seen'
+
+function lerUltimasVisitas(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(LAST_SEEN_KEY) ?? '{}')
+  } catch {
+    return {}
+  }
+}
+
 export default function InboxTab({ connected }: { connected: boolean }) {
   const [me, setMe] = useState<{ id: string | null; username: string | null }>({ id: null, username: null })
+  const [ultimasVisitas, setUltimasVisitas] = useState<Record<string, string>>(() => (typeof window !== 'undefined' ? lerUltimasVisitas() : {}))
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -94,6 +108,15 @@ export default function InboxTab({ connected }: { connected: boolean }) {
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Erro ao carregar mensagens'))
       .finally(() => setLoadingMessages(false))
   }, [selectedId])
+
+  function selecionarConversa(conversationId: string) {
+    setSelectedId(conversationId)
+    setUltimasVisitas((prev) => {
+      const next = { ...prev, [conversationId]: new Date().toISOString() }
+      try { localStorage.setItem(LAST_SEEN_KEY, JSON.stringify(next)) } catch {}
+      return next
+    })
+  }
 
   const selectedConv = conversations.find((c) => c.id === selectedId)
   const recipient = selectedConv ? otherParticipant(selectedConv, me) : null
@@ -148,18 +171,20 @@ export default function InboxTab({ connected }: { connected: boolean }) {
           {!loadingConversations && conversations.map((c) => {
             const other = otherParticipant(c, me)
             const name = other?.username ?? other?.id ?? 'Contato desconhecido'
+            const naoLida = !!c.updated_time && (!ultimasVisitas[c.id] || new Date(c.updated_time) > new Date(ultimasVisitas[c.id]))
             return (
               <div
                 key={c.id}
-                onClick={() => setSelectedId(c.id)}
+                onClick={() => selecionarConversa(c.id)}
                 className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${selectedId === c.id ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'}`}
               >
-                <div className="shrink-0">
+                <div className="shrink-0 relative">
                   <Avatar name={name} profilePic={other?.profile_pic} className="w-9 h-9" />
+                  {naoLida && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-600 border-2 border-white" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-ink-900 truncate">@{name}</p>
-                  <p className="text-[11px] text-ink-500 truncate mt-0.5">{formatTime(c.updated_time)}</p>
+                  <p className={`text-xs truncate ${naoLida ? 'font-bold text-ink-900' : 'font-semibold text-ink-900'}`}>@{name}</p>
+                  <p className={`text-[11px] truncate mt-0.5 ${naoLida ? 'text-brand-700 font-medium' : 'text-ink-500'}`}>{formatTime(c.updated_time)}</p>
                 </div>
               </div>
             )
