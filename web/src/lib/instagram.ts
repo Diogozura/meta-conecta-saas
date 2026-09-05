@@ -8,7 +8,9 @@ import { auth } from '@/lib/auth'
 import { obterInstagramAccess } from '@/lib/firestore'
 
 const IG_GRAPH_API = 'https://graph.instagram.com'
-const IG_GRAPH_API_VERSION = 'v21.0'
+// v22.0+ é o que introduziu metric_type=total_value pras métricas agregadas e os breakdowns
+// (contact_button_type, follow_type etc) usados em getAccountInsights — não fica em v21.0.
+const IG_GRAPH_API_VERSION = 'v22.0'
 
 function getRedirectUri() {
   // Precisa bater EXATAMENTE com a URL cadastrada em "Login do Instagram
@@ -287,7 +289,21 @@ export interface CreateMediaContainerParams {
   imageUrl?: string
   videoUrl?: string
   caption?: string
-  mediaType: 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES'
+  mediaType: 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES' | 'CAROUSEL'
+  /** Texto alternativo (acessibilidade) — só suportado em imagem avulsa, não em carrossel/reels/story. */
+  altText?: string
+  /** Até 3 @usuários convidados como colaboradores do post. */
+  collaborators?: string[]
+  /** Selo de "conteúdo gerado por IA" exigido pela Meta quando aplicável. */
+  isAiGenerated?: boolean
+  /** true ao criar um item filho de carrossel (não publica sozinho). */
+  isCarouselItem?: boolean
+  /** IDs dos containers filhos, só no container "pai" do carrossel (media_type=CAROUSEL). */
+  children?: string[]
+  /** Capa personalizada do Reels (imagem pública). Ignorada se thumbOffset também for enviado junto. */
+  coverUrl?: string
+  /** Reels: true = aparece no Feed e na aba Reels; false = só na aba Reels. */
+  shareToFeed?: boolean
 }
 
 /** Cria o container de mídia — primeiro passo da publicação (a segunda etapa é publishContainer). */
@@ -297,6 +313,13 @@ export async function createMediaContainer(accessToken: string, igUserId: string
   if (params.videoUrl) body.video_url = params.videoUrl
   if (params.caption) body.caption = params.caption
   if (params.mediaType !== 'IMAGE') body.media_type = params.mediaType
+  if (params.altText) body.alt_text = params.altText
+  if (params.collaborators?.length) body.collaborators = JSON.stringify(params.collaborators)
+  if (params.isAiGenerated) body.is_ai_generated = 'true'
+  if (params.isCarouselItem) body.is_carousel_item = 'true'
+  if (params.children?.length) body.children = params.children.join(',')
+  if (params.coverUrl) body.cover_url = params.coverUrl
+  if (params.shareToFeed !== undefined) body.share_to_feed = String(params.shareToFeed)
 
   return igFetch(`${igUserId}/media`, accessToken, {
     method: 'POST',
@@ -329,10 +352,22 @@ export async function createResumableMediaContainer(
   accessToken: string,
   igUserId: string,
   mediaType: 'VIDEO' | 'REELS' | 'STORIES',
-  caption?: string,
+  options: {
+    caption?: string
+    isCarouselItem?: boolean
+    collaborators?: string[]
+    isAiGenerated?: boolean
+    coverUrl?: string
+    shareToFeed?: boolean
+  } = {},
 ): Promise<{ id: string }> {
   const body: Record<string, string> = { upload_type: 'resumable', media_type: mediaType }
-  if (caption) body.caption = caption
+  if (options.caption) body.caption = options.caption
+  if (options.isCarouselItem) body.is_carousel_item = 'true'
+  if (options.collaborators?.length) body.collaborators = JSON.stringify(options.collaborators)
+  if (options.isAiGenerated) body.is_ai_generated = 'true'
+  if (options.coverUrl) body.cover_url = options.coverUrl
+  if (options.shareToFeed !== undefined) body.share_to_feed = String(options.shareToFeed)
 
   return igFetch(`${igUserId}/media`, accessToken, {
     method: 'POST',
@@ -401,30 +436,136 @@ export async function getMentionedMedia(accessToken: string, igUserId: string, m
 
 /* ─── Insights (métricas) ───────────────────────────────────────────────── */
 
+export interface InstagramInsightBreakdownResult {
+  dimension_values?: string[]
+  value?: number
+}
+
 export interface InstagramInsightValue {
   name: string
   period: string
   values?: Array<{ value: number; end_time?: string }>
-  total_value?: { value: number }
+  total_value?: { value: number; breakdowns?: Array<{ dimension_keys?: string[]; results?: InstagramInsightBreakdownResult[] }> }
   title?: string
 }
 
 /**
- * Métricas de conta (ex: reach, accounts_engaged, likes) num período (day/week/days_28).
- * Desde a v22 da Graph API, métricas agregadas (não time-series) exigem metric_type=total_value —
+ * Métricas de conta (ex: reach, accounts_engaged, likes) via metric_type=total_value.
+ * IMPORTANTE: pra esse metric_type a Graph API só aceita period=day — "week"/"days_28" NÃO são períodos
+ * válidos aqui (isso é só pra metric_type=time_series). Pra agregar 7/28 dias, o jeito certo é mandar
+ * period=day + since/until (timestamps unix) cobrindo a janela desejada; a API devolve um total_value
+ * único já somando o intervalo inteiro — não precisa somar manualmente.
  * ver https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/insights
  */
 export async function getAccountInsights(
   accessToken: string,
   igUserId: string,
   metrics: string[],
-  period = 'day',
-  metricType?: 'total_value',
+  options: { metricType?: 'total_value'; since?: number; until?: number; breakdown?: string } = {},
 ): Promise<InstagramInsightValue[]> {
-  const metricTypeParam = metricType ? `&metric_type=${metricType}` : ''
-  const data = await igFetch<{ data: InstagramInsightValue[] }>(
-    `${igUserId}/insights?metric=${metrics.join(',')}&period=${period}${metricTypeParam}`,
-    accessToken,
-  )
+  const params = new URLSearchParams({ metric: metrics.join(','), period: 'day' })
+  if (options.metricType) params.set('metric_type', options.metricType)
+  if (options.since !== undefined) params.set('since', String(options.since))
+  if (options.until !== undefined) params.set('until', String(options.until))
+  if (options.breakdown) params.set('breakdown', options.breakdown)
+
+  const data = await igFetch<{ data: InstagramInsightValue[] }>(`${igUserId}/insights?${params.toString()}`, accessToken)
   return data.data ?? []
+}
+
+/** Seguidores, quem a conta segue e total de publicações — campos do próprio objeto da conta (não é insight). */
+export async function getAccountTotals(
+  accessToken: string,
+  igUserId: string,
+): Promise<{ followers_count?: number; follows_count?: number; media_count?: number }> {
+  return igFetch(`${igUserId}?fields=followers_count,follows_count,media_count`, accessToken)
+}
+
+export interface FollowerGrowth {
+  net: number
+  follows?: number
+  unfollows?: number
+}
+
+/**
+ * Crescimento de seguidores num intervalo. O metric "follower_count" não existe mais na Graph API atual
+ * (não aparece na referência de métricas de ig-user) — o substituto documentado é "follows_and_unfollows"
+ * com breakdown=follow_type. A Meta não publica um exemplo de JSON pra essa métrica específica, então a
+ * leitura do breakdown abaixo é defensiva: procura por dimensões que contenham "UNFOLLOW" vs "FOLLOW" em
+ * vez de comparar contra um enum fixo, e cai pra total_value.value (sem separar follows/unfollows) se o
+ * formato vier diferente do esperado.
+ */
+export async function getFollowerGrowth(
+  accessToken: string,
+  igUserId: string,
+  sinceUnix: number,
+  untilUnix: number,
+): Promise<FollowerGrowth> {
+  const insights = await getAccountInsights(accessToken, igUserId, ['follows_and_unfollows'], {
+    metricType: 'total_value',
+    since: sinceUnix,
+    until: untilUnix,
+    breakdown: 'follow_type',
+  })
+
+  const totalValue = insights[0]?.total_value
+  const results = totalValue?.breakdowns?.[0]?.results ?? []
+
+  let follows: number | undefined
+  let unfollows: number | undefined
+  for (const r of results) {
+    const key = (r.dimension_values?.[0] ?? '').toUpperCase()
+    if (key.includes('UNFOLLOW')) unfollows = (unfollows ?? 0) + (r.value ?? 0)
+    else if (key.includes('FOLLOW')) follows = (follows ?? 0) + (r.value ?? 0)
+  }
+
+  if (follows === undefined && unfollows === undefined) {
+    console.error('[Instagram] follows_and_unfollows veio sem breakdown reconhecível:', JSON.stringify(insights))
+  }
+
+  const net = follows !== undefined || unfollows !== undefined ? (follows ?? 0) - (unfollows ?? 0) : (totalValue?.value ?? 0)
+  return { net, follows, unfollows }
+}
+
+const CONTACT_BUTTON_LABELS: Record<string, string> = {
+  BOOK_NOW: 'Agendamentos',
+  CALL: 'Cliques para ligar',
+  DIRECTION: 'Cliques em "Como chegar"',
+  EMAIL: 'Contatos por e-mail',
+  INSTANT_EXPERIENCE: 'Experiência instantânea',
+  TEXT: 'Cliques para mensagem de texto',
+  UNDEFINED: 'Outros toques de contato',
+}
+
+export interface ContactBreakdownItem {
+  type: string
+  label: string
+  value: number
+}
+
+/**
+ * Toques nos botões de contato do perfil (ligar, e-mail, como chegar etc). Substituiu os metrics
+ * separados "email_contacts"/"get_directions_clicks"/"phone_call_clicks"/"text_message_clicks", que não
+ * existem mais como top-level metrics — hoje é tudo "profile_links_taps" com breakdown=contact_button_type.
+ */
+export async function getContactButtonBreakdown(
+  accessToken: string,
+  igUserId: string,
+  sinceUnix: number,
+  untilUnix: number,
+): Promise<ContactBreakdownItem[]> {
+  const insights = await getAccountInsights(accessToken, igUserId, ['profile_links_taps'], {
+    metricType: 'total_value',
+    since: sinceUnix,
+    until: untilUnix,
+    breakdown: 'contact_button_type',
+  })
+
+  const results = insights[0]?.total_value?.breakdowns?.[0]?.results ?? []
+  return results
+    .map((r) => {
+      const type = (r.dimension_values?.[0] ?? 'UNDEFINED').toUpperCase()
+      return { type, label: CONTACT_BUTTON_LABELS[type] ?? type, value: r.value ?? 0 }
+    })
+    .filter((item) => item.value > 0)
 }

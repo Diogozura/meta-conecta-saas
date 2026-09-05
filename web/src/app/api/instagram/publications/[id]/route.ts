@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { getInstagramCredentials, getContainerStatus, publishContainer, InstagramApiError } from '@/lib/instagram'
-import { obterPublicacaoInstagram, atualizarPublicacaoInstagram } from '@/lib/firestore'
+import { obterPublicacaoInstagram, atualizarPublicacaoInstagram, excluirPublicacaoInstagram } from '@/lib/firestore'
 import { deleteInstagramPhoto } from '@/lib/storage'
 
 // GET /api/instagram/publications/[id] - Consulta (e finaliza, se pronto) uma publicação
@@ -32,6 +32,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const published = await publishContainer(credentials.accessToken, credentials.igUserId, publicacao.containerId)
       await atualizarPublicacaoInstagram(session.user.contaId, id, { status: 'publicado', mediaId: published.id, publicadoEm: new Date() })
       if (publicacao.mediaPath) await deleteInstagramPhoto(publicacao.mediaPath)
+      await Promise.all((publicacao.mediaPaths ?? []).map((p) => deleteInstagramPhoto(p)))
+      if (publicacao.coverPath) await deleteInstagramPhoto(publicacao.coverPath)
       return NextResponse.json({ publicacao: { ...publicacao, status: 'publicado', mediaId: published.id } })
     }
 
@@ -39,6 +41,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const erro = `Processamento falhou (${status_code})`
       await atualizarPublicacaoInstagram(session.user.contaId, id, { status: 'falhou', erro })
       if (publicacao.mediaPath) await deleteInstagramPhoto(publicacao.mediaPath)
+      await Promise.all((publicacao.mediaPaths ?? []).map((p) => deleteInstagramPhoto(p)))
+      if (publicacao.coverPath) await deleteInstagramPhoto(publicacao.coverPath)
       return NextResponse.json({ publicacao: { ...publicacao, status: 'falhou', erro } })
     }
 
@@ -48,4 +52,23 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const code = err instanceof InstagramApiError ? err.code : undefined
     return NextResponse.json({ error: message, code }, { status: 502 })
   }
+}
+
+// DELETE /api/instagram/publications/[id] - Remove só o registro do histórico no painel;
+// não apaga a publicação real no Instagram.
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+
+  const session = await auth()
+  if (!session?.user?.contaId) {
+    return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+  }
+
+  const publicacao = await obterPublicacaoInstagram(session.user.contaId, id)
+  if (!publicacao) {
+    return NextResponse.json({ error: 'Publicação não encontrada' }, { status: 404 })
+  }
+
+  await excluirPublicacaoInstagram(session.user.contaId, id)
+  return NextResponse.json({ ok: true })
 }
