@@ -69,6 +69,11 @@ interface ThreadMessage {
   attachments?: { data: ThreadMessageAttachment[] }
   shares?: { data: ThreadMessageShare[] } | ThreadMessageShare
   story?: Record<string, unknown>
+  // Diagnóstico bruto do que a Meta devolveu de verdade nas chamadas de shares/story pra essa
+  // mensagem — ver lib/instagram.ts::listConversationMessages. `null` = a mensagem nem apareceu
+  // no lote buscado; um objeto = apareceu, com o que veio (mesmo vazio).
+  debugShares?: unknown
+  debugStory?: unknown
 }
 
 /** `shares` às vezes vem como objeto único, às vezes como `{data: [...]}` — normaliza pro primeiro item. */
@@ -537,17 +542,14 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                           {(share!.name || share!.description) && <p className="text-xs mt-1 opacity-80">{share!.name || share!.description}</p>}
                         </div>
                       )}
-                      {semNadaReconhecido && !msg.attachments && !msg.shares && !msg.story && (
-                        // A Meta não devolveu NADA nesses 3 campos — confirmado que acontece com nota
-                        // de voz, mas também já vimos acontecer com Reels compartilhado, então o aviso
-                        // não pode presumir qual dos dois é. De qualquer forma, não é algo que dá pra
-                        // resolver no código: se a API não manda o dado, não tem como exibir.
-                        <p className={`italic text-xs ${sentByMe ? 'text-brand-100' : 'text-ink-400'}`}>Conteúdo (áudio, Reels ou outro compartilhamento) que a API do Instagram não devolveu nenhum dado — sem como exibir aqui.</p>
-                      )}
-                      {semNadaReconhecido && (msg.attachments || msg.shares || msg.story) && (
+                      {semNadaReconhecido && (
+                        // A Meta não devolveu nada reconhecível nesses campos — mas SEMPRE dá pra
+                        // ver o diagnóstico bruto agora (debugShares/debugStory mostram o que a
+                        // chamada de fato devolveu pra essa mensagem, mesmo vazio), pra investigar
+                        // por que ela não manda o dado em vez de só constatar que não veio.
                         <details className={`text-xs ${sentByMe ? 'text-brand-100' : 'text-ink-400'}`}>
-                          <summary className="italic cursor-pointer">Conteúdo não suportado — clique pra ver o dado bruto</summary>
-                          <pre className="mt-1 text-[10px] whitespace-pre-wrap break-all opacity-80">{JSON.stringify({ attachments: msg.attachments, shares: msg.shares, story: msg.story }, null, 2)}</pre>
+                          <summary className="italic cursor-pointer">Conteúdo (áudio, Reels ou outro compartilhamento) sem dado reconhecido — clique pra ver o diagnóstico</summary>
+                          <pre className="mt-1 text-[10px] whitespace-pre-wrap break-all opacity-80">{JSON.stringify({ attachments: msg.attachments, shares: msg.shares, story: msg.story, debugShares: msg.debugShares, debugStory: msg.debugStory }, null, 2)}</pre>
                         </details>
                       )}
                       {msg.message && <LinkifiedText text={msg.message} />}

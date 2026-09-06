@@ -259,6 +259,12 @@ export interface InstagramMessage {
   attachments?: { data: InstagramMessageAttachment[] }
   shares?: { data: InstagramMessageShare[] } | InstagramMessageShare
   story?: InstagramMessageStory
+  // Diagnóstico: o que a chamada de shares/story devolveu de verdade pra essa mensagem, mesmo
+  // quando vazio/sem dado — `undefined` = a chamada falhou de vez (ver sharesStoryErro), `null` =
+  // a chamada funcionou mas essa mensagem nem apareceu no lote de 50, um objeto = apareceu, e é
+  // exatamente isso que veio (ajuda a ver se a Meta manda o campo vazio ou nem inclui a mensagem).
+  debugShares?: InstagramMessage | null
+  debugStory?: InstagramMessage | null
 }
 
 const MESSAGE_FIELDS_BASE = 'id,from{id,username},to{id,username},message,created_time'
@@ -312,7 +318,7 @@ export async function listConversationMessages(accessToken: string, conversation
     const porId = new Map(comShares.map((m) => [m.id, m]))
     mensagens = mensagens.map((m) => {
       const extra = porId.get(m.id)
-      return extra?.shares ? { ...m, shares: extra.shares } : m
+      return { ...m, ...(extra?.shares ? { shares: extra.shares } : {}), debugShares: extra ?? null }
     })
   } catch (err) {
     erros.push(`shares: ${err instanceof Error ? err.message : String(err)}`)
@@ -323,7 +329,7 @@ export async function listConversationMessages(accessToken: string, conversation
     const porId = new Map(comStory.map((m) => [m.id, m]))
     mensagens = mensagens.map((m) => {
       const extra = porId.get(m.id)
-      return extra?.story ? { ...m, story: extra.story } : m
+      return { ...m, ...(extra?.story ? { story: extra.story } : {}), debugStory: extra ?? null }
     })
   } catch (err) {
     erros.push(`story: ${err instanceof Error ? err.message : String(err)}`)
