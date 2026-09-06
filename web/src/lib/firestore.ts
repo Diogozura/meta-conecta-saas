@@ -5,7 +5,7 @@
 
 import { getFirestore, Timestamp, Query, Filter, FieldValue } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, ContaAiConfig, InstagramPublishConfig, Usuario, MetaAccess, InstagramAccess, CanvaAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, VersaoPublicacaoInstagram, HorarioFixoInstagram, InstagramBloqueado, PerguntaFrequenteInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, ConjuntoHashtags, ModeloLegenda, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
+import { Conta, ContaAiConfig, InstagramPublishConfig, Usuario, MetaAccess, InstagramAccess, CanvaAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, VersaoPublicacaoInstagram, HorarioFixoInstagram, InstagramBloqueado, PerguntaFrequenteInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, RespostaRapidaInstagram, ConjuntoHashtags, ModeloLegenda, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -1223,6 +1223,34 @@ export async function atualizarRespostaRapida(contaId: string, id: string, data:
 export async function excluirRespostaRapida(contaId: string, id: string): Promise<void> {
   const db = getDb()
   await db.collection('contas').doc(contaId).collection('respostasRapidas').doc(id).delete()
+}
+
+// ─────────────────────────────────────────
+// RESPOSTAS RÁPIDAS DO INSTAGRAM (Subcoleção: contas/{contaId}/respostasRapidasInstagram) — de
+// propósito uma coleção separada da do WhatsApp (ver RespostaRapidaInstagram em types/database.ts).
+// ─────────────────────────────────────────
+
+export async function criarRespostaRapidaInstagram(contaId: string, data: Omit<RespostaRapidaInstagram, 'id' | 'contaId' | 'dataCadastro'>): Promise<RespostaRapidaInstagram> {
+  const db = getDb()
+  const now = Timestamp.now()
+  const docRef = await db.collection('contas').doc(contaId).collection('respostasRapidasInstagram').add({ contaId, ...data, dataCadastro: now })
+  return { id: docRef.id, contaId, ...data, dataCadastro: now.toDate() }
+}
+
+export async function listarRespostasRapidasInstagram(contaId: string): Promise<RespostaRapidaInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('respostasRapidasInstagram').orderBy('atalho', 'asc').get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as RespostaRapidaInstagram))
+}
+
+export async function atualizarRespostaRapidaInstagram(contaId: string, id: string, data: Partial<Pick<RespostaRapidaInstagram, 'atalho' | 'texto'>>): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('respostasRapidasInstagram').doc(id).update(data)
+}
+
+export async function excluirRespostaRapidaInstagram(contaId: string, id: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('respostasRapidasInstagram').doc(id).delete()
 }
 
 // ─────────────────────────────────────────

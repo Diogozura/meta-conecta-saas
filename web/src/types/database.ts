@@ -403,6 +403,18 @@ export interface RespostaRapida {
   dataCadastro: Date
 }
 
+// Igual a RespostaRapida, mas pro Instagram — de propósito uma coleção À PARTE (não
+// compartilhada com o WhatsApp). Cada canal tem seu próprio tom de voz e vocabulário; misturar
+// os dois fazia uma resposta pensada pra WhatsApp aparecer na hora de responder um comentário do
+// Instagram, e vice-versa. Ver contas/{contaId}/respostasRapidasInstagram.
+export interface RespostaRapidaInstagram {
+  id: string
+  contaId: string
+  atalho: string
+  texto: string
+  dataCadastro: Date
+}
+
 // ─────────────────────────────────────────
 // ConjuntoHashtags (Subcoleção: contas/{contaId}/conjuntosHashtags) — grupos
 // de hashtags prontos pra inserir na legenda do Instagram com 1 clique.

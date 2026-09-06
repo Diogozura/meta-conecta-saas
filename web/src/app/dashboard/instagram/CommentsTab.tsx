@@ -74,6 +74,8 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
   const [replyText, setReplyText] = useState<Record<string, string>>({})
   const [replying, setReplying] = useState<string | null>(null)
   const [respostasRapidas, setRespostasRapidas] = useState<RespostaRapida[] | null>(null)
+  const [novoAtalho, setNovoAtalho] = useState('')
+  const [novoRespostaTexto, setNovoRespostaTexto] = useState('')
   const [respostasAbertoPara, setRespostasAbertoPara] = useState<string | null>(null)
 
   // Moderação, FAQ e bloqueio (itens 24, 29, 32)
@@ -369,7 +371,7 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
     const abrindo = respostasAbertoPara !== commentId
     setRespostasAbertoPara(abrindo ? commentId : null)
     if (abrindo && respostasRapidas === null) {
-      fetch('/api/respostas-rapidas')
+      fetch('/api/instagram/respostas-rapidas')
         .then((res) => (res.ok ? res.json() : null))
         .then((data: { respostas: RespostaRapida[] } | null) => setRespostasRapidas(data?.respostas ?? []))
         .catch(() => setRespostasRapidas([]))
@@ -379,6 +381,30 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
   function inserirRespostaRapida(commentId: string, texto: string) {
     setReplyText((prev) => ({ ...prev, [commentId]: texto }))
     setRespostasAbertoPara(null)
+  }
+
+  async function handleCriarRespostaRapida(e: React.FormEvent) {
+    e.preventDefault()
+    if (!novoAtalho.trim() || !novoRespostaTexto.trim()) return
+    try {
+      const res = await fetch('/api/instagram/respostas-rapidas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ atalho: novoAtalho.trim(), texto: novoRespostaTexto.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao salvar')
+      setRespostasRapidas((prev) => [...(prev ?? []), json.resposta].sort((a, b) => a.atalho.localeCompare(b.atalho)))
+      setNovoAtalho('')
+      setNovoRespostaTexto('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar resposta rápida')
+    }
+  }
+
+  async function handleExcluirRespostaRapida(id: string) {
+    setRespostasRapidas((prev) => (prev ?? []).filter((r) => r.id !== id))
+    await fetch(`/api/instagram/respostas-rapidas/${id}`, { method: 'DELETE' }).catch(() => {})
   }
 
   async function handleReply(mediaId: string, commentId: string) {
@@ -653,20 +679,44 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
                       </div>
 
                       {respostasAbertoPara === c.id && (
-                        <div className="absolute z-10 top-full mt-1 left-0 right-0 bg-white border border-ink-200 rounded-lg shadow-lg p-2 space-y-1 max-h-40 overflow-y-auto">
+                        <div className="absolute z-10 top-full mt-1 left-0 right-0 bg-white border border-ink-200 rounded-lg shadow-lg p-2 space-y-1 max-h-56 overflow-y-auto">
                           {respostasRapidas === null && <p className="text-xs text-ink-400 px-1">Carregando...</p>}
-                          {respostasRapidas?.length === 0 && <p className="text-xs text-ink-400 px-1">Nenhuma resposta rápida cadastrada (veja Conversas no WhatsApp).</p>}
+                          {respostasRapidas?.length === 0 && <p className="text-xs text-ink-400 px-1">Nenhuma resposta rápida do Instagram cadastrada ainda.</p>}
                           {respostasRapidas?.map((r) => (
-                            <button
-                              key={r.id}
-                              type="button"
-                              onClick={() => inserirRespostaRapida(c.id, r.texto)}
-                              className="w-full text-left px-2 py-1 rounded hover:bg-ink-50"
-                            >
-                              <span className="text-[11px] font-semibold text-brand-700">/{r.atalho}</span>{' '}
-                              <span className="text-xs text-ink-600">{r.texto}</span>
-                            </button>
+                            <div key={r.id} className="flex items-center gap-1 group">
+                              <button
+                                type="button"
+                                onClick={() => inserirRespostaRapida(c.id, r.texto)}
+                                className="flex-1 text-left px-2 py-1 rounded hover:bg-ink-50 min-w-0"
+                              >
+                                <span className="text-[11px] font-semibold text-brand-700">/{r.atalho}</span>{' '}
+                                <span className="text-xs text-ink-600">{r.texto}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleExcluirRespostaRapida(r.id)}
+                                className="p-1 text-ink-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                title="Excluir"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
                           ))}
+                          <form onSubmit={handleCriarRespostaRapida} className="flex items-center gap-1 pt-1 border-t border-ink-100 mt-1">
+                            <input
+                              value={novoAtalho}
+                              onChange={(e) => setNovoAtalho(e.target.value)}
+                              placeholder="atalho"
+                              className="w-16 px-1.5 py-1 border border-ink-200 rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-brand-400"
+                            />
+                            <input
+                              value={novoRespostaTexto}
+                              onChange={(e) => setNovoRespostaTexto(e.target.value)}
+                              placeholder="texto da resposta"
+                              className="flex-1 px-1.5 py-1 border border-ink-200 rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-brand-400 min-w-0"
+                            />
+                            <button type="submit" className="px-1.5 py-1 bg-brand-600 text-white rounded text-[11px] font-medium hover:bg-brand-700 shrink-0">+</button>
+                          </form>
                         </div>
                       )}
                     </div>
