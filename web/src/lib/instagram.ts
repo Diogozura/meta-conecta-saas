@@ -230,21 +230,45 @@ export async function listConversations(accessToken: string, igUserId: string): 
   }))
 }
 
+export interface InstagramMessageAttachment {
+  id?: string
+  file_url?: string
+  image_data?: { url?: string; media_url?: string }
+  video_data?: { url?: string }
+}
+
 export interface InstagramMessage {
   id: string
   from?: { id: string; username?: string }
   to?: { data: Array<{ id: string; username?: string }> }
   message?: string
   created_time?: string
+  attachments?: { data: InstagramMessageAttachment[] }
 }
 
-/** Lista as mensagens de uma conversa específica. */
+const MESSAGE_FIELDS_BASE = 'id,from{id,username},to{id,username},message,created_time'
+const MESSAGE_FIELDS_COM_ANEXO = `${MESSAGE_FIELDS_BASE},attachments{id,file_url,image_data,video_data}`
+
+/**
+ * Lista as mensagens de uma conversa específica. Tenta pedir `attachments` (foto/áudio/vídeo
+ * enviados na DM) primeiro — esse campo é documentado pra Messenger/Instagram via Página
+ * vinculada, mas não é confirmado pro login direto do Instagram (`graph.instagram.com`) que esse
+ * app usa. Se a Graph API rejeitar o campo, cai pra buscar só o texto, sem quebrar a conversa.
+ */
 export async function listConversationMessages(accessToken: string, conversationId: string): Promise<InstagramMessage[]> {
-  const data = await igFetch<{ messages: { data: InstagramMessage[] } }>(
-    `${conversationId}?fields=messages.limit(50){id,from{id,username},to{id,username},message,created_time}`,
-    accessToken,
-  )
-  return data.messages?.data ?? []
+  try {
+    const data = await igFetch<{ messages: { data: InstagramMessage[] } }>(
+      `${conversationId}?fields=messages.limit(50){${MESSAGE_FIELDS_COM_ANEXO}}`,
+      accessToken,
+    )
+    return data.messages?.data ?? []
+  } catch {
+    const data = await igFetch<{ messages: { data: InstagramMessage[] } }>(
+      `${conversationId}?fields=messages.limit(50){${MESSAGE_FIELDS_BASE}}`,
+      accessToken,
+    )
+    return data.messages?.data ?? []
+  }
 }
 
 /** Envia uma DM de texto para um usuário do Instagram (Instagram-scoped ID). */

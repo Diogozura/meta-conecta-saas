@@ -23,11 +23,19 @@ function Avatar({ name, profilePic, isGroup, className }: { name: string; profil
   )
 }
 
+interface ThreadMessageAttachment {
+  id?: string
+  file_url?: string
+  image_data?: { url?: string; media_url?: string }
+  video_data?: { url?: string }
+}
+
 interface ThreadMessage {
   id: string
   from?: { id: string; username?: string }
   message?: string
   created_time?: string
+  attachments?: { data: ThreadMessageAttachment[] }
 }
 
 // Compara por ID e por username — a Graph API às vezes devolve o participante
@@ -308,9 +316,19 @@ export default function InboxTab({ connected }: { connected: boolean }) {
               )}
               {!loadingMessages && messages.map((msg) => {
                 const sentByMe = msg.from?.id === me.id || (!!me.username && msg.from?.username === me.username)
+                const anexo = msg.attachments?.data?.[0]
+                const imagemUrl = anexo?.image_data?.url ?? anexo?.image_data?.media_url
+                const videoUrl = anexo?.video_data?.url
+                const audioUrl = !imagemUrl && !videoUrl ? anexo?.file_url : undefined
                 return (
                   <div key={msg.id} className={`flex ${sentByMe ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm shadow-sm ${sentByMe ? 'bg-brand-600 text-white rounded-br-sm' : 'bg-white text-ink-900 rounded-bl-sm'}`}>
+                      {imagemUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element -- imagem vinda da CDN da Meta, sem domínio fixo pra configurar no next/image
+                        <img src={imagemUrl} alt="" className="max-w-full rounded-lg mb-1" />
+                      )}
+                      {videoUrl && <video src={videoUrl} controls className="max-w-full rounded-lg mb-1" />}
+                      {audioUrl && <audio src={audioUrl} controls className="max-w-full mb-1" />}
                       {msg.message}
                       <p className={`text-[10px] mt-1 ${sentByMe ? 'text-brand-100' : 'text-ink-400'}`}>{formatTime(msg.created_time)}</p>
                     </div>
