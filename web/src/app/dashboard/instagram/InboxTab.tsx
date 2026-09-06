@@ -128,6 +128,7 @@ export default function InboxTab({ connected }: { connected: boolean }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [messages, setMessages] = useState<ThreadMessage[]>([])
+  const [sharesStoryErro, setSharesStoryErro] = useState<string | undefined>(undefined)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
 
@@ -181,15 +182,16 @@ export default function InboxTab({ connected }: { connected: boolean }) {
       selectedIds.map((id) =>
         fetch(`/api/instagram/conversations/${id}/messages`)
           .then((res) => res.json())
-          .then((data) => (data.error ? [] : (data.messages ?? []) as ThreadMessage[]))
-          .catch(() => [] as ThreadMessage[]),
+          .then((data) => (data.error ? { messages: [], sharesStoryErro: undefined } : { messages: (data.messages ?? []) as ThreadMessage[], sharesStoryErro: data.sharesStoryErro as string | undefined }))
+          .catch(() => ({ messages: [] as ThreadMessage[], sharesStoryErro: undefined })),
       ),
     )
       .then((porConversa) => {
         // Mescla as threads (mesma pessoa, ids diferentes — ver `grupos`) numa linha do tempo só.
-        const todas = porConversa.flat()
+        const todas = porConversa.flatMap((r) => r.messages)
         todas.sort((a, b) => new Date(a.created_time ?? 0).getTime() - new Date(b.created_time ?? 0).getTime())
         setMessages(todas)
+        setSharesStoryErro(porConversa.find((r) => r.sharesStoryErro)?.sharesStoryErro)
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Erro ao carregar mensagens'))
       .finally(() => setLoadingMessages(false))
@@ -345,6 +347,13 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                   ? 'Essa é uma conversa em grupo — a API de mensagens do Instagram não permite responder um grupo pelo painel, só 1:1.'
                   : 'Não conseguimos identificar quem é o outro participante dessa conversa — a resposta por aqui está desativada.'}
               </div>
+            )}
+
+            {sharesStoryErro && (
+              <details className="px-4 py-2 bg-amber-50 border-b border-amber-100 text-xs text-amber-800">
+                <summary className="cursor-pointer">Reels/posts/stories compartilhados não puderam ser buscados nessa conversa — clique pra ver o erro</summary>
+                <pre className="mt-1 text-[10px] whitespace-pre-wrap break-all">{sharesStoryErro}</pre>
+              </details>
             )}
 
             <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-ink-50">

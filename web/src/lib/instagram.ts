@@ -279,12 +279,19 @@ async function buscarMensagens(accessToken: string, conversationId: string, fiel
   return data.messages?.data ?? []
 }
 
+export interface ListConversationMessagesResult {
+  mensagens: InstagramMessage[]
+  sharesStoryErro?: string
+}
+
 /**
  * Lista as mensagens de uma conversa específica. `attachments` sempre é tentado (com fallback pro
  * texto puro se falhar); `shares`/`story` são buscados numa chamada extra e independente, mesclada
  * por ID de mensagem — assim uma eventual rejeição desses dois campos nunca derruba `attachments`.
+ * Devolve o erro de shares/story (se der) pra dar pra diagnosticar direto no painel, já que esses
+ * dois campos nunca foram confirmados pra esse tipo de login do Instagram.
  */
-export async function listConversationMessages(accessToken: string, conversationId: string): Promise<InstagramMessage[]> {
+export async function listConversationMessages(accessToken: string, conversationId: string): Promise<ListConversationMessagesResult> {
   let mensagens: InstagramMessage[]
   try {
     mensagens = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_ATTACHMENTS)
@@ -292,6 +299,7 @@ export async function listConversationMessages(accessToken: string, conversation
     mensagens = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_BASE)
   }
 
+  let sharesStoryErro: string | undefined
   try {
     const comShares = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_SHARES)
     const porId = new Map(comShares.map((m) => [m.id, m]))
@@ -299,11 +307,12 @@ export async function listConversationMessages(accessToken: string, conversation
       const extra = porId.get(m.id)
       return extra ? { ...m, shares: extra.shares, story: extra.story } : m
     })
-  } catch {
+  } catch (err) {
     // shares/story indisponíveis — segue só com o que já foi buscado (texto + attachments).
+    sharesStoryErro = err instanceof Error ? err.message : String(err)
   }
 
-  return mensagens
+  return { mensagens, sharesStoryErro }
 }
 
 /** Envia uma DM de texto para um usuário do Instagram (Instagram-scoped ID). */

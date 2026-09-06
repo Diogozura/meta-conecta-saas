@@ -6,8 +6,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   try {
     const credentials = await getInstagramCredentials()
-    const messages = await listConversationMessages(credentials.accessToken, id)
-    return NextResponse.json({ messages })
+    const { mensagens, sharesStoryErro } = await listConversationMessages(credentials.accessToken, id)
+    return NextResponse.json({ messages: mensagens, sharesStoryErro })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido'
     const code = err instanceof InstagramApiError ? err.code : undefined
