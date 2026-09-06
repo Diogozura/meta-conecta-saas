@@ -263,12 +263,13 @@ export interface InstagramMessage {
 
 const MESSAGE_FIELDS_BASE = 'id,from{id,username},to{id,username},message,created_time'
 // attachments = foto/áudio/vídeo enviados direto — CONFIRMADO que funciona pro login direto do
-// Instagram (testado ao vivo). shares/story (post/reel e story compartilhados) NÃO são
-// confirmados — só documentados pra Instagram via Página do Facebook. Por isso os dois ficam
-// numa tentativa SEPARADA de attachments: se shares/story derrubar a chamada inteira, a gente não
-// pode perder attachments (que já sabemos que funciona) junto — daí o fallback em 3 níveis abaixo.
+// Instagram (testado ao vivo).
 const MESSAGE_FIELDS_ATTACHMENTS = `${MESSAGE_FIELDS_BASE},attachments{id,file_url,image_data,video_data}`
-const MESSAGE_FIELDS_COMPLETO = `${MESSAGE_FIELDS_ATTACHMENTS},shares{id,name,description,type,url},story{id,link}`
+// shares/story (post/reel e story compartilhados) NÃO são confirmados — só documentados pra
+// Instagram via Página do Facebook, e na prática essa conta rejeita a chamada quando eles vêm
+// junto de attachments (derrubando os dois). Por isso vivem numa chamada TOTALMENTE separada,
+// combinada por ID depois — se essa chamada falhar, não afeta attachments em nada.
+const MESSAGE_FIELDS_SHARES = 'id,shares{id,name,description,type,url},story{id,link}'
 
 async function buscarMensagens(accessToken: string, conversationId: string, fields: string): Promise<InstagramMessage[]> {
   const data = await igFetch<{ messages: { data: InstagramMessage[] } }>(
@@ -279,20 +280,30 @@ async function buscarMensagens(accessToken: string, conversationId: string, fiel
 }
 
 /**
- * Lista as mensagens de uma conversa específica, tentando o máximo de campos primeiro e caindo
- * pra um conjunto mais simples se a Graph API rejeitar algo (ver comentário acima sobre
- * attachments vs. shares/story).
+ * Lista as mensagens de uma conversa específica. `attachments` sempre é tentado (com fallback pro
+ * texto puro se falhar); `shares`/`story` são buscados numa chamada extra e independente, mesclada
+ * por ID de mensagem — assim uma eventual rejeição desses dois campos nunca derruba `attachments`.
  */
 export async function listConversationMessages(accessToken: string, conversationId: string): Promise<InstagramMessage[]> {
+  let mensagens: InstagramMessage[]
   try {
-    return await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_COMPLETO)
+    mensagens = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_ATTACHMENTS)
   } catch {
-    try {
-      return await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_ATTACHMENTS)
-    } catch {
-      return buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_BASE)
-    }
+    mensagens = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_BASE)
   }
+
+  try {
+    const comShares = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_SHARES)
+    const porId = new Map(comShares.map((m) => [m.id, m]))
+    mensagens = mensagens.map((m) => {
+      const extra = porId.get(m.id)
+      return extra ? { ...m, shares: extra.shares, story: extra.story } : m
+    })
+  } catch {
+    // shares/story indisponíveis — segue só com o que já foi buscado (texto + attachments).
+  }
+
+  return mensagens
 }
 
 /** Envia uma DM de texto para um usuário do Instagram (Instagram-scoped ID). */

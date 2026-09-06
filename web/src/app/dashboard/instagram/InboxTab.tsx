@@ -369,9 +369,11 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                         </div>
                       )}
                       {semNadaReconhecido && !msg.attachments && !msg.shares && !msg.story && (
-                        // Confirmado: a Meta não devolve NADA (nem esses campos vêm preenchidos) pra
-                        // nota de voz — não é falta de suporte nosso, a API não expõe esse conteúdo.
-                        <p className={`italic text-xs ${sentByMe ? 'text-brand-100' : 'text-ink-400'}`}>🎤 Nota de voz — a API do Instagram não permite acessar esse conteúdo.</p>
+                        // A Meta não devolveu NADA nesses 3 campos — confirmado que acontece com nota
+                        // de voz, mas também já vimos acontecer com Reels compartilhado, então o aviso
+                        // não pode presumir qual dos dois é. De qualquer forma, não é algo que dá pra
+                        // resolver no código: se a API não manda o dado, não tem como exibir.
+                        <p className={`italic text-xs ${sentByMe ? 'text-brand-100' : 'text-ink-400'}`}>Conteúdo (áudio, Reels ou outro compartilhamento) que a API do Instagram não devolveu nenhum dado — sem como exibir aqui.</p>
                       )}
                       {semNadaReconhecido && (msg.attachments || msg.shares || msg.story) && (
                         <details className={`text-xs ${sentByMe ? 'text-brand-100' : 'text-ink-400'}`}>
