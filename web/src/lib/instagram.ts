@@ -267,12 +267,15 @@ const MESSAGE_FIELDS_BASE = 'id,from{id,username},to{id,username},message,create
 const MESSAGE_FIELDS_ATTACHMENTS = `${MESSAGE_FIELDS_BASE},attachments{id,file_url,image_data,video_data}`
 // shares/story (post/reel e story compartilhados) NÃO são confirmados — só documentados pra
 // Instagram via Página do Facebook, e na prática essa conta rejeita a chamada quando eles vêm
-// junto de attachments (derrubando os dois). Por isso vivem numa chamada TOTALMENTE separada,
-// combinada por ID depois — se essa chamada falhar, não afeta attachments em nada.
+// junto de attachments (derrubando os dois). Por isso cada um vive na SUA PRÓPRIA chamada,
+// totalmente independente uma da outra, combinadas por ID depois — se uma falhar, não derruba
+// nem attachments nem a outra (foi exatamente isso que aconteceu quando shares e story estavam
+// juntos numa única chamada: story sozinho rejeitado derrubava o shares, que já funcionava).
+const MESSAGE_FIELDS_SHARES = 'id,shares{name,description,type,url}'
 // story: nem "id" nem "link" são aceitos como subcampo pra esse tipo de login — a própria API
 // rejeita com "Tried accessing nonexisting field" pra qualquer subcampo testado até agora. Pedido
 // "pelado" (sem chaves), a API devolve o que ela quiser (formato ainda sendo mapeado ao vivo).
-const MESSAGE_FIELDS_SHARES = 'id,shares{name,description,type,url},story'
+const MESSAGE_FIELDS_STORY = 'id,story'
 
 async function buscarMensagens(accessToken: string, conversationId: string, fields: string): Promise<InstagramMessage[]> {
   const data = await igFetch<{ messages: { data: InstagramMessage[] } }>(
@@ -302,20 +305,31 @@ export async function listConversationMessages(accessToken: string, conversation
     mensagens = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_BASE)
   }
 
-  let sharesStoryErro: string | undefined
+  const erros: string[] = []
+
   try {
     const comShares = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_SHARES)
     const porId = new Map(comShares.map((m) => [m.id, m]))
     mensagens = mensagens.map((m) => {
       const extra = porId.get(m.id)
-      return extra ? { ...m, shares: extra.shares, story: extra.story } : m
+      return extra?.shares ? { ...m, shares: extra.shares } : m
     })
   } catch (err) {
-    // shares/story indisponíveis — segue só com o que já foi buscado (texto + attachments).
-    sharesStoryErro = err instanceof Error ? err.message : String(err)
+    erros.push(`shares: ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  return { mensagens, sharesStoryErro }
+  try {
+    const comStory = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_STORY)
+    const porId = new Map(comStory.map((m) => [m.id, m]))
+    mensagens = mensagens.map((m) => {
+      const extra = porId.get(m.id)
+      return extra?.story ? { ...m, story: extra.story } : m
+    })
+  } catch (err) {
+    erros.push(`story: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  return { mensagens, sharesStoryErro: erros.length > 0 ? erros.join(' | ') : undefined }
 }
 
 /** Envia uma DM de texto para um usuário do Instagram (Instagram-scoped ID). */
