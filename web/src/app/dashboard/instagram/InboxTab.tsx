@@ -62,6 +62,16 @@ function salvarUltimasVisitas(v: Record<string, string>): void {
   try { localStorage.setItem(LAST_SEEN_KEY, JSON.stringify(v)) } catch {}
 }
 
+// Controla se a "semeadura" inicial (tratar o que já existe como já visto, ver useEffect de
+// carregar conversas) já rodou nesse navegador — precisa ser um flag à parte, não só "o mapa
+// está vazio", senão quem já tinha clicado em 1-2 conversas antes dessa lógica existir nunca
+// teria as OUTRAS semeadas, ficando marcadas como não lidas pra sempre.
+const SEEDED_KEY = 'ig-inbox-seeded'
+
+function jaSemeado(): boolean {
+  try { return localStorage.getItem(SEEDED_KEY) === '1' } catch { return false }
+}
+
 export default function InboxTab({ connected }: { connected: boolean }) {
   const [me, setMe] = useState<{ id: string | null; username: string | null }>({ id: null, username: null })
   const [ultimasVisitas, setUltimasVisitas] = useState<Record<string, string>>(() => (typeof window !== 'undefined' ? lerUltimasVisitas() : {}))
@@ -96,16 +106,20 @@ export default function InboxTab({ connected }: { connected: boolean }) {
         const lista: ConversationSummary[] = data.conversations ?? []
         setConversations(lista)
 
-        // Primeira vez que essa marcação roda nesse navegador (nada salvo ainda) — sem uma base
-        // pra comparar, toda conversa pareceria "nova". Em vez disso, considera o que já existe
-        // agora como "já visto" e só sinaliza atividade de fato nova a partir daqui em diante.
-        setUltimasVisitas((prev) => {
-          if (Object.keys(prev).length > 0) return prev
-          const seed: Record<string, string> = {}
-          for (const c of lista) seed[c.id] = c.updated_time ?? new Date().toISOString()
-          salvarUltimasVisitas(seed)
-          return seed
-        })
+        // Primeira vez que essa marcação roda nesse navegador — sem uma base pra comparar, toda
+        // conversa pareceria "nova". Em vez disso, considera o que já existe agora como "já
+        // visto" (uma única vez, controlado por SEEDED_KEY) e só sinaliza atividade de fato nova
+        // a partir daqui em diante — inclusive pra conversas que já tinham sido clicadas antes
+        // dessa marcação existir.
+        if (!jaSemeado()) {
+          setUltimasVisitas((prev) => {
+            const next = { ...prev }
+            for (const c of lista) if (!next[c.id]) next[c.id] = c.updated_time ?? new Date().toISOString()
+            salvarUltimasVisitas(next)
+            return next
+          })
+          try { localStorage.setItem(SEEDED_KEY, '1') } catch {}
+        }
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Erro ao carregar conversas'))
       .finally(() => setLoadingConversations(false))
