@@ -134,6 +134,23 @@ function isImageFile(file: File) {
   return file.type.startsWith('image/')
 }
 
+/**
+ * "Agora" no formato que o input datetime-local espera (YYYY-MM-DDTHH:mm), em horário LOCAL —
+ * `toISOString()` sozinho devolve UTC, e usar isso como `min` faz o seletor bloquear qualquer
+ * horário antes de "agora + fuso" (3h a mais no Brasil), empurrando todo agendamento pra mais
+ * tarde do que a pessoa realmente escolheu.
+ */
+function nowLocalForInput(): string {
+  const agora = new Date()
+  return new Date(agora.getTime() - agora.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
+
+/** Mesma conversão de `nowLocalForInput`, mas a partir de uma data qualquer (ex: editar um agendamento já salvo). */
+function isoToLocalInput(iso: string): string {
+  const d = new Date(iso)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
+
 export default function PublishTab({ connected }: { connected: boolean }) {
   const [tipo, setTipo] = useState<PublishType>('IMAGE')
   const [items, setItems] = useState<PublishItem[]>([])
@@ -603,7 +620,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   function handleStartEdit(p: Publicacao) {
     setEditingId(p.id)
     setEditCaption(p.caption ?? '')
-    setEditAgendadoPara(p.agendadoPara ? p.agendadoPara.slice(0, 16) : '')
+    setEditAgendadoPara(p.agendadoPara ? isoToLocalInput(p.agendadoPara) : '')
   }
 
   async function handleSaveEdit(id: string, opts?: { publicarAgora?: boolean }) {
@@ -709,7 +726,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                 type="datetime-local"
                 value={lotePrimeiraData}
                 onChange={(e) => setLotePrimeiraData(e.target.value)}
-                min={new Date().toISOString().slice(0, 16)}
+                min={nowLocalForInput()}
                 className="flex-1 px-3 py-2 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
               />
               <select
@@ -979,7 +996,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                   type="datetime-local"
                   value={agendadoParaInput}
                   onChange={(e) => setAgendadoParaInput(e.target.value)}
-                  min={new Date().toISOString().slice(0, 16)}
+                  min={nowLocalForInput()}
                   className="flex-1 px-3 py-2 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
                 />
                 <button
@@ -1368,7 +1385,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                           type="datetime-local"
                           value={editAgendadoPara}
                           onChange={(e) => setEditAgendadoPara(e.target.value)}
-                          min={new Date().toISOString().slice(0, 16)}
+                          min={nowLocalForInput()}
                           className="flex-1 px-3 py-1.5 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
                         />
                         <button type="button" onClick={() => setEditingId(null)} className="text-xs text-ink-500 hover:text-ink-700">Cancelar</button>

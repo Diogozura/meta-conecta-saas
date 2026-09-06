@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Loader2, Send, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Loader2, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
 
@@ -58,13 +58,16 @@ function lerUltimasVisitas(): Record<string, string> {
   }
 }
 
+function salvarUltimasVisitas(v: Record<string, string>): void {
+  try { localStorage.setItem(LAST_SEEN_KEY, JSON.stringify(v)) } catch {}
+}
+
 export default function InboxTab({ connected }: { connected: boolean }) {
   const [me, setMe] = useState<{ id: string | null; username: string | null }>({ id: null, username: null })
   const [ultimasVisitas, setUltimasVisitas] = useState<Record<string, string>>(() => (typeof window !== 'undefined' ? lerUltimasVisitas() : {}))
-  const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null)
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [messages, setMessages] = useState<ThreadMessage[]>([])
   const [text, setText] = useState('')
@@ -90,31 +93,53 @@ export default function InboxTab({ connected }: { connected: boolean }) {
       .then((res) => res.json())
       .then((data) => {
         if (data.error) throw new Error(data.error)
-        setConversations(data.conversations ?? [])
+        const lista: ConversationSummary[] = data.conversations ?? []
+        setConversations(lista)
+
+        // Primeira vez que essa marcação roda nesse navegador (nada salvo ainda) — sem uma base
+        // pra comparar, toda conversa pareceria "nova". Em vez disso, considera o que já existe
+        // agora como "já visto" e só sinaliza atividade de fato nova a partir daqui em diante.
+        setUltimasVisitas((prev) => {
+          if (Object.keys(prev).length > 0) return prev
+          const seed: Record<string, string> = {}
+          for (const c of lista) seed[c.id] = c.updated_time ?? new Date().toISOString()
+          salvarUltimasVisitas(seed)
+          return seed
+        })
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Erro ao carregar conversas'))
       .finally(() => setLoadingConversations(false))
   }, [connected])
 
   useEffect(() => {
-    if (!selectedId) return
+    if (selectedIds.length === 0) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- dispara o carregamento ao trocar de conversa, mesmo padrão usado nas demais telas
     setLoadingMessages(true)
-    fetch(`/api/instagram/conversations/${selectedId}/messages`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.error) throw new Error(data.error)
-        setMessages([...(data.messages ?? [])].reverse())
+    Promise.all(
+      selectedIds.map((id) =>
+        fetch(`/api/instagram/conversations/${id}/messages`)
+          .then((res) => res.json())
+          .then((data) => (data.error ? [] : (data.messages ?? []) as ThreadMessage[]))
+          .catch(() => [] as ThreadMessage[]),
+      ),
+    )
+      .then((porConversa) => {
+        // Mescla as threads (mesma pessoa, ids diferentes — ver `grupos`) numa linha do tempo só.
+        const todas = porConversa.flat()
+        todas.sort((a, b) => new Date(a.created_time ?? 0).getTime() - new Date(b.created_time ?? 0).getTime())
+        setMessages(todas)
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Erro ao carregar mensagens'))
       .finally(() => setLoadingMessages(false))
-  }, [selectedId])
+  }, [selectedIds])
 
-  function selecionarConversa(conversationId: string) {
-    setSelectedId(conversationId)
+  function selecionarGrupo(conversationIds: string[]) {
+    setSelectedIds(conversationIds)
     setUltimasVisitas((prev) => {
-      const next = { ...prev, [conversationId]: new Date().toISOString() }
-      try { localStorage.setItem(LAST_SEEN_KEY, JSON.stringify(next)) } catch {}
+      const agora = new Date().toISOString()
+      const next = { ...prev }
+      conversationIds.forEach((id) => { next[id] = agora })
+      salvarUltimasVisitas(next)
       return next
     })
   }
@@ -139,7 +164,8 @@ export default function InboxTab({ connected }: { connected: boolean }) {
     return Array.from(map.values()).sort((a, b) => (b.mostRecentTime ?? '').localeCompare(a.mostRecentTime ?? ''))
   }, [conversations, me])
 
-  const selectedConv = conversations.find((c) => c.id === selectedId)
+  const grupoSelecionado = grupos.find((g) => g.conversations.some((c) => selectedIds.includes(c.id)))
+  const selectedConv = grupoSelecionado?.conversations[0]
   const recipient = selectedConv ? otherParticipant(selectedConv, me) : null
 
   async function handleSend(e: React.FormEvent) {
@@ -152,7 +178,7 @@ export default function InboxTab({ connected }: { connected: boolean }) {
       const res = await fetch('/api/instagram/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipientId: recipient.id, conversationId: selectedId, text: body }),
+        body: JSON.stringify({ recipientId: recipient.id, conversationId: selectedIds[0], text: body }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erro ao enviar mensagem')
@@ -172,7 +198,7 @@ export default function InboxTab({ connected }: { connected: boolean }) {
 
   return (
     <div className="flex gap-4 h-[calc(100vh-16rem)] min-h-[420px]">
-      <div className={`w-full lg:w-72 flex-col bg-white rounded-xl border border-ink-200 overflow-hidden shrink-0 ${selectedId ? 'hidden lg:flex' : 'flex'}`}>
+      <div className={`w-full lg:w-72 flex-col bg-white rounded-xl border border-ink-200 overflow-hidden shrink-0 ${selectedIds.length > 0 ? 'hidden lg:flex' : 'flex'}`}>
         <div className="p-3 border-b border-ink-100">
           <h2 className="text-sm font-bold text-ink-900">Conversas</h2>
         </div>
@@ -191,62 +217,50 @@ export default function InboxTab({ connected }: { connected: boolean }) {
           )}
           {!loadingConversations && grupos.map((g) => {
             const multiplas = g.conversations.length > 1
-            const expandido = expandedGroupKey === g.key
+            const ids = g.conversations.map((c) => c.id)
+            const ativo = ids.some((id) => selectedIds.includes(id))
             const algumaNaoLida = g.conversations.some(
               (c) => !!c.updated_time && (!ultimasVisitas[c.id] || new Date(c.updated_time) > new Date(ultimasVisitas[c.id])),
             )
             return (
-              <div key={g.key}>
-                <div
-                  onClick={() => (multiplas ? setExpandedGroupKey(expandido ? null : g.key) : selecionarConversa(g.conversations[0].id))}
-                  className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${
-                    !multiplas && selectedId === g.conversations[0].id ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'
-                  }`}
-                >
-                  <div className="shrink-0 relative">
-                    <Avatar name={g.name} profilePic={g.profilePic} className="w-9 h-9" />
-                    {algumaNaoLida && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-600 border-2 border-white" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs truncate flex items-center gap-1.5 ${algumaNaoLida ? 'font-bold text-ink-900' : 'font-semibold text-ink-900'}`}>
-                      @{g.name}
-                      {multiplas && <span className="text-[10px] font-medium text-ink-500 bg-ink-100 rounded-full px-1.5 shrink-0">{g.conversations.length}</span>}
-                    </p>
-                    <p className={`text-[11px] truncate mt-0.5 ${algumaNaoLida ? 'text-brand-700 font-medium' : 'text-ink-500'}`}>{formatTime(g.mostRecentTime)}</p>
-                  </div>
-                  {multiplas && <ChevronDown className={`w-4 h-4 text-ink-400 shrink-0 transition-transform ${expandido ? 'rotate-180' : ''}`} />}
+              <div
+                key={g.key}
+                onClick={() => selecionarGrupo(ids)}
+                className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${ativo ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'}`}
+              >
+                <div className="shrink-0 relative">
+                  <Avatar name={g.name} profilePic={g.profilePic} className="w-9 h-9" />
+                  {algumaNaoLida && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-600 border-2 border-white" />}
                 </div>
-
-                {multiplas && expandido && g.conversations.map((c) => {
-                  const naoLida = !!c.updated_time && (!ultimasVisitas[c.id] || new Date(c.updated_time) > new Date(ultimasVisitas[c.id]))
-                  return (
-                    <div
-                      key={c.id}
-                      onClick={() => selecionarConversa(c.id)}
-                      className={`flex items-center gap-2 pl-12 pr-3 py-2 cursor-pointer transition-colors ${selectedId === c.id ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'}`}
-                    >
-                      {naoLida && <span className="w-2 h-2 rounded-full bg-brand-600 shrink-0" />}
-                      <span className={`text-[11px] ${naoLida ? 'font-semibold text-ink-800' : 'text-ink-500'}`}>{formatTime(c.updated_time)}</span>
-                    </div>
-                  )
-                })}
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs truncate flex items-center gap-1.5 ${algumaNaoLida ? 'font-bold text-ink-900' : 'font-semibold text-ink-900'}`}>
+                    @{g.name}
+                    {multiplas && <span className="text-[10px] font-medium text-ink-500 bg-ink-100 rounded-full px-1.5 shrink-0" title="Conversas mescladas nessa pessoa">{g.conversations.length} threads</span>}
+                  </p>
+                  <p className={`text-[11px] truncate mt-0.5 ${algumaNaoLida ? 'text-brand-700 font-medium' : 'text-ink-500'}`}>{formatTime(g.mostRecentTime)}</p>
+                </div>
               </div>
             )
           })}
         </div>
       </div>
 
-      <div className={`flex-1 flex-col bg-white rounded-xl border border-ink-200 overflow-hidden ${selectedId ? 'flex' : 'hidden lg:flex'}`}>
+      <div className={`flex-1 flex-col bg-white rounded-xl border border-ink-200 overflow-hidden ${selectedIds.length > 0 ? 'flex' : 'hidden lg:flex'}`}>
         {selectedConv ? (
           <>
             <div className="px-4 py-3 border-b border-ink-100 flex items-center gap-3 bg-ink-50">
-              <button onClick={() => setSelectedId(null)} className="lg:hidden -ml-1 p-1.5 rounded-lg text-ink-500 hover:bg-ink-100 transition-colors shrink-0" aria-label="Voltar">
+              <button onClick={() => setSelectedIds([])} className="lg:hidden -ml-1 p-1.5 rounded-lg text-ink-500 hover:bg-ink-100 transition-colors shrink-0" aria-label="Voltar">
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="shrink-0">
                 <Avatar name={recipient?.username ?? recipient?.id ?? '?'} profilePic={recipient?.profile_pic} className="w-9 h-9" />
               </div>
-              <p className="text-sm font-semibold text-ink-900">{recipient ? `@${recipient.username ?? recipient.id}` : 'Contato desconhecido'}</p>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-ink-900 truncate">{recipient ? `@${recipient.username ?? recipient.id}` : 'Contato desconhecido'}</p>
+                {(grupoSelecionado?.conversations.length ?? 0) > 1 && (
+                  <p className="text-[11px] text-ink-400">{grupoSelecionado!.conversations.length} conversas mescladas nessa pessoa</p>
+                )}
+              </div>
             </div>
 
             {!recipient && (
