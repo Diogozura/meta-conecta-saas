@@ -164,6 +164,10 @@ export default function InboxTab({ connected }: { connected: boolean }) {
     return Array.from(map.values()).sort((a, b) => (b.mostRecentTime ?? '').localeCompare(a.mostRecentTime ?? ''))
   }, [conversations, me])
 
+  const naoLidasCount = grupos.filter((g) =>
+    g.conversations.some((c) => !!c.updated_time && (!ultimasVisitas[c.id] || new Date(c.updated_time) > new Date(ultimasVisitas[c.id]))),
+  ).length
+
   const grupoSelecionado = grupos.find((g) => g.conversations.some((c) => selectedIds.includes(c.id)))
   const selectedConv = grupoSelecionado?.conversations[0]
   const recipient = selectedConv ? otherParticipant(selectedConv, me) : null
@@ -199,8 +203,11 @@ export default function InboxTab({ connected }: { connected: boolean }) {
   return (
     <div className="flex gap-4 h-[calc(100vh-16rem)] min-h-[420px]">
       <div className={`w-full lg:w-72 flex-col bg-white rounded-xl border border-ink-200 overflow-hidden shrink-0 ${selectedIds.length > 0 ? 'hidden lg:flex' : 'flex'}`}>
-        <div className="p-3 border-b border-ink-100">
+        <div className="p-3 border-b border-ink-100 flex items-center gap-2">
           <h2 className="text-sm font-bold text-ink-900">Conversas</h2>
+          {naoLidasCount > 0 && (
+            <span className="text-[11px] font-semibold text-white bg-brand-600 rounded-full px-2 py-0.5">{naoLidasCount} nova{naoLidasCount > 1 ? 's' : ''}</span>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto divide-y divide-ink-100">
           {loadingConversations && Array.from({ length: 4 }).map((_, i) => (
@@ -216,7 +223,6 @@ export default function InboxTab({ connected }: { connected: boolean }) {
             <div className="py-10 text-center text-ink-400 text-xs">Nenhuma conversa ainda.</div>
           )}
           {!loadingConversations && grupos.map((g) => {
-            const multiplas = g.conversations.length > 1
             const ids = g.conversations.map((c) => c.id)
             const ativo = ids.some((id) => selectedIds.includes(id))
             const algumaNaoLida = g.conversations.some(
@@ -233,10 +239,7 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                   {algumaNaoLida && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-600 border-2 border-white" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-xs truncate flex items-center gap-1.5 ${algumaNaoLida ? 'font-bold text-ink-900' : 'font-semibold text-ink-900'}`}>
-                    @{g.name}
-                    {multiplas && <span className="text-[10px] font-medium text-ink-500 bg-ink-100 rounded-full px-1.5 shrink-0" title="Conversas mescladas nessa pessoa">{g.conversations.length} threads</span>}
-                  </p>
+                  <p className={`text-xs truncate ${algumaNaoLida ? 'font-bold text-ink-900' : 'font-semibold text-ink-900'}`}>@{g.name}</p>
                   <p className={`text-[11px] truncate mt-0.5 ${algumaNaoLida ? 'text-brand-700 font-medium' : 'text-ink-500'}`}>{formatTime(g.mostRecentTime)}</p>
                 </div>
               </div>
