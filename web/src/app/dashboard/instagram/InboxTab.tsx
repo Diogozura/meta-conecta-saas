@@ -370,8 +370,10 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                 const share = primeiroShare(msg.shares)
                 const storyLink = msg.story?.link
                 const shareEhVideo = share?.type === 'reel' || share?.type === 'ig_reel'
+                const shareEhImagemDeMidia = share?.type === 'post' || share?.type === 'ig_post'
                 const midiaClass = 'max-w-[220px] max-h-[280px] w-auto h-auto rounded-lg mb-1 object-contain'
-                const semNadaReconhecido = !msg.message && !imagemUrl && !videoUrl && !audioUrl && !storyLink && !share?.url
+                const temShare = !!(share?.url || share?.name || share?.description)
+                const semNadaReconhecido = !msg.message && !imagemUrl && !videoUrl && !audioUrl && !storyLink && !temShare
                 return (
                   <div key={msg.id} className={`flex ${sentByMe ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm shadow-sm ${sentByMe ? 'bg-brand-600 text-white rounded-br-sm' : 'bg-white text-ink-900 rounded-bl-sm'}`}>
@@ -388,14 +390,22 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                           <img src={storyLink} alt="" className={midiaClass} />
                         </div>
                       )}
-                      {share?.url && (
+                      {temShare && (
                         <div className="mb-1">
-                          <span className="text-[10px] uppercase tracking-wide opacity-70">{share.type ?? 'Compartilhado'}</span>
-                          {shareEhVideo
-                            ? <video src={share.url} controls className={midiaClass} />
-                            /* eslint-disable-next-line @next/next/no-img-element -- imagem vinda da CDN da Meta */
-                            : <img src={share.url} alt={share.name ?? ''} className={midiaClass} />}
-                          {(share.name || share.description) && <p className="text-xs mt-1 opacity-80">{share.name || share.description}</p>}
+                          <span className="text-[10px] uppercase tracking-wide opacity-70">{share!.type ?? 'Compartilhado'}</span>
+                          {share!.url && (
+                            shareEhVideo ? (
+                              <video src={share!.url} controls className={midiaClass} />
+                            ) : shareEhImagemDeMidia ? (
+                              // eslint-disable-next-line @next/next/no-img-element -- imagem vinda da CDN da Meta
+                              <img src={share!.url} alt={share!.name ?? ''} className={midiaClass} />
+                            ) : (
+                              // Tipo desconhecido (ex: perfil compartilhado) — a url pode não ser uma
+                              // mídia de verdade, então vira link clicável em vez de tentar exibir como imagem.
+                              <a href={share!.url} target="_blank" rel="noopener noreferrer" className="underline break-all block">{share!.url}</a>
+                            )
+                          )}
+                          {(share!.name || share!.description) && <p className="text-xs mt-1 opacity-80">{share!.name || share!.description}</p>}
                         </div>
                       )}
                       {semNadaReconhecido && !msg.attachments && !msg.shares && !msg.story && (

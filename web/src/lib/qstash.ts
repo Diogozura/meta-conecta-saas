@@ -9,9 +9,20 @@
 import { Client, Receiver } from '@upstash/qstash'
 import { atualizarPublicacaoInstagram } from '@/lib/firestore'
 
+/**
+ * Tira aspas e espaços que sobram quando alguém cola um valor "KEY="valor"" direto no painel do
+ * Vercel — a Vercel guarda a aspa como parte literal do valor, e isso já causou um "Invalid URL"
+ * de verdade (a string virava `"https://...`, com aspa e tudo, e nenhuma URL válida começa com
+ * aspa). Aplicado em toda env var usada aqui, não custa nada nas que já vêm limpas.
+ */
+function limparEnvVar(valor: string | undefined): string | undefined {
+  return valor?.trim().replace(/^['"]+|['"]+$/g, '')
+}
+
 function getClient(): Client | null {
-  if (!process.env.QSTASH_TOKEN) return null
-  return new Client({ token: process.env.QSTASH_TOKEN, baseUrl: process.env.QSTASH_URL })
+  const token = limparEnvVar(process.env.QSTASH_TOKEN)
+  if (!token) return null
+  return new Client({ token, baseUrl: limparEnvVar(process.env.QSTASH_URL) })
 }
 
 const APP_URL_PADRAO = 'https://www.zybot.com.br'
@@ -23,7 +34,7 @@ const APP_URL_PADRAO = 'https://www.zybot.com.br'
  * aqui, mesmo funcionando nos outros usos). Só aceita se vier com protocolo de verdade.
  */
 function getAppUrl(): string {
-  const configurado = process.env.NEXT_PUBLIC_APP_URL
+  const configurado = limparEnvVar(process.env.NEXT_PUBLIC_APP_URL)
   if (configurado && /^https?:\/\//.test(configurado)) return configurado
   return APP_URL_PADRAO
 }
@@ -59,10 +70,11 @@ export async function agendarPublicacaoExata(contaId: string, publicacaoId: stri
 
 /** Verifica a assinatura de uma requisição vinda do QStash antes de executar a publicação. */
 export async function verificarAssinaturaQstash(body: string, signature: string | null): Promise<boolean> {
-  if (!signature || !process.env.QSTASH_CURRENT_SIGNING_KEY) return false
+  const currentKey = limparEnvVar(process.env.QSTASH_CURRENT_SIGNING_KEY)
+  if (!signature || !currentKey) return false
   const receiver = new Receiver({
-    currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY,
-    nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY ?? process.env.QSTASH_CURRENT_SIGNING_KEY,
+    currentSigningKey: currentKey,
+    nextSigningKey: limparEnvVar(process.env.QSTASH_NEXT_SIGNING_KEY) ?? currentKey,
   })
   try {
     return await receiver.verify({ signature, body })

@@ -269,7 +269,7 @@ const MESSAGE_FIELDS_ATTACHMENTS = `${MESSAGE_FIELDS_BASE},attachments{id,file_u
 // Instagram via Página do Facebook, e na prática essa conta rejeita a chamada quando eles vêm
 // junto de attachments (derrubando os dois). Por isso vivem numa chamada TOTALMENTE separada,
 // combinada por ID depois — se essa chamada falhar, não afeta attachments em nada.
-const MESSAGE_FIELDS_SHARES = 'id,shares{id,name,description,type,url},story{id,link}'
+const MESSAGE_FIELDS_SHARES = 'id,shares{name,description,type,url},story{link}'
 
 async function buscarMensagens(accessToken: string, conversationId: string, fields: string): Promise<InstagramMessage[]> {
   const data = await igFetch<{ messages: { data: InstagramMessage[] } }>(
