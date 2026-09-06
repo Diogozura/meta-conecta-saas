@@ -55,6 +55,14 @@ export interface InstagramPublishConfig {
   // Em vez de publicar sozinho na hora agendada, o cron para em 'aguardando_confirmacao' e espera
   // alguém confirmar manualmente (ver api/instagram/publications/[id]/confirmar).
   confirmacaoManualAtiva?: boolean
+  // Oculta automaticamente (não apaga) um comentário novo que bate com algum termo dessa lista —
+  // ver lib/moderacaoComentarios.ts. Some da lista de moderação, além dos termos padrão fixos.
+  moderacaoAutomaticaAtiva?: boolean
+  termosModeracao?: string[]
+  // Resposta automática por IA (Gemini) quando um comentário/DM bate com alguma pergunta
+  // frequente cadastrada (ver PerguntaFrequenteInstagram) — nunca responde automaticamente fora
+  // desse casamento (não é um agente livre como o do WhatsApp).
+  faqAtiva?: boolean
 }
 
 export interface ServicosContratados {
@@ -197,7 +205,10 @@ export type TicketPrioridade = 'baixa' | 'normal' | 'alta' | 'urgente'
 
 export interface Ticket {
   id: string
-  numero: string // vincula ao mesmo número de WhatsApp da Conversa
+  // Vincula ao número de WhatsApp da Conversa OU (quando origem === 'instagram') ao @usuário do
+  // Instagram — o nome do campo ficou genérico por compatibilidade com tickets já existentes.
+  numero: string
+  origem?: 'whatsapp' | 'instagram' // ausente = 'whatsapp' (todo ticket criado antes desse campo existir)
   assunto: string
   descricao?: string
   protocolo: string
@@ -544,6 +555,11 @@ export interface ComentarioInstagram {
   // Dedupe do alerta de "pendência" (comentário sem resposta há muito tempo)
   // — mesmo padrão de alertaSlaEnviadoEm em Conversa, evita reenviar todo dia.
   alertaPendenciaEnviadoEm?: Date
+  // Ocultado automaticamente (moderação por termo banido/spam ou usuário bloqueado — ver
+  // lib/moderacaoComentarios.ts) ou manualmente pelo painel. `true` = comentário some da vista
+  // pública no Instagram, mas continua existindo (não é o mesmo que apagar).
+  oculto?: boolean
+  ocultoMotivo?: string
   dataCriacao: Date
 }
 
@@ -562,6 +578,29 @@ export interface MencaoInstagram {
   username?: string
   timestamp: number
   dataCriacao: Date
+}
+
+// ─────────────────────────────────────────
+// Usuário bloqueado do Instagram (Subcoleção: contas/{contaId}/instagramBloqueados,
+// doc id = username) — a Graph API pro login direto do Instagram NÃO expõe nenhum endpoint de
+// "bloquear usuário" de verdade (isso só existe dentro do app do Instagram). "Bloquear" aqui é
+// moderação do lado do Zybot: comentários novos desse usuário são ocultados automaticamente
+// (ver lib/instagram.ts::hideComment), e o painel mostra um aviso nas DMs dele.
+// ─────────────────────────────────────────
+export interface InstagramBloqueado {
+  id: string // username, sem o @
+  motivo?: string
+  criadoEm: Date
+}
+
+// ─────────────────────────────────────────
+// Pergunta frequente (Subcoleção: contas/{contaId}/perguntasFrequentesInstagram) — base pra
+// resposta automática por IA em comentários/DMs (ver InstagramPublishConfig.faqAtiva).
+// ─────────────────────────────────────────
+export interface PerguntaFrequenteInstagram {
+  id: string
+  pergunta: string
+  resposta: string
 }
 
 // ─────────────────────────────────────────
@@ -675,6 +714,7 @@ export interface Cliente {
   email?: string
   telefone?: string
   whatsapp?: string          // Número do WhatsApp
+  instagram?: string         // @usuário do Instagram (sem o @)
   tag?: string               // Lead, Cliente, Inativo, etc.
   notas?: string
   dataCadastro: Date

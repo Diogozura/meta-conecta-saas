@@ -39,6 +39,11 @@ export async function PUT(req: NextRequest) {
   if (typeof body.fusoHorario === 'string') patch.fusoHorario = body.fusoHorario.trim()
   if (typeof body.numeroAvisoWhatsapp === 'string') patch.numeroAvisoWhatsapp = body.numeroAvisoWhatsapp.trim()
   if (typeof body.confirmacaoManualAtiva === 'boolean') patch.confirmacaoManualAtiva = body.confirmacaoManualAtiva
+  if (typeof body.moderacaoAutomaticaAtiva === 'boolean') patch.moderacaoAutomaticaAtiva = body.moderacaoAutomaticaAtiva
+  if (Array.isArray(body.termosModeracao)) {
+    patch.termosModeracao = body.termosModeracao.filter((t: unknown) => typeof t === 'string' && t.trim())
+  }
+  if (typeof body.faqAtiva === 'boolean') patch.faqAtiva = body.faqAtiva
 
   try {
     await atualizarInstagramPublishConfig(session.user.contaId, patch)

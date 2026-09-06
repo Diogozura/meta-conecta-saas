@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { nome, email, telefone, whatsapp, tag, notas } = body
+    const { nome, email, telefone, whatsapp, instagram, tag, notas } = body
 
     if (!nome) {
       return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 })
@@ -36,11 +36,12 @@ export async function POST(req: NextRequest) {
     const cliente = await criarCliente(session.user.contaId, {
       contaId: session.user.contaId,
       nome,
-      email,
-      telefone,
-      whatsapp,
-      tag,
-      notas,
+      ...(email ? { email } : {}),
+      ...(telefone ? { telefone } : {}),
+      ...(whatsapp ? { whatsapp } : {}),
+      ...(instagram ? { instagram } : {}),
+      ...(tag ? { tag } : {}),
+      ...(notas ? { notas } : {}),
       status: 'ativo',
     })
 

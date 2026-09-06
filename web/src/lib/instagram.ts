@@ -405,6 +405,20 @@ export async function replyToComment(accessToken: string, commentId: string, mes
   })
 }
 
+/**
+ * Oculta (ou reexibe) um comentário — some da vista pública no Instagram, mas continua existindo
+ * (diferente de apagar). Documentado pra permissão `instagram_business_manage_comments`; ainda não
+ * confirmado ao vivo pra esse tipo de login (mesma ressalva de shares/story em listConversationMessages).
+ */
+export async function hideComment(accessToken: string, commentId: string, hide: boolean): Promise<{ success: boolean }> {
+  return igFetch(`${commentId}?hide=${hide}`, accessToken, { method: 'POST' })
+}
+
+/** Apaga um comentário definitivamente — sem volta, diferente de ocultar. */
+export async function deleteComment(accessToken: string, commentId: string): Promise<{ success: boolean }> {
+  return igFetch(`${commentId}`, accessToken, { method: 'DELETE' })
+}
+
 /* ─── Publicação de conteúdo (posts, reels, vídeos, stories) ───────────────── */
 
 export interface CreateMediaContainerParams {

@@ -1,11 +1,13 @@
 import { createHmac } from 'crypto'
 import { after } from 'next/server'
-import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem, atualizarMetaAccess, obterInstagramAccessPorIgUserId, criarMensagemInstagram, criarComentarioInstagram, criarMencaoInstagram, garantirConversaAberta, definirCanalConversa } from '@/lib/firestore'
+import { criarMensagem, obterMetaAccessPorWabaId, atualizarStatusMensagem, atualizarMetaAccess, obterInstagramAccessPorIgUserId, criarMensagemInstagram, criarComentarioInstagram, criarMencaoInstagram, garantirConversaAberta, definirCanalConversa, obterConta, usuarioInstagramEstaBloqueado, marcarComentarioOculto } from '@/lib/firestore'
 import { processarMensagemComIA } from '@/lib/aiAgent'
-import { getMentionedComment, getMentionedMedia } from '@/lib/instagram'
+import { getMentionedComment, getMentionedMedia, hideComment, replyToComment, sendDirectMessage } from '@/lib/instagram'
 import { processarMensagemComFluxo } from '@/lib/fluxoService'
 import { aplicarPrioridadeAutomatica } from '@/lib/prioridadeConversa'
 import { processarRespostaCsatSeAguardando } from '@/lib/csatService'
+import { encontrarTermoModeracao } from '@/lib/moderacaoComentarios'
+import { encontrarRespostaFaq } from '@/lib/faqAutoResposta'
 
 type TipoMidiaRecebida = 'image' | 'audio' | 'video' | 'document' | 'sticker'
 
@@ -385,23 +387,66 @@ async function processarWebhookInstagram(payload: InstagramWebhookPayload) {
       } catch (error) {
         console.error('❌ Erro ao salvar DM do Instagram no Firebase:', error)
       }
+
+      // Resposta automática por IA pra pergunta frequente (best-effort — nunca impede o resto).
+      if (accessToken) {
+        try {
+          const resposta = await encontrarRespostaFaq(contaId, evento.message.text)
+          if (resposta) await sendDirectMessage(accessToken, evento.sender.id, resposta)
+        } catch (error) {
+          console.error('❌ Erro na resposta automática de FAQ (DM):', error)
+        }
+      }
     }
 
     for (const change of entry.changes ?? []) {
       if (change.field === 'comments' && change.value) {
         const comentario = change.value
+        const commentText = comentario.text ?? ''
+        const commentUsername = comentario.from?.username ?? comentario.from?.id ?? 'desconhecido'
         try {
           await criarComentarioInstagram({
             id: comentario.id,
             contaId,
             mediaId: comentario.media?.id ?? '',
-            from: comentario.from?.username ?? comentario.from?.id ?? 'desconhecido',
+            from: commentUsername,
             fromId: comentario.from?.id,
-            text: comentario.text ?? '',
+            text: commentText,
             timestamp: Math.floor(Date.now() / 1000),
           })
         } catch (error) {
           console.error('❌ Erro ao salvar comentário do Instagram no Firebase:', error)
+        }
+
+        // Moderação automática (termo banido/spam ou usuário bloqueado) — ocultar sempre tem
+        // prioridade sobre responder por FAQ (não faz sentido responder um comentário que já foi
+        // escondido). Tudo best-effort: qualquer erro aqui não deve impedir o resto do webhook.
+        if (accessToken && comentario.id) {
+          try {
+            const [conta, bloqueado] = await Promise.all([
+              obterConta(contaId),
+              usuarioInstagramEstaBloqueado(contaId, commentUsername),
+            ])
+            const termosBatidos = conta?.instagramPublishConfig?.moderacaoAutomaticaAtiva
+              ? encontrarTermoModeracao(commentText, conta.instagramPublishConfig.termosModeracao)
+              : []
+
+            if (bloqueado || termosBatidos.length > 0) {
+              await hideComment(accessToken, comentario.id, true)
+              await marcarComentarioOculto(
+                contaId,
+                comentario.media?.id ?? '',
+                comentario.id,
+                true,
+                bloqueado ? 'Usuário bloqueado' : `Termo de moderação: ${termosBatidos.join(', ')}`,
+              )
+            } else {
+              const resposta = await encontrarRespostaFaq(contaId, commentText)
+              if (resposta) await replyToComment(accessToken, comentario.id, resposta)
+            }
+          } catch (error) {
+            console.error('❌ Erro na moderação/FAQ automática de comentário:', error)
+          }
         }
         continue
       }

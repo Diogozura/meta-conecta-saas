@@ -5,7 +5,7 @@
 
 import { getFirestore, Timestamp, Query, Filter, FieldValue } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, ContaAiConfig, InstagramPublishConfig, Usuario, MetaAccess, InstagramAccess, CanvaAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, VersaoPublicacaoInstagram, HorarioFixoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, ConjuntoHashtags, ModeloLegenda, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
+import { Conta, ContaAiConfig, InstagramPublishConfig, Usuario, MetaAccess, InstagramAccess, CanvaAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, VersaoPublicacaoInstagram, HorarioFixoInstagram, InstagramBloqueado, PerguntaFrequenteInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, ConjuntoHashtags, ModeloLegenda, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -534,6 +534,15 @@ export async function criarCliente(contaId: string, data: Omit<Cliente, 'id' | '
     dataAtualizacao: now,
   })
   return { id: docRef.id, ...data, dataCadastro: now.toDate(), dataAtualizacao: now.toDate() }
+}
+
+/** Usado pra mostrar "já é cliente" em quem comenta/manda DM no Instagram (ver PublishTab/InboxTab/CommentsTab). */
+export async function obterClientePorInstagram(contaId: string, username: string): Promise<Cliente | null> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('clientes').where('instagram', '==', username).limit(1).get()
+  if (snapshot.empty) return null
+  const doc = snapshot.docs[0]
+  return { id: doc.id, ...convertTimestamps(doc.data()) } as Cliente
 }
 
 export async function obterCliente(contaId: string, clienteId: string): Promise<Cliente | null> {
@@ -1762,9 +1771,52 @@ export async function listarComentariosInstagramPendentes(contaId: string, limit
     .sort((a, b) => a.timestamp - b.timestamp)
 }
 
+/**
+ * Busca por palavra-chave nos comentários já persistidos da conta (texto do comentário ou
+ * username de quem comentou) — sem serviço de busca de texto de verdade (Firestore não tem isso
+ * nativo), então filtra em memória sobre os últimos `limit` comentários. Não cobre DMs (ver
+ * api/instagram/search/route.ts, que busca DM ao vivo na Graph API à parte).
+ */
+export async function buscarComentariosInstagram(contaId: string, termo: string, limit = 500): Promise<ComentarioInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('comentariosInstagram').where('contaId', '==', contaId).limit(limit).get()
+  const termoLower = termo.toLowerCase()
+  return snapshot.docs
+    .map((doc) => ({ ...convertTimestamps(doc.data()) } as ComentarioInstagram))
+    .filter((c) => c.text?.toLowerCase().includes(termoLower) || c.from?.toLowerCase().includes(termoLower))
+    .sort((a, b) => b.timestamp - a.timestamp)
+}
+
 export async function marcarAlertaPendenciaComentario(comentarioId: string): Promise<void> {
   const db = getDb()
   await db.collection('comentariosInstagram').doc(comentarioId).set({ alertaPendenciaEnviadoEm: Timestamp.now() }, { merge: true })
+}
+
+/** Marca (ou desmarca) um comentário como oculto — mesmo `set`+merge de `marcarComentarioRespondido`, pelo mesmo motivo (pode nunca ter sido persistido via webhook). */
+export async function marcarComentarioOculto(contaId: string, mediaId: string, comentarioId: string, oculto: boolean, motivo?: string): Promise<void> {
+  const db = getDb()
+  await db.collection('comentariosInstagram').doc(comentarioId).set(
+    { contaId, mediaId, oculto, ...(motivo ? { ocultoMotivo: motivo } : {}) },
+    { merge: true },
+  )
+}
+
+/** Comentários e menções criados depois de `sinceMs` — usado pro toast de atividade em tempo real (ver RealtimeListeners). Mesmo raciocínio de `listarComentariosInstagramPendentes`: filtra em memória pra não precisar de índice composto novo. */
+export async function listarAtividadeInstagramRecente(contaId: string, sinceMs: number): Promise<{ comentarios: ComentarioInstagram[]; mencoes: MencaoInstagram[] }> {
+  const db = getDb()
+  const desde = Timestamp.fromMillis(sinceMs)
+  const [comentariosSnap, mencoesSnap] = await Promise.all([
+    db.collection('comentariosInstagram').where('contaId', '==', contaId).limit(300).get(),
+    db.collection('mencoesInstagram').where('contaId', '==', contaId).limit(300).get(),
+  ])
+  const depoisDe = (data: Record<string, unknown>) => {
+    const criado = data.dataCriacao as Timestamp | undefined
+    return !!criado && criado.toMillis() > desde.toMillis()
+  }
+  return {
+    comentarios: comentariosSnap.docs.filter((d) => depoisDe(d.data())).map((d) => ({ ...convertTimestamps(d.data()) } as ComentarioInstagram)),
+    mencoes: mencoesSnap.docs.filter((d) => depoisDe(d.data())).map((d) => ({ ...convertTimestamps(d.data()) } as MencaoInstagram)),
+  }
 }
 
 // ─────────────────────────────────────────
@@ -1953,11 +2005,61 @@ export async function excluirHorarioFixoInstagram(contaId: string, id: string): 
 }
 
 // ─────────────────────────────────────────
+// USUÁRIOS BLOQUEADOS DO INSTAGRAM (Subcoleção: contas/{contaId}/instagramBloqueados, doc id = username)
+// ─────────────────────────────────────────
+
+export async function bloquearUsuarioInstagram(contaId: string, username: string, motivo?: string): Promise<InstagramBloqueado> {
+  const db = getDb()
+  const now = Timestamp.now()
+  await db.collection('contas').doc(contaId).collection('instagramBloqueados').doc(username).set({ ...(motivo ? { motivo } : {}), criadoEm: now })
+  return { id: username, ...(motivo ? { motivo } : {}), criadoEm: now.toDate() }
+}
+
+export async function desbloquearUsuarioInstagram(contaId: string, username: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('instagramBloqueados').doc(username).delete()
+}
+
+export async function listarUsuariosBloqueadosInstagram(contaId: string): Promise<InstagramBloqueado[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('instagramBloqueados').orderBy('criadoEm', 'desc').get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as InstagramBloqueado))
+}
+
+export async function usuarioInstagramEstaBloqueado(contaId: string, username: string): Promise<boolean> {
+  const db = getDb()
+  const doc = await db.collection('contas').doc(contaId).collection('instagramBloqueados').doc(username).get()
+  return doc.exists
+}
+
+// ─────────────────────────────────────────
+// PERGUNTAS FREQUENTES (Subcoleção: contas/{contaId}/perguntasFrequentesInstagram) — base da
+// resposta automática por IA em comentários/DMs do Instagram.
+// ─────────────────────────────────────────
+
+export async function criarPerguntaFrequenteInstagram(contaId: string, data: Omit<PerguntaFrequenteInstagram, 'id'>): Promise<PerguntaFrequenteInstagram> {
+  const db = getDb()
+  const docRef = await db.collection('contas').doc(contaId).collection('perguntasFrequentesInstagram').add(data)
+  return { id: docRef.id, ...data }
+}
+
+export async function listarPerguntasFrequentesInstagram(contaId: string): Promise<PerguntaFrequenteInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('perguntasFrequentesInstagram').get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as PerguntaFrequenteInstagram))
+}
+
+export async function excluirPerguntaFrequenteInstagram(contaId: string, id: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('perguntasFrequentesInstagram').doc(id).delete()
+}
+
+// ─────────────────────────────────────────
 // TICKETS (Subcoleção: contas/{contaId}/tickets) — chamados de suporte/SAC,
 // separados da Conversa (ver types/database.ts Ticket).
 // ─────────────────────────────────────────
 
-export async function criarTicket(contaId: string, data: Pick<Ticket, 'numero' | 'assunto' | 'descricao' | 'protocolo' | 'prioridade' | 'criadoPor'>): Promise<Ticket> {
+export async function criarTicket(contaId: string, data: Pick<Ticket, 'numero' | 'assunto' | 'descricao' | 'protocolo' | 'prioridade' | 'criadoPor'> & Partial<Pick<Ticket, 'origem'>>): Promise<Ticket> {
   const db = getDb()
   const now = Timestamp.now()
   const docRef = await db.collection('contas').doc(contaId).collection('tickets').add({

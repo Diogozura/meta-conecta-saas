@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Loader2, Send, Users } from 'lucide-react'
+import { ArrowLeft, Loader2, Send, Users, Ticket as TicketIcon, UserPlus, UserX } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
+import { Modal } from '@/components/Modal'
+import { useConfirmDialog } from '@/components/ConfirmDialog'
 
 interface ConversationSummary {
   id: string
@@ -132,7 +134,16 @@ function jaSemeado(): boolean {
 }
 
 export default function InboxTab({ connected }: { connected: boolean }) {
+  const { confirm, ConfirmDialogElement } = useConfirmDialog()
   const [me, setMe] = useState<{ id: string | null; username: string | null }>({ id: null, username: null })
+  const [usernamesClientes, setUsernamesClientes] = useState<Set<string> | null>(null)
+  const [usernamesBloqueados, setUsernamesBloqueados] = useState<Set<string> | null>(null)
+  const [ticketAlvo, setTicketAlvo] = useState<{ username: string } | null>(null)
+  const [ticketAssunto, setTicketAssunto] = useState('')
+  const [criandoTicket, setCriandoTicket] = useState(false)
+  const [leadAlvo, setLeadAlvo] = useState<{ username: string } | null>(null)
+  const [leadNome, setLeadNome] = useState('')
+  const [criandoLead, setCriandoLead] = useState(false)
   const [ultimasVisitas, setUltimasVisitas] = useState<Record<string, string>>(() => (typeof window !== 'undefined' ? lerUltimasVisitas() : {}))
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
@@ -142,6 +153,90 @@ export default function InboxTab({ connected }: { connected: boolean }) {
   const [sharesStoryErro, setSharesStoryErro] = useState<string | undefined>(undefined)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+
+  useEffect(() => {
+    if (!connected) return
+    fetch('/api/clientes')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { clientes: { instagram?: string }[] } | null) => {
+        setUsernamesClientes(new Set((data?.clientes ?? []).map((c) => c.instagram).filter((u): u is string => !!u)))
+      })
+      .catch(() => setUsernamesClientes(new Set()))
+    fetch('/api/instagram/bloqueados')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { bloqueados: { id: string }[] } | null) => {
+        setUsernamesBloqueados(new Set((data?.bloqueados ?? []).map((b) => b.id)))
+      })
+      .catch(() => setUsernamesBloqueados(new Set()))
+  }, [connected])
+
+  async function handleBloquearUsuario(username: string) {
+    if (!(await confirm(`Bloquear @${username}? Comentários novos dele passam a ser ocultados automaticamente.`, { confirmLabel: 'Bloquear' }))) return
+    try {
+      const res = await fetch('/api/instagram/bloqueados', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Erro ao bloquear')
+      setUsernamesBloqueados((prev) => new Set([...(prev ?? []), username]))
+      toast.success(`@${username} bloqueado.`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao bloquear usuário')
+    }
+  }
+
+  async function handleDesbloquearUsuario(username: string) {
+    setUsernamesBloqueados((prev) => {
+      const next = new Set(prev)
+      next.delete(username)
+      return next
+    })
+    await fetch(`/api/instagram/bloqueados/${username}`, { method: 'DELETE' }).catch(() => {})
+  }
+
+  async function handleCriarTicket() {
+    if (!ticketAlvo || !ticketAssunto.trim()) return
+    setCriandoTicket(true)
+    try {
+      const res = await fetch('/api/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ numero: ticketAlvo.username, origem: 'instagram', assunto: ticketAssunto.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao criar ticket')
+      toast.success(`Ticket #${json.ticket.protocolo} criado.`)
+      setTicketAlvo(null)
+      setTicketAssunto('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao criar ticket')
+    } finally {
+      setCriandoTicket(false)
+    }
+  }
+
+  async function handleCriarLead() {
+    if (!leadAlvo || !leadNome.trim()) return
+    setCriandoLead(true)
+    try {
+      const res = await fetch('/api/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: leadNome.trim(), instagram: leadAlvo.username, tag: 'Lead' }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao criar lead')
+      setUsernamesClientes((prev) => new Set([...(prev ?? []), leadAlvo.username]))
+      toast.success('Lead criado no CRM.')
+      setLeadAlvo(null)
+      setLeadNome('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao criar lead')
+    } finally {
+      setCriandoLead(false)
+    }
+  }
 
   // Busca quem é "eu" (id + username) ANTES de buscar as conversas — se as
   // conversas chegassem primeiro, a lista renderizava com me.id ainda nulo e
@@ -350,6 +445,29 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                   <p className="text-[11px] text-ink-400">{grupoSelecionado!.conversations.length} conversas mescladas nessa pessoa</p>
                 )}
               </div>
+              {recipient?.username && (
+                <div className="ml-auto flex items-center gap-1 shrink-0">
+                  {usernamesClientes?.has(recipient.username) ? (
+                    <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded bg-brand-100 text-brand-700">já é cliente</span>
+                  ) : (
+                    <button type="button" onClick={() => { setLeadAlvo({ username: recipient.username! }); setLeadNome(recipient.username!) }} className="p-1.5 text-ink-400 hover:text-brand-600 rounded-lg hover:bg-ink-100" title="Transformar em lead">
+                      <UserPlus className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button type="button" onClick={() => { setTicketAlvo({ username: recipient.username! }); setTicketAssunto('') }} className="p-1.5 text-ink-400 hover:text-brand-600 rounded-lg hover:bg-ink-100" title="Transformar em ticket">
+                    <TicketIcon className="w-4 h-4" />
+                  </button>
+                  {usernamesBloqueados?.has(recipient.username) ? (
+                    <button type="button" onClick={() => handleDesbloquearUsuario(recipient.username!)} className="p-1.5 text-red-500 hover:text-red-700 rounded-lg hover:bg-ink-100" title="Desbloquear">
+                      <UserX className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => handleBloquearUsuario(recipient.username!)} className="p-1.5 text-ink-400 hover:text-red-600 rounded-lg hover:bg-ink-100" title="Bloquear usuário">
+                      <UserX className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {!recipient && (
@@ -462,6 +580,37 @@ export default function InboxTab({ connected }: { connected: boolean }) {
           <div className="flex-1 hidden lg:flex items-center justify-center text-sm text-ink-400">Selecione uma conversa</div>
         )}
       </div>
+
+      <Modal open={!!ticketAlvo} onClose={() => setTicketAlvo(null)} title="Transformar em ticket">
+        <div className="space-y-3">
+          <p className="text-xs text-ink-500">DM de @{ticketAlvo?.username}</p>
+          <input
+            value={ticketAssunto}
+            onChange={(e) => setTicketAssunto(e.target.value)}
+            placeholder="Assunto do ticket"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm"
+          />
+          <button type="button" onClick={handleCriarTicket} disabled={criandoTicket || !ticketAssunto.trim()} className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50">
+            {criandoTicket ? 'Criando...' : 'Criar ticket'}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal open={!!leadAlvo} onClose={() => setLeadAlvo(null)} title="Transformar em lead">
+        <div className="space-y-3">
+          <p className="text-xs text-ink-500">DM de @{leadAlvo?.username}</p>
+          <input
+            value={leadNome}
+            onChange={(e) => setLeadNome(e.target.value)}
+            placeholder="Nome do lead"
+            className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm"
+          />
+          <button type="button" onClick={handleCriarLead} disabled={criandoLead || !leadNome.trim()} className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50">
+            {criandoLead ? 'Criando...' : 'Criar lead no CRM'}
+          </button>
+        </div>
+      </Modal>
+      {ConfirmDialogElement}
     </div>
   )
 }

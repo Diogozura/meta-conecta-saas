@@ -13,6 +13,7 @@ type TicketPrioridade = 'baixa' | 'normal' | 'alta' | 'urgente'
 type TicketApi = {
   id: string
   numero: string
+  origem?: 'whatsapp' | 'instagram'
   assunto: string
   descricao?: string
   protocolo: string
@@ -140,7 +141,7 @@ export default function TicketsPage() {
                     <span className="text-xs font-mono text-ink-400">#{t.protocolo}</span>
                     <p className="text-sm font-semibold text-ink-900 truncate">{t.assunto}</p>
                   </div>
-                  <p className="text-xs text-ink-500 mt-0.5">{t.numero}{t.atendenteNome ? ` · ${t.atendenteNome}` : ''}</p>
+                  <p className="text-xs text-ink-500 mt-0.5">{t.origem === 'instagram' ? `@${t.numero} (Instagram)` : t.numero}{t.atendenteNome ? ` · ${t.atendenteNome}` : ''}</p>
                 </div>
                 <span className={`text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 ${PRIORIDADE_INFO[t.prioridade].cor}`}>
                   {PRIORIDADE_INFO[t.prioridade].label}
@@ -334,8 +335,11 @@ function DetalheTicketModal({
       <div className="space-y-4">
         <div>
           <p className="text-sm font-semibold text-ink-900">{ticket.assunto}</p>
-          <Link href={`/dashboard/conversas?from=${encodeURIComponent(ticket.numero)}`} className="text-xs text-brand-700 hover:underline">
-            {ticket.numero} — abrir conversa
+          <Link
+            href={ticket.origem === 'instagram' ? '/dashboard/instagram?tab=inbox' : `/dashboard/conversas?from=${encodeURIComponent(ticket.numero)}`}
+            className="text-xs text-brand-700 hover:underline"
+          >
+            {ticket.origem === 'instagram' ? `@${ticket.numero}` : ticket.numero} — abrir conversa
           </Link>
           {ticket.descricao && <p className="text-sm text-ink-600 mt-2 whitespace-pre-wrap">{ticket.descricao}</p>}
         </div>

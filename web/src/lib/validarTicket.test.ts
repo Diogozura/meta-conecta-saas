@@ -33,6 +33,24 @@ describe('validarNovoTicket', () => {
     expect(validarNovoTicket(null)).toBeNull()
     expect(validarNovoTicket('string')).toBeNull()
   })
+
+  it('aceita origem "instagram" explícita', () => {
+    expect(validarNovoTicket({ numero: 'fulano.oficial', assunto: 'Dúvida sobre pedido', origem: 'instagram' })).toEqual({
+      numero: 'fulano.oficial',
+      assunto: 'Dúvida sobre pedido',
+      prioridade: 'normal',
+      origem: 'instagram',
+    })
+  })
+
+  it('sem origem, não inclui o campo (mantém compatibilidade com tickets de WhatsApp já existentes)', () => {
+    const resultado = validarNovoTicket({ numero: '123', assunto: 'X' })
+    expect(resultado).not.toHaveProperty('origem')
+  })
+
+  it('rejeita origem inválida', () => {
+    expect(validarNovoTicket({ numero: '123', assunto: 'X', origem: 'facebook' })).toBeNull()
+  })
 })
 
 describe('validarAtualizacaoTicket', () => {

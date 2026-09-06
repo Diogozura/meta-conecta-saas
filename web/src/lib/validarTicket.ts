@@ -1,22 +1,25 @@
-import type { TicketPrioridade, TicketStatus } from '@/types/database'
+import type { Ticket, TicketPrioridade, TicketStatus } from '@/types/database'
 
 const STATUS_VALIDOS = new Set<TicketStatus>(['aberto', 'em_andamento', 'resolvido', 'fechado'])
 const PRIORIDADES_VALIDAS = new Set<TicketPrioridade>(['baixa', 'normal', 'alta', 'urgente'])
+const ORIGENS_VALIDAS = new Set<Ticket['origem']>(['whatsapp', 'instagram'])
 
 export function validarNovoTicket(
   body: unknown
-): { numero: string; assunto: string; descricao?: string; prioridade: TicketPrioridade } | null {
+): { numero: string; assunto: string; descricao?: string; prioridade: TicketPrioridade; origem?: Ticket['origem'] } | null {
   if (!body || typeof body !== 'object') return null
-  const { numero, assunto, descricao, prioridade } = body as Record<string, unknown>
+  const { numero, assunto, descricao, prioridade, origem } = body as Record<string, unknown>
   if (typeof numero !== 'string' || !numero.trim()) return null
   if (typeof assunto !== 'string' || !assunto.trim()) return null
   if (descricao !== undefined && typeof descricao !== 'string') return null
   if (prioridade !== undefined && (typeof prioridade !== 'string' || !PRIORIDADES_VALIDAS.has(prioridade as TicketPrioridade))) return null
+  if (origem !== undefined && (typeof origem !== 'string' || !ORIGENS_VALIDAS.has(origem as Ticket['origem']))) return null
   return {
     numero: numero.trim(),
     assunto: assunto.trim(),
     ...(descricao?.trim() ? { descricao: descricao.trim() } : {}),
     prioridade: (prioridade as TicketPrioridade | undefined) ?? 'normal',
+    ...(origem ? { origem: origem as Ticket['origem'] } : {}),
   }
 }
 

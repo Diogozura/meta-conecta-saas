@@ -136,6 +136,41 @@ export function RealtimeListeners() {
     return startVisibilityAwarePolling(poll, POLL_INTERVAL_MS)
   }, [pathname, router])
 
+  // Notifica em tempo real de comentário/menção novo no Instagram — complementa o resumo semanal
+  // por e-mail (que só avisa 1x por semana, ver api/cron/sla-alertas).
+  useEffect(() => {
+    if (pathname.startsWith('/dashboard/instagram')) return
+
+    let since = Date.now()
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/instagram/activity/recentes?since=${since}`)
+        if (!res.ok) { await tratarRespostaComErro(res); return }
+        const { comentarios, mencoes, serverTime } = await res.json()
+        since = serverTime
+        for (const c of comentarios ?? []) {
+          toast.message(`Novo comentário de @${c.from}`, {
+            description: c.text,
+            duration: 6000,
+            position: 'top-right',
+            action: { label: 'Abrir', onClick: () => router.push('/dashboard/instagram?tab=comentarios') },
+          })
+        }
+        for (const m of mencoes ?? []) {
+          toast.message(`Nova menção${m.username ? ` de @${m.username}` : ''}`, {
+            description: m.text ?? (m.tipo === 'legenda' ? 'Marcou vocês na legenda de um post' : 'Marcou vocês num comentário'),
+            duration: 6000,
+            position: 'top-right',
+            action: { label: 'Abrir', onClick: () => router.push('/dashboard/instagram?tab=comentarios') },
+          })
+        }
+      } catch {}
+    }
+
+    return startVisibilityAwarePolling(poll, POLL_INTERVAL_MS)
+  }, [pathname, router])
+
   // Notifica a empresa quando a IA transfere uma conversa pra atendimento humano.
   useEffect(() => {
     let since = Date.now()
