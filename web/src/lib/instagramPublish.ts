@@ -33,7 +33,14 @@ async function waitUntilFinished(accessToken: string, containerId: string): Prom
   return false
 }
 
-async function limparArquivos(publicacao: PublicacaoInstagram): Promise<void> {
+/**
+ * Apaga TODOS os arquivos ainda hospedados de uma publicação — cobre os campos dos dois fluxos
+ * (mediaItems/coverItem do agendamento, mediaPath(s)/coverPath da publicação instantânea) mais
+ * backupItems (vídeo publicado na hora). Exportada pra ser reusada também na hora de remover uma
+ * publicação do histórico (api/instagram/publications/[id]::DELETE) — mesma lista de campos, um
+ * só lugar de manutenção.
+ */
+export async function limparArquivos(publicacao: PublicacaoInstagram): Promise<void> {
   const paths = [
     ...(publicacao.mediaItems?.map((m) => m.path) ?? []),
     ...(publicacao.mediaPaths ?? []),

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { obterPublicacaoInstagram, atualizarPublicacaoInstagram, excluirPublicacaoInstagram, registrarAuditoria } from '@/lib/firestore'
-import { deleteInstagramPhoto } from '@/lib/storage'
-import { finalizarSePronto, criarContainerDeAgendamento } from '@/lib/instagramPublish'
+import { finalizarSePronto, criarContainerDeAgendamento, limparArquivos } from '@/lib/instagramPublish'
 import { agendarPublicacaoExata } from '@/lib/qstash'
 import type { PublicacaoInstagram } from '@/types/database'
 
@@ -46,32 +45,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const body = await req.json().catch(() => ({}))
+  // Um rascunho nunca passou pelo checkbox de direitos autorais (só é exigido ao agendar/publicar
+  // de verdade) — então tanto "publicar agora" quanto transformar o rascunho em agendado por aqui
+  // precisam confirmar isso agora, se ainda não tiver sido confirmado antes.
+  const vaiAoAr = !!body.publicarAgora || typeof body.agendadoPara === 'string'
+  if (vaiAoAr && !publicacao.direitosAutoraisConfirmado && body.direitosAutoraisConfirmado !== true) {
+    return NextResponse.json({ error: 'Confirme que você tem os direitos de uso dessa mídia antes de publicar ou agendar.' }, { status: 400 })
+  }
 
   if (body.publicarAgora) {
-    const atualizada = await criarContainerDeAgendamento(contaId, publicacao)
+    if (!publicacao.direitosAutoraisConfirmado) {
+      await atualizarPublicacaoInstagram(contaId, id, { direitosAutoraisConfirmado: true }).catch(() => {})
+    }
+    const atualizada = await criarContainerDeAgendamento(contaId, { ...publicacao, direitosAutoraisConfirmado: true })
     return NextResponse.json({ publicacao: atualizada })
   }
 
-  const patch: Partial<Pick<PublicacaoInstagram, 'caption' | 'altText' | 'collaborators' | 'isAiGenerated' | 'status' | 'agendadoPara'>> = {
+  const patch: Partial<Pick<PublicacaoInstagram, 'caption' | 'altText' | 'collaborators' | 'isAiGenerated' | 'status' | 'agendadoPara' | 'direitosAutoraisConfirmado'>> = {
     ...(typeof body.caption === 'string' && body.caption.trim() ? { caption: body.caption.trim() } : {}),
     ...(typeof body.altText === 'string' && body.altText.trim() ? { altText: body.altText.trim() } : {}),
     ...(Array.isArray(body.collaborators) ? { collaborators: body.collaborators } : {}),
     ...(typeof body.isAiGenerated === 'boolean' ? { isAiGenerated: body.isAiGenerated } : {}),
     ...(body.agendadoPara === null ? { status: 'rascunho' as const, agendadoPara: null } : {}),
-    ...(typeof body.agendadoPara === 'string' ? { status: 'agendado' as const, agendadoPara: new Date(body.agendadoPara) } : {}),
+    ...(typeof body.agendadoPara === 'string' ? { status: 'agendado' as const, agendadoPara: new Date(body.agendadoPara), direitosAutoraisConfirmado: true } : {}),
   }
 
   await atualizarPublicacaoInstagram(contaId, id, patch)
   if (patch.agendadoPara instanceof Date) await agendarPublicacaoExata(contaId, id, patch.agendadoPara)
+  // "publicarAgora" já retornou mais acima — a publicação em si é auditada por
+  // lib/instagramPublish.ts::logarPublicacaoAuditoria quando o container terminar de verdade.
   await registrarAuditoria(contaId, {
     entidade: 'instagram_publicacao',
     entidadeId: id,
     acao: 'atualizar',
-    descricao: body.publicarAgora
-      ? 'Disparou "publicar agora" num rascunho/agendamento'
-      : patch.agendadoPara instanceof Date
-        ? `Reagendou uma publicação para ${patch.agendadoPara.toLocaleString('pt-BR')}`
-        : 'Editou um rascunho/agendamento do Instagram',
+    descricao: patch.agendadoPara instanceof Date
+      ? `Reagendou uma publicação para ${patch.agendadoPara.toLocaleString('pt-BR')}`
+      : 'Editou um rascunho/agendamento do Instagram',
     usuarioId: session.user.usuarioId ?? 'desconhecido',
     usuarioNome: session.user.name ?? session.user.email ?? 'Atendente',
   }).catch(() => {})
@@ -96,11 +105,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   }
 
   if (publicacao.status !== 'publicado') {
-    await Promise.all([
-      ...(publicacao.mediaItems ?? []).map((m) => deleteInstagramPhoto(m.path)),
-      ...(publicacao.coverItem ? [deleteInstagramPhoto(publicacao.coverItem.path)] : []),
-      ...(publicacao.backupItems ?? []).map((b) => deleteInstagramPhoto(b.path)),
-    ])
+    await limparArquivos(publicacao)
   }
   await excluirPublicacaoInstagram(session.user.contaId, id)
   await registrarAuditoria(session.user.contaId, {

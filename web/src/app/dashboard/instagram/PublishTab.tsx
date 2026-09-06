@@ -109,6 +109,7 @@ interface Publicacao {
   dataCriacao: string
   qstashMessageId?: string | null
   qstashErro?: string | null
+  direitosAutoraisConfirmado?: boolean
 }
 
 interface PublishItem {
@@ -185,6 +186,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editCaption, setEditCaption] = useState('')
   const [editAgendadoPara, setEditAgendadoPara] = useState('')
+  const [editDireitosConfirmados, setEditDireitosConfirmados] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
   const [forcingId, setForcingId] = useState<string | null>(null)
   const [generatingCaption, setGeneratingCaption] = useState(false)
@@ -222,6 +224,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [coresInput, setCoresInput] = useState('')
   const [fontesInput, setFontesInput] = useState('')
   const [tomDeVozInput, setTomDeVozInput] = useState('')
+  const [termosProibidosInput, setTermosProibidosInput] = useState('')
   const [savingGuiaDeMarca, setSavingGuiaDeMarca] = useState(false)
   const [loteDireitosConfirmados, setLoteDireitosConfirmados] = useState(false)
 
@@ -282,6 +285,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
         setCoresInput((config.guiaDeMarca?.cores ?? []).join(', '))
         setFontesInput((config.guiaDeMarca?.fontes ?? []).join(', '))
         setTomDeVozInput(config.guiaDeMarca?.tomDeVoz ?? '')
+        setTermosProibidosInput((config.termosProibidos ?? []).join(', '))
         if (config.assinaturaAtiva && config.assinatura) {
           setCaption((prev) => (prev ? prev : config.assinatura!))
         }
@@ -297,13 +301,14 @@ export default function PublishTab({ connected }: { connected: boolean }) {
         fontes: fontesInput.split(',').map((f) => f.trim()).filter(Boolean),
         tomDeVoz: tomDeVozInput.trim(),
       }
+      const termosProibidos = termosProibidosInput.split(',').map((t) => t.trim()).filter(Boolean)
       const res = await fetch('/api/conta/instagram-publish-config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guiaDeMarca }),
+        body: JSON.stringify({ guiaDeMarca, termosProibidos }),
       })
       if (!res.ok) throw new Error('Erro ao salvar guia de marca')
-      setPublishConfig((prev) => ({ ...prev, guiaDeMarca }))
+      setPublishConfig((prev) => ({ ...prev, guiaDeMarca, termosProibidos }))
       setEditandoGuiaDeMarca(false)
       toast.success('Guia de marca salvo.')
     } catch (err) {
@@ -762,9 +767,17 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     setEditingId(p.id)
     setEditCaption(p.caption ?? '')
     setEditAgendadoPara(p.agendadoPara ? isoToLocalInput(p.agendadoPara) : '')
+    // Só reabre a exigência de confirmação se essa publicação nunca teve os direitos confirmados
+    // antes (ex: um rascunho salvo sem agendar) — reagendar algo que já foi confirmado na criação
+    // não precisa marcar de novo.
+    setEditDireitosConfirmados(!!p.direitosAutoraisConfirmado)
   }
 
   async function handleSaveEdit(id: string, opts?: { publicarAgora?: boolean }) {
+    if (!opts?.publicarAgora && editAgendadoPara && !editDireitosConfirmados) {
+      toast.error('Confirme que você tem os direitos de uso dessa mídia antes de agendar.')
+      return
+    }
     setSavingEdit(true)
     try {
       const body: Record<string, unknown> = opts?.publicarAgora
@@ -790,13 +803,21 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     }
   }
 
-  async function handleForceNow(id: string) {
+  async function handleForceNow(p: Publicacao) {
+    if (!p.direitosAutoraisConfirmado) {
+      const ok = await confirm('Confirme que você tem os direitos de uso dessa mídia (imagem, vídeo e áudio) antes de publicar.', {
+        confirmLabel: 'Confirmar e publicar',
+        danger: false,
+      })
+      if (!ok) return
+    }
+    const id = p.id
     setForcingId(id)
     try {
       const res = await fetch(`/api/instagram/publications/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicarAgora: true }),
+        body: JSON.stringify({ publicarAgora: true, direitosAutoraisConfirmado: true }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erro ao publicar')
@@ -1281,6 +1302,15 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                           className="w-full px-2.5 py-1.5 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
                         />
                       </div>
+                      <div>
+                        <label className="text-[11px] text-ink-500">Termos proibidos na legenda (separados por vírgula)</label>
+                        <input
+                          value={termosProibidosInput}
+                          onChange={(e) => setTermosProibidosInput(e.target.value)}
+                          placeholder="Ex: nome do concorrente, gíria fora do tom da marca..."
+                          className="w-full px-2.5 py-1.5 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                        />
+                      </div>
                       <div className="flex justify-end gap-2">
                         <button type="button" onClick={() => setEditandoGuiaDeMarca(false)} className="text-xs text-ink-500 hover:text-ink-800">Cancelar</button>
                         <button
@@ -1295,7 +1325,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                     </>
                   ) : (
                     <>
-                      {(publishConfig.guiaDeMarca?.cores?.length || publishConfig.guiaDeMarca?.fontes?.length || publishConfig.guiaDeMarca?.tomDeVoz) ? (
+                      {(publishConfig.guiaDeMarca?.cores?.length || publishConfig.guiaDeMarca?.fontes?.length || publishConfig.guiaDeMarca?.tomDeVoz || publishConfig.termosProibidos?.length) ? (
                         <div className="space-y-1.5 text-xs text-ink-600">
                           {!!publishConfig.guiaDeMarca?.cores?.length && (
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1314,12 +1344,15 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                           {!!publishConfig.guiaDeMarca?.tomDeVoz && (
                             <p><span className="text-ink-400">Tom de voz:</span> {publishConfig.guiaDeMarca.tomDeVoz}</p>
                           )}
+                          {!!publishConfig.termosProibidos?.length && (
+                            <p><span className="text-ink-400">Termos proibidos:</span> {publishConfig.termosProibidos.join(', ')}</p>
+                          )}
                         </div>
                       ) : (
                         <p className="text-xs text-ink-400">Nenhum guia de marca configurado ainda.</p>
                       )}
                       <button type="button" onClick={() => setEditandoGuiaDeMarca(true)} className="text-xs text-brand-600 hover:text-brand-700 font-medium">
-                        {(publishConfig.guiaDeMarca?.cores?.length || publishConfig.guiaDeMarca?.fontes?.length || publishConfig.guiaDeMarca?.tomDeVoz) ? 'Editar' : 'Configurar'}
+                        {(publishConfig.guiaDeMarca?.cores?.length || publishConfig.guiaDeMarca?.fontes?.length || publishConfig.guiaDeMarca?.tomDeVoz || publishConfig.termosProibidos?.length) ? 'Editar' : 'Configurar'}
                       </button>
                     </>
                   )}
@@ -1689,7 +1722,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleForceNow(p.id)}
+                            onClick={() => handleForceNow(p)}
                             disabled={forcingId === p.id}
                             className="p-1.5 text-ink-400 hover:text-brand-600 disabled:opacity-50"
                             aria-label="Publicar agora"
@@ -1734,13 +1767,24 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                         <button
                           type="button"
                           onClick={() => handleSaveEdit(p.id)}
-                          disabled={savingEdit}
+                          disabled={savingEdit || (!!editAgendadoPara && !editDireitosConfirmados)}
                           className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-xs font-medium hover:bg-brand-700 disabled:opacity-50"
                         >
                           {savingEdit ? 'Salvando...' : 'Salvar'}
                         </button>
                       </div>
                       <p className="text-[11px] text-ink-400">Deixe a data em branco pra virar rascunho (sem agendamento).</p>
+                      {editAgendadoPara && !editDireitosConfirmados && (
+                        <label className="flex items-start gap-2 text-xs text-ink-600">
+                          <input
+                            type="checkbox"
+                            checked={editDireitosConfirmados}
+                            onChange={(e) => setEditDireitosConfirmados(e.target.checked)}
+                            className="w-4 h-4 mt-0.5 accent-brand-600"
+                          />
+                          Confirmo que tenho os direitos de uso dessa mídia.
+                        </label>
+                      )}
                     </div>
                   )}
                 </div>
