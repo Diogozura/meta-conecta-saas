@@ -262,31 +262,36 @@ export interface InstagramMessage {
 }
 
 const MESSAGE_FIELDS_BASE = 'id,from{id,username},to{id,username},message,created_time'
-// attachments = foto/áudio/vídeo enviados direto; shares = post/reel compartilhado na DM;
-// story = menção/resposta a um story. Nenhum dos 3 é confirmado pro login direto do Instagram
-// (graph.instagram.com) — só documentado pra Instagram via Página do Facebook — por isso o
-// fallback abaixo pra buscar só o texto se a Graph API rejeitar algum desses campos.
-const MESSAGE_FIELDS_COM_ANEXO = `${MESSAGE_FIELDS_BASE},attachments{id,file_url,image_data,video_data},shares{id,name,description,type,url},story{id,link}`
+// attachments = foto/áudio/vídeo enviados direto — CONFIRMADO que funciona pro login direto do
+// Instagram (testado ao vivo). shares/story (post/reel e story compartilhados) NÃO são
+// confirmados — só documentados pra Instagram via Página do Facebook. Por isso os dois ficam
+// numa tentativa SEPARADA de attachments: se shares/story derrubar a chamada inteira, a gente não
+// pode perder attachments (que já sabemos que funciona) junto — daí o fallback em 3 níveis abaixo.
+const MESSAGE_FIELDS_ATTACHMENTS = `${MESSAGE_FIELDS_BASE},attachments{id,file_url,image_data,video_data}`
+const MESSAGE_FIELDS_COMPLETO = `${MESSAGE_FIELDS_ATTACHMENTS},shares{id,name,description,type,url},story{id,link}`
+
+async function buscarMensagens(accessToken: string, conversationId: string, fields: string): Promise<InstagramMessage[]> {
+  const data = await igFetch<{ messages: { data: InstagramMessage[] } }>(
+    `${conversationId}?fields=messages.limit(50){${fields}}`,
+    accessToken,
+  )
+  return data.messages?.data ?? []
+}
 
 /**
- * Lista as mensagens de uma conversa específica. Tenta pedir `attachments` (foto/áudio/vídeo
- * enviados na DM) primeiro — esse campo é documentado pra Messenger/Instagram via Página
- * vinculada, mas não é confirmado pro login direto do Instagram (`graph.instagram.com`) que esse
- * app usa. Se a Graph API rejeitar o campo, cai pra buscar só o texto, sem quebrar a conversa.
+ * Lista as mensagens de uma conversa específica, tentando o máximo de campos primeiro e caindo
+ * pra um conjunto mais simples se a Graph API rejeitar algo (ver comentário acima sobre
+ * attachments vs. shares/story).
  */
 export async function listConversationMessages(accessToken: string, conversationId: string): Promise<InstagramMessage[]> {
   try {
-    const data = await igFetch<{ messages: { data: InstagramMessage[] } }>(
-      `${conversationId}?fields=messages.limit(50){${MESSAGE_FIELDS_COM_ANEXO}}`,
-      accessToken,
-    )
-    return data.messages?.data ?? []
+    return await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_COMPLETO)
   } catch {
-    const data = await igFetch<{ messages: { data: InstagramMessage[] } }>(
-      `${conversationId}?fields=messages.limit(50){${MESSAGE_FIELDS_BASE}}`,
-      accessToken,
-    )
-    return data.messages?.data ?? []
+    try {
+      return await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_ATTACHMENTS)
+    } catch {
+      return buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_BASE)
+    }
   }
 }
 

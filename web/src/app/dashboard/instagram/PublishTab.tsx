@@ -25,6 +25,8 @@ import {
   FileText,
   PenLine,
   AlertTriangle,
+  Palette,
+  Search,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
@@ -200,6 +202,13 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [assinaturaAutoInput, setAssinaturaAutoInput] = useState(false)
   const [collabSuggestions, setCollabSuggestions] = useState<string[] | null>(null)
   const [showCollabDropdown, setShowCollabDropdown] = useState(false)
+  const [canvaModalAberto, setCanvaModalAberto] = useState(false)
+  const [canvaConectado, setCanvaConectado] = useState<boolean | null>(null)
+  const [canvaDesigns, setCanvaDesigns] = useState<{ id: string; title?: string; thumbnail?: { url?: string } }[]>([])
+  const [canvaQuery, setCanvaQuery] = useState('')
+  const [canvaContinuation, setCanvaContinuation] = useState<string | undefined>(undefined)
+  const [canvaLoadingDesigns, setCanvaLoadingDesigns] = useState(false)
+  const [canvaExportingId, setCanvaExportingId] = useState<string | null>(null)
 
   const activeType = TYPE_OPTIONS.find((t) => t.key === tipo)!
   const isCarousel = tipo === 'CAROUSEL'
@@ -610,6 +619,71 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     }
   }
 
+  async function carregarCanvaDesigns(query?: string, continuation?: string) {
+    setCanvaLoadingDesigns(true)
+    try {
+      const params = new URLSearchParams()
+      if (query) params.set('query', query)
+      if (continuation) params.set('continuation', continuation)
+      const res = await fetch(`/api/canva/designs?${params.toString()}`)
+      const json = await res.json()
+      if (json.naoConectado) {
+        setCanvaConectado(false)
+        return
+      }
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao listar designs do Canva')
+      setCanvaConectado(true)
+      setCanvaDesigns((prev) => (continuation ? [...prev, ...(json.items ?? [])] : (json.items ?? [])))
+      setCanvaContinuation(json.continuation)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao listar designs do Canva')
+    } finally {
+      setCanvaLoadingDesigns(false)
+    }
+  }
+
+  function abrirCanvaModal() {
+    setCanvaModalAberto(true)
+    if (canvaConectado === null) carregarCanvaDesigns()
+  }
+
+  async function importarDesignCanva(designId: string) {
+    setCanvaExportingId(designId)
+    try {
+      const tipoExport = tipo === 'REELS' || tipo === 'VIDEO' ? 'video' : 'image'
+      const res = await fetch('/api/canva/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ designId, tipo: tipoExport }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao exportar do Canva')
+
+      let arquivo: File | null = null
+      for (let tentativa = 0; tentativa < 20 && !arquivo; tentativa++) {
+        await new Promise((r) => setTimeout(r, 1500))
+        const statusRes = await fetch(`/api/canva/export/${json.jobId}`)
+        if (statusRes.headers.get('X-Export-Status') === 'success') {
+          const blob = await statusRes.blob()
+          const ext = tipoExport === 'video' ? 'mp4' : 'jpg'
+          arquivo = new File([blob], `canva-${designId}.${ext}`, { type: blob.type })
+          break
+        }
+        const statusJson = await statusRes.json().catch(() => ({}))
+        if (statusJson.status === 'failed') throw new Error(statusJson.error ?? 'Exportação falhou no Canva')
+      }
+      if (!arquivo) throw new Error('A exportação demorou demais — tente de novo.')
+
+      addFiles([arquivo])
+      setCanvaModalAberto(false)
+      toast.success('Design importado do Canva!')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao importar do Canva')
+    } finally {
+      setCanvaExportingId(null)
+    }
+  }
+
   function handleDuplicate(p: Publicacao) {
     switchTipo(p.tipo)
     setCaption(p.caption ?? '')
@@ -824,6 +898,16 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                     onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = '' }}
                   />
                 </label>
+              )}
+
+              {items.length === 0 && (
+                <button
+                  type="button"
+                  onClick={abrirCanvaModal}
+                  className="mt-2 flex items-center gap-1.5 text-xs font-medium text-ink-600 hover:text-brand-700"
+                >
+                  <Palette className="w-3.5 h-3.5" /> Importar do Canva
+                </button>
               )}
 
               {items.length > 0 && (
@@ -1318,6 +1402,71 @@ export default function PublishTab({ connected }: { connected: boolean }) {
           </>
         )}
       </form>
+
+      {canvaModalAberto && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4" onClick={() => setCanvaModalAberto(false)}>
+          <div className="bg-white rounded-xl max-w-lg w-full max-h-[80vh] flex flex-col p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-ink-800 flex items-center gap-1.5"><Palette className="w-4 h-4" /> Importar do Canva</h4>
+              <button type="button" onClick={() => setCanvaModalAberto(false)} className="text-ink-400 hover:text-ink-700" aria-label="Fechar"><X className="w-4 h-4" /></button>
+            </div>
+
+            {canvaConectado === false && (
+              <div className="py-8 text-center space-y-3">
+                <p className="text-sm text-ink-500">Sua conta do Canva ainda não está conectada.</p>
+                <a href="/api/canva/authorize" className="inline-block px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700">Conectar Canva</a>
+              </div>
+            )}
+
+            {canvaConectado === true && (
+              <>
+                <div className="relative mb-3">
+                  <Search className="w-3.5 h-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={canvaQuery}
+                    onChange={(e) => setCanvaQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') carregarCanvaDesigns(canvaQuery) }}
+                    placeholder="Buscar design..."
+                    className="w-full pl-8 pr-3 py-2 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                  />
+                </div>
+                <div className="flex-1 overflow-y-auto grid grid-cols-3 gap-2">
+                  {canvaDesigns.map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => importarDesignCanva(d.id)}
+                      disabled={!!canvaExportingId}
+                      className="relative aspect-square rounded-lg overflow-hidden border border-ink-200 hover:border-brand-400 disabled:opacity-50"
+                      title={d.title}
+                    >
+                      {d.thumbnail?.url && (
+                        // eslint-disable-next-line @next/next/no-img-element -- miniatura vinda da CDN do Canva
+                        <img src={d.thumbnail.url} alt={d.title ?? ''} className="w-full h-full object-cover" />
+                      )}
+                      {canvaExportingId === d.id && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <Loader2 className="w-5 h-5 text-white animate-spin" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {canvaLoadingDesigns && <p className="text-center text-xs text-ink-400 py-3">Carregando...</p>}
+                {!canvaLoadingDesigns && canvaDesigns.length === 0 && <p className="text-center text-xs text-ink-400 py-8">Nenhum design encontrado.</p>}
+                {!canvaLoadingDesigns && canvaContinuation && (
+                  <button type="button" onClick={() => carregarCanvaDesigns(canvaQuery, canvaContinuation)} className="mt-2 text-xs text-brand-600 hover:text-brand-700 self-center">
+                    Carregar mais
+                  </button>
+                )}
+              </>
+            )}
+
+            {canvaConectado === null && <p className="text-center text-xs text-ink-400 py-8">Carregando...</p>}
+          </div>
+        </div>
+      )}
 
       <div>
         <h3 className="text-sm font-semibold text-ink-800 mb-3">Publicações recentes</h3>

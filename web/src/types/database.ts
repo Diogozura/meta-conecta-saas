@@ -472,6 +472,19 @@ export interface InstagramAccess {
 }
 
 // ─────────────────────────────────────────
+// CanvaAccess (Subcoleção: contas/{contaId}/canvaAccess) — token OAuth do
+// Canva Connect API, usado só pra importar um design pronto pra publicar no
+// Instagram (ver PublishTab.tsx). Mesmo padrão do InstagramAccess.
+// ─────────────────────────────────────────
+export interface CanvaAccess {
+  id: string
+  accessToken: string   // sempre criptografado antes de gravar
+  refreshToken: string  // idem — cada refresh token só pode ser usado 1 vez, é trocado a cada renovação
+  expiraEm: Date
+  dataAtualizacao: Date
+}
+
+// ─────────────────────────────────────────
 // Mensagem Instagram (Coleção global: mensagensInstagram)
 // Mesmo formato de Mensagem (WhatsApp), mas para DMs do Instagram — coleção
 // separada em vez de reaproveitar `mensagens` pra não arriscar o caminho

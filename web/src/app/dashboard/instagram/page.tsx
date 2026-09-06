@@ -34,7 +34,7 @@ export default function InstagramPage() {
 function InstagramPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [tab, setTab] = useState<IgTab>('visao-geral')
+  const [tab, setTab] = useState<IgTab>(() => (searchParams.get('tab') === 'publicar' ? 'publicar' : 'visao-geral'))
   const [connected, setConnected] = useState(false)
   const [checkingConnection, setCheckingConnection] = useState(true)
 
@@ -53,11 +53,19 @@ function InstagramPageInner() {
   useEffect(() => {
     const erro = searchParams.get('erro')
     const conectado = searchParams.get('conectado')
+    const canvaErro = searchParams.get('canvaErro')
+    const canvaConectado = searchParams.get('canvaConectado')
+    const tabParam = searchParams.get('tab')
+
     if (erro) {
       toast.error(erro)
     } else if (conectado) {
       toast.success('Instagram conectado com sucesso!')
-    } else {
+    } else if (canvaErro) {
+      toast.error(canvaErro)
+    } else if (canvaConectado) {
+      toast.success('Canva conectado com sucesso!')
+    } else if (!tabParam) {
       return
     }
     router.replace('/dashboard/instagram')

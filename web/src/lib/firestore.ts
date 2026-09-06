@@ -5,7 +5,7 @@
 
 import { getFirestore, Timestamp, Query, Filter, FieldValue } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, ContaAiConfig, InstagramPublishConfig, Usuario, MetaAccess, InstagramAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, ConjuntoHashtags, ModeloLegenda, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
+import { Conta, ContaAiConfig, InstagramPublishConfig, Usuario, MetaAccess, InstagramAccess, CanvaAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, ConjuntoHashtags, ModeloLegenda, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -431,6 +431,49 @@ export async function atualizarInstagramAccess(contaId: string, accessId: string
     ...encryptInstagramSecrets(data),
     dataAtualizacao: Timestamp.now(),
   })
+}
+
+function encryptCanvaSecrets<T extends { accessToken?: string; refreshToken?: string }>(data: T): T {
+  return {
+    ...data,
+    ...(data.accessToken ? { accessToken: encrypt(data.accessToken) } : {}),
+    ...(data.refreshToken ? { refreshToken: encrypt(data.refreshToken) } : {}),
+  }
+}
+
+function decryptCanvaSecrets(data: CanvaAccess): CanvaAccess {
+  return {
+    ...data,
+    accessToken: data.accessToken ? decrypt(data.accessToken) : data.accessToken,
+    refreshToken: data.refreshToken ? decrypt(data.refreshToken) : data.refreshToken,
+  }
+}
+
+/** Sempre no máximo 1 por conta — salvar de novo substitui o token anterior (mesmo padrão de InstagramAccess). */
+export async function salvarCanvaAccess(contaId: string, data: Omit<CanvaAccess, 'id' | 'dataAtualizacao'>): Promise<void> {
+  const db = getDb()
+  const colecao = db.collection('contas').doc(contaId).collection('canvaAccess')
+  const existente = await colecao.limit(1).get()
+  const payload = { ...encryptCanvaSecrets(data), dataAtualizacao: Timestamp.now() }
+  if (existente.empty) {
+    await colecao.add(payload)
+  } else {
+    await colecao.doc(existente.docs[0].id).update(payload)
+  }
+}
+
+export async function obterCanvaAccess(contaId: string): Promise<CanvaAccess | null> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('canvaAccess').limit(1).get()
+  if (snapshot.empty) return null
+  const doc = snapshot.docs[0]
+  return decryptCanvaSecrets({ id: doc.id, ...convertTimestamps(doc.data()) } as CanvaAccess)
+}
+
+export async function excluirCanvaAccess(contaId: string): Promise<void> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('canvaAccess').limit(1).get()
+  await Promise.all(snapshot.docs.map((doc) => doc.ref.delete()))
 }
 
 export async function excluirInstagramAccess(contaId: string, accessId: string): Promise<void> {
