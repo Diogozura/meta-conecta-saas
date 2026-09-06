@@ -14,8 +14,18 @@ function getClient(): Client | null {
   return new Client({ token: process.env.QSTASH_TOKEN, baseUrl: process.env.QSTASH_URL })
 }
 
+const APP_URL_PADRAO = 'https://www.zybot.com.br'
+
+/**
+ * URL pública que o QStash precisa conseguir chamar de volta. Não confia cegamente em
+ * NEXT_PUBLIC_APP_URL — essa env var é usada em vários lugares só pra montar texto/metadata, então
+ * pode estar configurada sem o "https://" na frente (o que já causou um erro real de "Invalid URL"
+ * aqui, mesmo funcionando nos outros usos). Só aceita se vier com protocolo de verdade.
+ */
 function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.zybot.com.br'
+  const configurado = process.env.NEXT_PUBLIC_APP_URL
+  if (configurado && /^https?:\/\//.test(configurado)) return configurado
+  return APP_URL_PADRAO
 }
 
 /**

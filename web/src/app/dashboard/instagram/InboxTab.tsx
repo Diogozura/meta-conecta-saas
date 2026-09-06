@@ -11,6 +11,27 @@ interface ConversationSummary {
   participants?: { data: Array<{ id: string; username?: string; profile_pic?: string }> }
 }
 
+const URL_REGEX_SPLIT = /(https?:\/\/[^\s]+)/g
+const URL_REGEX_TEST = /^https?:\/\//
+
+/**
+ * Perfil compartilhado na DM chega como texto puro (a própria URL do Instagram), não como um
+ * anexo especial — então em vez de um "card" (precisaria buscar dados do perfil, que a API não
+ * libera pra usuário arbitrário), pelo menos vira link clicável de verdade.
+ */
+function LinkifiedText({ text }: { text: string }) {
+  const partes = text.split(URL_REGEX_SPLIT)
+  return (
+    <>
+      {partes.map((parte, i) =>
+        URL_REGEX_TEST.test(parte)
+          ? <a key={i} href={parte} target="_blank" rel="noopener noreferrer" className="underline break-all">{parte}</a>
+          : <span key={i}>{parte}</span>,
+      )}
+    </>
+  )
+}
+
 function Avatar({ name, profilePic, isGroup, className }: { name: string; profilePic?: string; isGroup?: boolean; className: string }) {
   if (profilePic) {
     // eslint-disable-next-line @next/next/no-img-element -- foto vem da CDN da Meta, sem domínio fixo pra configurar no next/image
@@ -381,7 +402,7 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                           <pre className="mt-1 text-[10px] whitespace-pre-wrap break-all opacity-80">{JSON.stringify({ attachments: msg.attachments, shares: msg.shares, story: msg.story }, null, 2)}</pre>
                         </details>
                       )}
-                      {msg.message}
+                      {msg.message && <LinkifiedText text={msg.message} />}
                       <p className={`text-[10px] mt-1 ${sentByMe ? 'text-brand-100' : 'text-ink-400'}`}>{formatTime(msg.created_time)}</p>
                     </div>
                   </div>
