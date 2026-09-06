@@ -1,14 +1,24 @@
 name: Instagram scheduled publish
 
-# Dispara a rota de cron do Instagram (agendamentos/rascunhos) a cada 10 minutos.
+# Dispara a rota de cron do Instagram (agendamentos/rascunhos) a cada 5 minutos.
 # Existe porque o Vercel Hobby só permite cron nativo 1x/dia — esse workflow
 # roda em vez do cron do Vercel para esse endpoint específico.
+#
+# IMPORTANTE: 5 minutos é o menor intervalo que o GitHub Actions recomenda
+# pra scheduled workflows (https://docs.github.com/actions/using-workflows/events-that-trigger-workflows#schedule)
+# — abaixo disso o próprio GitHub ignora/atrasa ainda mais. Mesmo assim, o
+# GitHub NÃO garante o horário exato: workflows agendados podem atrasar
+# alguns minutos a mais em picos de carga da plataforma, principalmente em
+# repositórios com pouca atividade. Um atraso de 1-6 minutos é esperado;
+# se precisar de precisão exata no horário, a alternativa é trocar esse
+# workflow por um serviço de cron externo (ex: cron-job.org, Upstash QStash)
+# que dispara direto na hora certa por publicação, em vez de um polling.
 #
 # Requer o secret CRON_SECRET nas Settings > Secrets and variables > Actions
 # do repositório, com o MESMO valor da env var CRON_SECRET configurada no Vercel.
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch: {}
 
 jobs:

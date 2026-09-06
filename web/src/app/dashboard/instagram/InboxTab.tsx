@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Loader2, Send } from 'lucide-react'
+import { ArrowLeft, Loader2, Send, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
 
@@ -11,14 +11,14 @@ interface ConversationSummary {
   participants?: { data: Array<{ id: string; username?: string; profile_pic?: string }> }
 }
 
-function Avatar({ name, profilePic, className }: { name: string; profilePic?: string; className: string }) {
+function Avatar({ name, profilePic, isGroup, className }: { name: string; profilePic?: string; isGroup?: boolean; className: string }) {
   if (profilePic) {
     // eslint-disable-next-line @next/next/no-img-element -- foto vem da CDN da Meta, sem domínio fixo pra configurar no next/image
     return <img src={profilePic} alt="" className={`${className} rounded-full object-cover`} />
   }
   return (
     <div className={`${className} bg-brand-100 rounded-full flex items-center justify-center`}>
-      <span className="text-xs font-bold text-brand-700">{name[0]?.toUpperCase()}</span>
+      {isGroup ? <Users className="w-1/2 h-1/2 text-brand-700" /> : <span className="text-xs font-bold text-brand-700">{name[0]?.toUpperCase()}</span>}
     </div>
   )
 }
@@ -34,10 +34,12 @@ interface ThreadMessage {
 // "eu" com um formato de ID diferente do que vem em /me (ex: IGSID vs ID da
 // conta), então só comparar por ID deixava a conta conectada aparecendo como
 // se fosse ela mesma a outra ponta de toda conversa.
-function otherParticipant(conv: ConversationSummary, me: { id: string | null; username: string | null }) {
+// Devolve TODOS os outros participantes — uma conversa em grupo tem mais de
+// um, e usar só o primeiro (como antes) fazia um grupo aparecer na lista
+// como se fosse uma conversa 1:1 com uma pessoa só.
+function otherParticipants(conv: ConversationSummary, me: { id: string | null; username: string | null }) {
   const list = conv.participants?.data ?? []
-  const other = list.find((p) => p.id !== me.id && (!me.username || p.username !== me.username))
-  return other ?? null
+  return list.filter((p) => p.id !== me.id && (!me.username || p.username !== me.username))
 }
 
 function formatTime(iso?: string) {
@@ -162,17 +164,23 @@ export default function InboxTab({ connected }: { connected: boolean }) {
   // (id diferente) pra mesma pessoa (ex: uma pasta de "Solicitações" e outra da caixa
   // principal). Agrupar evita mostrar a mesma pessoa duas vezes na lista.
   const grupos = useMemo(() => {
-    const map = new Map<string, { key: string; name: string; profilePic?: string; conversations: ConversationSummary[]; mostRecentTime?: string }>()
+    const map = new Map<string, { key: string; name: string; profilePic?: string; isGroup: boolean; conversations: ConversationSummary[]; mostRecentTime?: string }>()
     for (const c of conversations) {
-      const other = otherParticipant(c, me)
-      const key = other?.username ?? other?.id ?? c.id
+      const outros = otherParticipants(c, me)
+      const isGroup = outros.length > 1
+      // Grupo: agrupa pelo conjunto de participantes (ordenado, pra não depender da ordem que a
+      // API devolve) — duas threads com exatamente as mesmas pessoas contam como o mesmo grupo.
+      const key = isGroup
+        ? outros.map((p) => p.username ?? p.id).sort().join('|')
+        : (outros[0]?.username ?? outros[0]?.id ?? c.id)
+      const name = isGroup ? outros.map((p) => p.username ?? p.id).join(', ') : (outros[0]?.username ?? outros[0]?.id ?? 'Contato desconhecido')
       const existing = map.get(key)
       if (existing) {
         existing.conversations.push(c)
-        if (!existing.profilePic && other?.profile_pic) existing.profilePic = other.profile_pic
+        if (!existing.profilePic && !isGroup && outros[0]?.profile_pic) existing.profilePic = outros[0].profile_pic
         if (c.updated_time && (!existing.mostRecentTime || c.updated_time > existing.mostRecentTime)) existing.mostRecentTime = c.updated_time
       } else {
-        map.set(key, { key, name: other?.username ?? other?.id ?? 'Contato desconhecido', profilePic: other?.profile_pic, conversations: [c], mostRecentTime: c.updated_time })
+        map.set(key, { key, name, profilePic: isGroup ? undefined : outros[0]?.profile_pic, isGroup, conversations: [c], mostRecentTime: c.updated_time })
       }
     }
     return Array.from(map.values()).sort((a, b) => (b.mostRecentTime ?? '').localeCompare(a.mostRecentTime ?? ''))
@@ -184,7 +192,10 @@ export default function InboxTab({ connected }: { connected: boolean }) {
 
   const grupoSelecionado = grupos.find((g) => g.conversations.some((c) => selectedIds.includes(c.id)))
   const selectedConv = grupoSelecionado?.conversations[0]
-  const recipient = selectedConv ? otherParticipant(selectedConv, me) : null
+  const outrosDaConversa = selectedConv ? otherParticipants(selectedConv, me) : []
+  // A API de envio do Instagram (me/messages) manda pra 1 destinatário só — não dá pra responder
+  // um grupo por aqui (a Meta não expõe um jeito de mandar pra uma conversa em grupo inteira).
+  const recipient = outrosDaConversa.length === 1 ? outrosDaConversa[0] : null
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
@@ -249,7 +260,7 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                 className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${ativo ? 'bg-brand-50 border-l-2 border-brand-500' : 'hover:bg-ink-50'}`}
               >
                 <div className="shrink-0 relative">
-                  <Avatar name={g.name} profilePic={g.profilePic} className="w-9 h-9" />
+                  <Avatar name={g.name} profilePic={g.profilePic} isGroup={g.isGroup} className="w-9 h-9" />
                   {algumaNaoLida && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-600 border-2 border-white" />}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -270,10 +281,12 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="shrink-0">
-                <Avatar name={recipient?.username ?? recipient?.id ?? '?'} profilePic={recipient?.profile_pic} className="w-9 h-9" />
+                <Avatar name={grupoSelecionado?.name ?? '?'} profilePic={recipient?.profile_pic} isGroup={grupoSelecionado?.isGroup} className="w-9 h-9" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-ink-900 truncate">{recipient ? `@${recipient.username ?? recipient.id}` : 'Contato desconhecido'}</p>
+                <p className="text-sm font-semibold text-ink-900 truncate">
+                  {grupoSelecionado?.isGroup ? grupoSelecionado.name : recipient ? `@${recipient.username ?? recipient.id}` : (grupoSelecionado?.name ?? 'Contato desconhecido')}
+                </p>
                 {(grupoSelecionado?.conversations.length ?? 0) > 1 && (
                   <p className="text-[11px] text-ink-400">{grupoSelecionado!.conversations.length} conversas mescladas nessa pessoa</p>
                 )}
@@ -282,7 +295,9 @@ export default function InboxTab({ connected }: { connected: boolean }) {
 
             {!recipient && (
               <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 text-xs text-amber-800">
-                Não conseguimos identificar quem é o outro participante dessa conversa — a resposta por aqui está desativada.
+                {outrosDaConversa.length > 1
+                  ? 'Essa é uma conversa em grupo — a API de mensagens do Instagram não permite responder um grupo pelo painel, só 1:1.'
+                  : 'Não conseguimos identificar quem é o outro participante dessa conversa — a resposta por aqui está desativada.'}
               </div>
             )}
 
