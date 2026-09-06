@@ -45,6 +45,16 @@ export interface InstagramPublishConfig {
   // Palavras/termos que essa conta nunca quer ver numa legenda (nome de concorrente, gíria fora
   // do tom da marca, termo sensível do nicho etc.) — checado ao vivo em PublishTab, ver lib/textoRiscos.ts.
   termosProibidos?: string[]
+  // Fuso horário (nome IANA, ex: "America/Sao_Paulo") usado pra interpretar os campos de data/hora
+  // de agendamento — ver lib/fusoHorario.ts. Ausente = comportamento de sempre (fuso do navegador
+  // de quem está agendando), sem mudança de comportamento pra quem nunca configurou isso.
+  fusoHorario?: string
+  // Número de WhatsApp (E.164, ex: "5511999999999") avisado ~1h antes de cada publicação sair —
+  // best-effort, ver PublicacaoInstagram.avisoWhatsappEnviadoEm.
+  numeroAvisoWhatsapp?: string
+  // Em vez de publicar sozinho na hora agendada, o cron para em 'aguardando_confirmacao' e espera
+  // alguém confirmar manualmente (ver api/instagram/publications/[id]/confirmar).
+  confirmacaoManualAtiva?: boolean
 }
 
 export interface ServicosContratados {
@@ -584,8 +594,18 @@ export interface PublicacaoInstagram {
   collaborators?: string[]
   isAiGenerated?: boolean
   shareToFeed?: boolean            // Só Reels: também aparece no Feed além da aba Reels
-  status: 'rascunho' | 'agendado' | 'enviando' | 'processando' | 'publicado' | 'falhou'
+  // aguardando_confirmacao: a hora chegou, mas a conta tem "confirmação manual" ativa
+  // (InstagramPublishConfig.confirmacaoManualAtiva) — fica parado aqui até alguém confirmar
+  // manualmente (ver api/instagram/publications/[id]/confirmar), em vez de publicar sozinho.
+  status: 'rascunho' | 'agendado' | 'aguardando_confirmacao' | 'enviando' | 'processando' | 'publicado' | 'falhou'
   agendadoPara?: Date | null       // Quando o cron deve publicar (status 'agendado')
+  // Pausa temporária (férias, crise) — o cron pula qualquer coisa com isso true, mesmo já vencida;
+  // continua 'agendado' pro resto da UI, só não é pega pela varredura enquanto pausado.
+  pausado?: boolean
+  // Best-effort — não é garantia de entrega (a Cloud API do WhatsApp só manda texto livre dentro
+  // da janela de 24h desde a última mensagem recebida daquele número; fora disso precisaria de um
+  // template aprovado). Marcado só pra não mandar o aviso 2x no mesmo agendamento.
+  avisoWhatsappEnviadoEm?: Date | null
   // Diagnóstico do agendamento exato (QStash) — ajuda a saber, direto no painel, se o disparo
   // exato foi mesmo registrado ou se a publicação vai depender só da varredura do cron a cada
   // 5 min (ver lib/qstash.ts). Um limpa o outro dependendo do resultado da última tentativa.
@@ -603,6 +623,26 @@ export interface PublicacaoInstagram {
   // (foto publicada na hora, e qualquer rascunho/agendamento), o próprio mediaPath(s)/mediaItems/
   // coverPath(Item) já servem de backup — deixam de ser apagados depois de publicar.
   backupItems?: { url: string; path: string }[]
+}
+
+// Snapshot da legenda/texto alternativo/colaboradores ANTES de uma edição — subcoleção
+// contas/{contaId}/publicacoesInstagram/{id}/versoes, gravada a cada PATCH que muda algum desses
+// campos. Permite desfazer uma edição de rascunho/agendamento (ver PublishTab.tsx).
+export interface VersaoPublicacaoInstagram {
+  id: string
+  caption?: string
+  altText?: string
+  collaborators?: string[]
+  criadoEm: Date
+}
+
+// Horário fixo reutilizável ("toda terça às 18h") — Subcoleção: contas/{contaId}/horariosFixosInstagram.
+// Só uma conveniência pra preencher o campo de agendamento mais rápido; não agenda nada sozinho.
+export interface HorarioFixoInstagram {
+  id: string
+  label: string
+  diaSemana: number   // 0 (domingo) a 6 (sábado)
+  horario: string     // "HH:mm"
 }
 
 // ─────────────────────────────────────────

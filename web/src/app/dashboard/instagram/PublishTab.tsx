@@ -27,6 +27,8 @@ import {
   AlertTriangle,
   Palette,
   Search,
+  Clock,
+  History,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
@@ -35,6 +37,9 @@ import CropEditor, { CropThumb, exportCroppedFile, DEFAULT_CROP, type CropSettin
 import VideoTrimEditor, { exportTrimmedFile, DEFAULT_TRIM, type VideoTrimSettings } from './VideoTrimEditor'
 import { encontrarHashtagsArriscadas } from '@/lib/hashtagsArriscadas'
 import { encontrarTermosProibidos, encontrarRiscosPolitica } from '@/lib/textoRiscos'
+import { nowParaInput, dataParaInput, inputParaData } from '@/lib/fusoHorario'
+import { encontrarConflito } from '@/lib/agendaConflito'
+import { proximaOcorrencia } from '@/lib/horarioFixo'
 
 type PublishType = 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES' | 'CAROUSEL'
 type WizardStep = 'upload' | 'crop' | 'share'
@@ -71,7 +76,30 @@ interface InstagramPublishConfig {
   marcaDaguaAtiva?: boolean
   guiaDeMarca?: { cores?: string[]; fontes?: string[]; tomDeVoz?: string }
   termosProibidos?: string[]
+  fusoHorario?: string
+  numeroAvisoWhatsapp?: string
+  confirmacaoManualAtiva?: boolean
 }
+
+interface HorarioFixo {
+  id: string
+  label: string
+  diaSemana: number
+  horario: string
+}
+
+const DIAS_SEMANA_LABEL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+
+// Fusos comuns no Brasil — não é uma lista exaustiva de todos os fusos do mundo, só o suficiente
+// pra quem agenda de um lugar diferente do fuso "principal" da conta escolher o certo sem digitar
+// um nome IANA de cabeça. "Automático" (sem valor) mantém o comportamento de sempre (fuso do navegador).
+const FUSOS_HORARIOS_OPTIONS = [
+  { value: '', label: 'Automático (fuso do navegador)' },
+  { value: 'America/Noronha', label: 'Fernando de Noronha (UTC-2)' },
+  { value: 'America/Sao_Paulo', label: 'Brasília (UTC-3)' },
+  { value: 'America/Manaus', label: 'Manaus (UTC-4)' },
+  { value: 'America/Rio_Branco', label: 'Acre (UTC-5)' },
+]
 
 const HASHTAG_LIMIT = 30
 const MENTION_LIMIT = 20
@@ -103,13 +131,14 @@ interface Publicacao {
   collaborators?: string[]
   isAiGenerated?: boolean
   itemCount?: number
-  status: 'rascunho' | 'agendado' | 'enviando' | 'processando' | 'publicado' | 'falhou'
+  status: 'rascunho' | 'agendado' | 'aguardando_confirmacao' | 'enviando' | 'processando' | 'publicado' | 'falhou'
   agendadoPara?: string
   erro?: string
   dataCriacao: string
   qstashMessageId?: string | null
   qstashErro?: string | null
   direitosAutoraisConfirmado?: boolean
+  pausado?: boolean
 }
 
 interface PublishItem {
@@ -121,6 +150,7 @@ interface PublishItem {
 const STATUS_LABEL: Record<Publicacao['status'], string> = {
   rascunho: 'Rascunho',
   agendado: 'Agendado',
+  aguardando_confirmacao: 'Aguardando confirmação',
   enviando: 'Enviando',
   processando: 'Processando',
   publicado: 'Publicado',
@@ -130,6 +160,7 @@ const STATUS_LABEL: Record<Publicacao['status'], string> = {
 const STATUS_CLASS: Record<Publicacao['status'], string> = {
   rascunho: 'bg-ink-100 text-ink-500',
   agendado: 'bg-blue-100 text-blue-700',
+  aguardando_confirmacao: 'bg-purple-100 text-purple-700',
   enviando: 'bg-ink-100 text-ink-600',
   processando: 'bg-amber-100 text-amber-700',
   publicado: 'bg-brand-100 text-brand-700',
@@ -145,22 +176,6 @@ function isImageFile(file: File) {
   return file.type.startsWith('image/')
 }
 
-/**
- * "Agora" no formato que o input datetime-local espera (YYYY-MM-DDTHH:mm), em horário LOCAL —
- * `toISOString()` sozinho devolve UTC, e usar isso como `min` faz o seletor bloquear qualquer
- * horário antes de "agora + fuso" (3h a mais no Brasil), empurrando todo agendamento pra mais
- * tarde do que a pessoa realmente escolheu.
- */
-function nowLocalForInput(): string {
-  const agora = new Date()
-  return new Date(agora.getTime() - agora.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-}
-
-/** Mesma conversão de `nowLocalForInput`, mas a partir de uma data qualquer (ex: editar um agendamento já salvo). */
-function isoToLocalInput(iso: string): string {
-  const d = new Date(iso)
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-}
 
 export default function PublishTab({ connected }: { connected: boolean }) {
   const { confirm, ConfirmDialogElement } = useConfirmDialog()
@@ -178,6 +193,10 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [dragActive, setDragActive] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publicacoes, setPublicacoes] = useState<Publicacao[]>([])
+  const publicacoesAgendadasParaConflito = useMemo(
+    () => publicacoes.filter((p): p is Publicacao & { agendadoPara: string } => (p.status === 'agendado' || p.status === 'aguardando_confirmacao') && !!p.agendadoPara),
+    [publicacoes],
+  )
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [agendarAberto, setAgendarAberto] = useState(false)
@@ -187,6 +206,9 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [editCaption, setEditCaption] = useState('')
   const [editAgendadoPara, setEditAgendadoPara] = useState('')
   const [editDireitosConfirmados, setEditDireitosConfirmados] = useState(false)
+  const [versoesAberto, setVersoesAberto] = useState(false)
+  const [versoes, setVersoes] = useState<{ id: string; caption?: string; altText?: string; collaborators?: string[]; criadoEm: string }[] | null>(null)
+  const [loadingVersoes, setLoadingVersoes] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
   const [forcingId, setForcingId] = useState<string | null>(null)
   const [generatingCaption, setGeneratingCaption] = useState(false)
@@ -227,6 +249,17 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [termosProibidosInput, setTermosProibidosInput] = useState('')
   const [savingGuiaDeMarca, setSavingGuiaDeMarca] = useState(false)
   const [loteDireitosConfirmados, setLoteDireitosConfirmados] = useState(false)
+  const [configAgendamentoAberto, setConfigAgendamentoAberto] = useState(false)
+  const [fusoHorarioInput, setFusoHorarioInput] = useState('')
+  const [numeroAvisoWhatsappInput, setNumeroAvisoWhatsappInput] = useState('')
+  const [confirmacaoManualInput, setConfirmacaoManualInput] = useState(false)
+  const [savingConfigAgendamento, setSavingConfigAgendamento] = useState(false)
+  const [horariosFixos, setHorariosFixos] = useState<HorarioFixo[] | null>(null)
+  const [horarioFixoSelecionado, setHorarioFixoSelecionado] = useState('')
+  const [novoHorarioLabel, setNovoHorarioLabel] = useState('')
+  const [novoHorarioDia, setNovoHorarioDia] = useState(2)
+  const [novoHorarioHora, setNovoHorarioHora] = useState('18:00')
+  const [gerenciarHorariosAberto, setGerenciarHorariosAberto] = useState(false)
 
   const activeType = TYPE_OPTIONS.find((t) => t.key === tipo)!
   const isCarousel = tipo === 'CAROUSEL'
@@ -286,12 +319,76 @@ export default function PublishTab({ connected }: { connected: boolean }) {
         setFontesInput((config.guiaDeMarca?.fontes ?? []).join(', '))
         setTomDeVozInput(config.guiaDeMarca?.tomDeVoz ?? '')
         setTermosProibidosInput((config.termosProibidos ?? []).join(', '))
+        setFusoHorarioInput(config.fusoHorario ?? '')
+        setNumeroAvisoWhatsappInput(config.numeroAvisoWhatsapp ?? '')
+        setConfirmacaoManualInput(!!config.confirmacaoManualAtiva)
         if (config.assinaturaAtiva && config.assinatura) {
           setCaption((prev) => (prev ? prev : config.assinatura!))
         }
       })
       .catch(() => {})
+    fetch('/api/instagram/horarios-fixos')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { horarios: HorarioFixo[] } | null) => setHorariosFixos(data?.horarios ?? []))
+      .catch(() => setHorariosFixos([]))
   }, [connected])
+
+  async function handleSalvarConfigAgendamento() {
+    setSavingConfigAgendamento(true)
+    try {
+      const res = await fetch('/api/conta/instagram-publish-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fusoHorario: fusoHorarioInput,
+          numeroAvisoWhatsapp: numeroAvisoWhatsappInput.trim(),
+          confirmacaoManualAtiva: confirmacaoManualInput,
+        }),
+      })
+      if (!res.ok) throw new Error('Erro ao salvar')
+      setPublishConfig((prev) => ({
+        ...prev,
+        fusoHorario: fusoHorarioInput || undefined,
+        numeroAvisoWhatsapp: numeroAvisoWhatsappInput.trim() || undefined,
+        confirmacaoManualAtiva: confirmacaoManualInput,
+      }))
+      toast.success('Configurações de agendamento salvas.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar configurações')
+    } finally {
+      setSavingConfigAgendamento(false)
+    }
+  }
+
+  async function handleCriarHorarioFixo() {
+    if (!novoHorarioLabel.trim()) return
+    try {
+      const res = await fetch('/api/instagram/horarios-fixos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: novoHorarioLabel.trim(), diaSemana: novoHorarioDia, horario: novoHorarioHora }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao salvar')
+      setHorariosFixos((prev) => [...(prev ?? []), json.horario])
+      setNovoHorarioLabel('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar horário fixo')
+    }
+  }
+
+  async function handleExcluirHorarioFixo(id: string) {
+    setHorariosFixos((prev) => (prev ?? []).filter((h) => h.id !== id))
+    await fetch(`/api/instagram/horarios-fixos/${id}`, { method: 'DELETE' }).catch(() => {})
+  }
+
+  function usarHorarioFixo(id: string) {
+    setHorarioFixoSelecionado(id)
+    const horario = horariosFixos?.find((h) => h.id === id)
+    if (!horario) return
+    const proxima = proximaOcorrencia(horario.diaSemana, horario.horario, new Date(), publishConfig.fusoHorario)
+    setAgendadoParaInput(dataParaInput(proxima, publishConfig.fusoHorario))
+  }
 
   async function handleSalvarGuiaDeMarca() {
     setSavingGuiaDeMarca(true)
@@ -603,11 +700,18 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       toast.error('Confirme que você tem os direitos de uso dessa mídia antes de agendar.')
       return
     }
+    const dataAgendada = mode === 'agendado' ? inputParaData(agendadoParaInput, publishConfig.fusoHorario) : null
+    if (dataAgendada) {
+      const conflito = encontrarConflito(dataAgendada, publicacoesAgendadasParaConflito)
+      if (conflito && !(await confirm(`Já tem outra publicação agendada bem perto desse horário (${formatAgendadoPara(String(conflito.agendadoPara))}). Agendar mesmo assim?`, { confirmLabel: 'Agendar mesmo assim', danger: false }))) {
+        return
+      }
+    }
 
     setSavingSchedule(mode)
     try {
       const formData = await buildFormData()
-      if (mode === 'agendado') formData.append('agendadoPara', new Date(agendadoParaInput).toISOString())
+      if (dataAgendada) formData.append('agendadoPara', dataAgendada.toISOString())
 
       const res = await fetch('/api/instagram/publish/schedule', { method: 'POST', body: formData })
       const json = await res.json()
@@ -662,7 +766,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       const formData = new FormData()
       loteFiles.forEach((f) => formData.append('files', f))
       if (loteCaption.trim()) formData.append('caption', loteCaption.trim())
-      formData.append('primeiraData', new Date(lotePrimeiraData).toISOString())
+      formData.append('primeiraData', inputParaData(lotePrimeiraData, publishConfig.fusoHorario).toISOString())
       formData.append('intervaloDias', String(loteIntervalo))
       formData.append('direitosAutoraisConfirmado', 'true')
 
@@ -766,11 +870,33 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   function handleStartEdit(p: Publicacao) {
     setEditingId(p.id)
     setEditCaption(p.caption ?? '')
-    setEditAgendadoPara(p.agendadoPara ? isoToLocalInput(p.agendadoPara) : '')
+    setEditAgendadoPara(p.agendadoPara ? dataParaInput(p.agendadoPara, publishConfig.fusoHorario) : '')
     // Só reabre a exigência de confirmação se essa publicação nunca teve os direitos confirmados
     // antes (ex: um rascunho salvo sem agendar) — reagendar algo que já foi confirmado na criação
     // não precisa marcar de novo.
     setEditDireitosConfirmados(!!p.direitosAutoraisConfirmado)
+    setVersoesAberto(false)
+    setVersoes(null)
+  }
+
+  async function handleVerVersoes(id: string) {
+    setVersoesAberto((v) => !v)
+    if (versoes !== null) return
+    setLoadingVersoes(true)
+    try {
+      const res = await fetch(`/api/instagram/publications/${id}/versoes`)
+      const json = await res.json()
+      setVersoes(json.versoes ?? [])
+    } catch {
+      setVersoes([])
+    } finally {
+      setLoadingVersoes(false)
+    }
+  }
+
+  function handleRestaurarVersao(v: { caption?: string }) {
+    setEditCaption(v.caption ?? '')
+    toast('Versão restaurada no campo de legenda — clique em Salvar pra confirmar.')
   }
 
   async function handleSaveEdit(id: string, opts?: { publicarAgora?: boolean }) {
@@ -778,13 +904,20 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       toast.error('Confirme que você tem os direitos de uso dessa mídia antes de agendar.')
       return
     }
+    const novaData = !opts?.publicarAgora && editAgendadoPara ? inputParaData(editAgendadoPara, publishConfig.fusoHorario) : null
+    if (novaData) {
+      const conflito = encontrarConflito(novaData, publicacoesAgendadasParaConflito, { ignorarId: id })
+      if (conflito && !(await confirm(`Já tem outra publicação agendada bem perto desse horário (${formatAgendadoPara(String(conflito.agendadoPara))}). Reagendar mesmo assim?`, { confirmLabel: 'Reagendar mesmo assim', danger: false }))) {
+        return
+      }
+    }
     setSavingEdit(true)
     try {
       const body: Record<string, unknown> = opts?.publicarAgora
         ? { publicarAgora: true }
         : {
           caption: editCaption,
-          agendadoPara: editAgendadoPara ? new Date(editAgendadoPara).toISOString() : null,
+          agendadoPara: novaData ? novaData.toISOString() : null,
         }
       const res = await fetch(`/api/instagram/publications/${id}`, {
         method: 'PATCH',
@@ -825,6 +958,21 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       await loadHistory()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao publicar')
+    } finally {
+      setForcingId(null)
+    }
+  }
+
+  async function handleConfirmarPublicacao(id: string) {
+    setForcingId(id)
+    try {
+      const res = await fetch(`/api/instagram/publications/${id}/confirmar`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao confirmar')
+      toast.success('Confirmado — publicando...')
+      await loadHistory()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao confirmar')
     } finally {
       setForcingId(null)
     }
@@ -888,7 +1036,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                 type="datetime-local"
                 value={lotePrimeiraData}
                 onChange={(e) => setLotePrimeiraData(e.target.value)}
-                min={nowLocalForInput()}
+                min={nowParaInput(publishConfig.fusoHorario)}
                 className="flex-1 px-3 py-2 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
               />
               <select
@@ -903,7 +1051,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
             {loteFiles.length > 0 && lotePrimeiraData && (
               <ul className="text-xs text-ink-500 space-y-0.5 max-h-32 overflow-y-auto">
                 {loteFiles.map((f, i) => {
-                  const d = new Date(new Date(lotePrimeiraData).getTime() + i * loteIntervalo * 86400000)
+                  const d = new Date(inputParaData(lotePrimeiraData, publishConfig.fusoHorario).getTime() + i * loteIntervalo * 86400000)
                   return <li key={i}>Post {i + 1} → {d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</li>
                 })}
               </ul>
@@ -1186,22 +1334,75 @@ export default function PublishTab({ connected }: { connected: boolean }) {
             </label>
 
             {agendarAberto && (
-              <div className="flex items-center gap-2 rounded-lg border border-ink-200 p-3">
-                <input
-                  type="datetime-local"
-                  value={agendadoParaInput}
-                  onChange={(e) => setAgendadoParaInput(e.target.value)}
-                  min={nowLocalForInput()}
-                  className="flex-1 px-3 py-2 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleSaveDraftOrSchedule('agendado')}
-                  disabled={savingSchedule === 'agendado' || !direitosAutoraisConfirmado}
-                  className="px-3 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 shrink-0"
-                >
-                  {savingSchedule === 'agendado' ? 'Agendando...' : 'Confirmar'}
+              <div className="space-y-2 rounded-lg border border-ink-200 p-3">
+                {!!horariosFixos?.length && (
+                  <select
+                    value={horarioFixoSelecionado}
+                    onChange={(e) => usarHorarioFixo(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-ink-300 rounded-lg text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                  >
+                    <option value="">Usar um horário fixo salvo...</option>
+                    {horariosFixos.map((h) => (
+                      <option key={h.id} value={h.id}>{h.label} ({DIAS_SEMANA_LABEL[h.diaSemana]} às {h.horario})</option>
+                    ))}
+                  </select>
+                )}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="datetime-local"
+                    value={agendadoParaInput}
+                    onChange={(e) => setAgendadoParaInput(e.target.value)}
+                    min={nowParaInput(publishConfig.fusoHorario)}
+                    className="flex-1 px-3 py-2 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveDraftOrSchedule('agendado')}
+                    disabled={savingSchedule === 'agendado' || !direitosAutoraisConfirmado}
+                    className="px-3 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 shrink-0"
+                  >
+                    {savingSchedule === 'agendado' ? 'Agendando...' : 'Confirmar'}
+                  </button>
+                </div>
+                <button type="button" onClick={() => setGerenciarHorariosAberto((v) => !v)} className="text-[11px] text-ink-500 hover:text-brand-700">
+                  {gerenciarHorariosAberto ? 'Fechar' : 'Gerenciar horários fixos'}
                 </button>
+                {gerenciarHorariosAberto && (
+                  <div className="space-y-2 border-t border-ink-100 pt-2">
+                    {horariosFixos?.map((h) => (
+                      <div key={h.id} className="flex items-center justify-between text-xs text-ink-600">
+                        <span>{h.label} — {DIAS_SEMANA_LABEL[h.diaSemana]} às {h.horario}</span>
+                        <button type="button" onClick={() => handleExcluirHorarioFixo(h.id)} className="text-ink-400 hover:text-red-600" aria-label="Excluir horário fixo">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        value={novoHorarioLabel}
+                        onChange={(e) => setNovoHorarioLabel(e.target.value)}
+                        placeholder="Nome (ex: Post de terça)"
+                        className="flex-1 px-2 py-1 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                      />
+                      <select
+                        value={novoHorarioDia}
+                        onChange={(e) => setNovoHorarioDia(Number(e.target.value))}
+                        className="px-2 py-1 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                      >
+                        {DIAS_SEMANA_LABEL.map((label, i) => <option key={i} value={i}>{label}</option>)}
+                      </select>
+                      <input
+                        type="time"
+                        value={novoHorarioHora}
+                        onChange={(e) => setNovoHorarioHora(e.target.value)}
+                        className="px-2 py-1 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                      />
+                      <button type="button" onClick={handleCriarHorarioFixo} className="px-2 py-1 bg-brand-600 text-white rounded-md text-xs font-medium hover:bg-brand-700 shrink-0">
+                        Salvar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1356,6 +1557,57 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                       </button>
                     </>
                   )}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-ink-200">
+              <button
+                type="button"
+                onClick={() => setConfigAgendamentoAberto((v) => !v)}
+                className="w-full flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-ink-600 hover:text-brand-700"
+              >
+                <Clock className="w-3.5 h-3.5" /> Configurações de agendamento
+              </button>
+              {configAgendamentoAberto && (
+                <div className="px-3 pb-3 space-y-2">
+                  <div>
+                    <label className="text-[11px] text-ink-500">Fuso horário pra interpretar as datas de agendamento</label>
+                    <select
+                      value={fusoHorarioInput}
+                      onChange={(e) => setFusoHorarioInput(e.target.value)}
+                      className="w-full px-2.5 py-1.5 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                    >
+                      {FUSOS_HORARIOS_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-ink-500">WhatsApp pra avisar ~1h antes de cada post sair (opcional)</label>
+                    <input
+                      value={numeroAvisoWhatsappInput}
+                      onChange={(e) => setNumeroAvisoWhatsappInput(e.target.value)}
+                      placeholder="Ex: 5511999999999"
+                      className="w-full px-2.5 py-1.5 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                    />
+                    <p className="text-[10px] text-ink-400 mt-0.5">Só funciona se esse número tiver falado com o seu WhatsApp nas últimas 24h (regra da própria Meta pra mensagem iniciada pela empresa).</p>
+                  </div>
+                  <label className="flex items-start gap-2 text-xs text-ink-600">
+                    <input
+                      type="checkbox"
+                      checked={confirmacaoManualInput}
+                      onChange={(e) => setConfirmacaoManualInput(e.target.checked)}
+                      className="w-4 h-4 mt-0.5 accent-brand-600"
+                    />
+                    Exigir confirmação manual antes de publicar (a hora chega, mas o post só sai depois de eu confirmar no painel)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleSalvarConfigAgendamento}
+                    disabled={savingConfigAgendamento}
+                    className="px-3 py-1.5 bg-brand-600 text-white rounded-md text-xs font-medium hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {savingConfigAgendamento ? 'Salvando...' : 'Salvar'}
+                  </button>
                 </div>
               )}
             </div>
@@ -1690,18 +1942,21 @@ export default function PublishTab({ connected }: { connected: boolean }) {
         {!loadingHistory && publicacoes.length > 0 && (
           <div className="bg-white rounded-xl border border-ink-200 divide-y divide-ink-100">
             {publicacoes.map((p) => {
-              const editavel = p.status === 'rascunho' || p.status === 'agendado'
+              const editavel = p.status === 'rascunho' || p.status === 'agendado' || p.status === 'aguardando_confirmacao'
               return (
                 <div key={p.id} className="p-3 space-y-2">
                   <div className="flex items-center gap-3">
                     <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded shrink-0 ${STATUS_CLASS[p.status]}`}>
                       {STATUS_LABEL[p.status]}
                     </span>
+                    {p.pausado && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded shrink-0 bg-ink-200 text-ink-600">Pausado</span>
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-ink-900 truncate">{p.caption || '(sem legenda)'}</p>
                       <p className="text-xs text-ink-500">
                         {p.tipo}{p.tipo === 'CAROUSEL' && p.itemCount ? ` · ${p.itemCount} itens` : ''}
-                        {p.status === 'agendado' && p.agendadoPara ? ` · agendado pra ${formatAgendadoPara(p.agendadoPara)}` : ` · ${new Date(p.dataCriacao).toLocaleString('pt-BR')}`}
+                        {(p.status === 'agendado' || p.status === 'aguardando_confirmacao') && p.agendadoPara ? ` · agendado pra ${formatAgendadoPara(p.agendadoPara)}` : ` · ${new Date(p.dataCriacao).toLocaleString('pt-BR')}`}
                       </p>
                       {p.status === 'agendado' && (
                         p.qstashMessageId ? (
@@ -1715,21 +1970,35 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                       <button type="button" onClick={() => handleDuplicate(p)} className="p-1.5 text-ink-400 hover:text-brand-600" aria-label="Duplicar" title="Duplicar (legenda e configurações, escolha o arquivo de novo)">
                         <Copy className="w-4 h-4" />
                       </button>
+                      {p.status === 'aguardando_confirmacao' && (
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmarPublicacao(p.id)}
+                          disabled={forcingId === p.id}
+                          className="p-1.5 text-purple-600 hover:text-purple-800 disabled:opacity-50"
+                          aria-label="Confirmar e publicar"
+                          title="Confirmar e publicar agora"
+                        >
+                          {forcingId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        </button>
+                      )}
                       {editavel && (
                         <>
                           <button type="button" onClick={() => handleStartEdit(p)} className="p-1.5 text-ink-400 hover:text-brand-600" aria-label="Editar" title="Editar legenda/agendamento">
                             <Pencil className="w-4 h-4" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleForceNow(p)}
-                            disabled={forcingId === p.id}
-                            className="p-1.5 text-ink-400 hover:text-brand-600 disabled:opacity-50"
-                            aria-label="Publicar agora"
-                            title="Publicar agora"
-                          >
-                            {forcingId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                          </button>
+                          {p.status !== 'aguardando_confirmacao' && (
+                            <button
+                              type="button"
+                              onClick={() => handleForceNow(p)}
+                              disabled={forcingId === p.id}
+                              className="p-1.5 text-ink-400 hover:text-brand-600 disabled:opacity-50"
+                              aria-label="Publicar agora"
+                              title="Publicar agora"
+                            >
+                              {forcingId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                            </button>
+                          )}
                         </>
                       )}
                       <button
@@ -1760,7 +2029,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                           type="datetime-local"
                           value={editAgendadoPara}
                           onChange={(e) => setEditAgendadoPara(e.target.value)}
-                          min={nowLocalForInput()}
+                          min={nowParaInput(publishConfig.fusoHorario)}
                           className="flex-1 px-3 py-1.5 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
                         />
                         <button type="button" onClick={() => setEditingId(null)} className="text-xs text-ink-500 hover:text-ink-700">Cancelar</button>
@@ -1784,6 +2053,30 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                           />
                           Confirmo que tenho os direitos de uso dessa mídia.
                         </label>
+                      )}
+                      <button type="button" onClick={() => handleVerVersoes(p.id)} className="flex items-center gap-1 text-[11px] text-ink-500 hover:text-brand-700">
+                        <History className="w-3 h-3" /> {versoesAberto ? 'Ocultar histórico de versões' : 'Ver histórico de versões'}
+                      </button>
+                      {versoesAberto && (
+                        loadingVersoes ? (
+                          <p className="text-[11px] text-ink-400">Carregando...</p>
+                        ) : !versoes || versoes.length === 0 ? (
+                          <p className="text-[11px] text-ink-400">Nenhuma edição anterior registrada.</p>
+                        ) : (
+                          <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                            {versoes.map((v) => (
+                              <div key={v.id} className="flex items-start justify-between gap-2 bg-ink-50 rounded-md px-2 py-1.5">
+                                <div className="min-w-0">
+                                  <p className="text-[11px] text-ink-600 truncate">{v.caption || '(sem legenda)'}</p>
+                                  <p className="text-[10px] text-ink-400">{new Date(v.criadoEm).toLocaleString('pt-BR')}</p>
+                                </div>
+                                <button type="button" onClick={() => handleRestaurarVersao(v)} className="text-[11px] text-brand-600 hover:text-brand-700 font-medium shrink-0">
+                                  Restaurar
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )
                       )}
                     </div>
                   )}

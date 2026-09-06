@@ -5,7 +5,7 @@
 
 import { getFirestore, Timestamp, Query, Filter, FieldValue } from 'firebase-admin/firestore'
 import { getApps } from 'firebase-admin/app'
-import { Conta, ContaAiConfig, InstagramPublishConfig, Usuario, MetaAccess, InstagramAccess, CanvaAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, ConjuntoHashtags, ModeloLegenda, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
+import { Conta, ContaAiConfig, InstagramPublishConfig, Usuario, MetaAccess, InstagramAccess, CanvaAccess, ContaVinculada, Cliente, Mensagem, MensagemInstagram, ComentarioInstagram, MencaoInstagram, PublicacaoInstagram, VersaoPublicacaoInstagram, HorarioFixoInstagram, Profissional, Servico, Disponibilidade, Agendamento, Conversa, ConversaStatus, Fluxo, FLUXO_SAIU, EventoAtendimento, RespostaRapida, ConjuntoHashtags, ModeloLegenda, AvaliacaoCsat, RegistroAuditoria, Ticket } from '@/types/database'
 import { encrypt, decrypt } from '@/lib/crypto'
 
 // Garante que apenas uma instância do Firestore é inicializada
@@ -1853,9 +1853,103 @@ export async function listarPublicacoesInstagramPendentes(contaId: string, agora
 
   const vencidas = agendadas.docs
     .map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as PublicacaoInstagram))
-    .filter((p) => p.agendadoPara && new Date(p.agendadoPara) <= agora)
+    // pausado (férias, crise) fica de fora mesmo já vencido — só volta a ser pego quando alguém
+    // retomar (pausarPublicacoesInstagramNoPeriodo com pausado=false).
+    .filter((p) => p.agendadoPara && !p.pausado && new Date(p.agendadoPara) <= agora)
 
   return [...vencidas, ...processando.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as PublicacaoInstagram))]
+}
+
+/**
+ * Publicações 'agendado' (não pausadas, ainda sem aviso mandado) cujo horário cai dentro da
+ * janela informada — usado pelo cron pra mandar o aviso de WhatsApp "seu post sai em ~1h". Filtra
+ * em memória pelo mesmo motivo de `listarPublicacoesInstagramPendentes` (evita índice composto).
+ */
+export async function listarPublicacoesInstagramParaAviso(contaId: string, janelaInicio: Date, janelaFim: Date): Promise<PublicacaoInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('publicacoesInstagram')
+    .where('status', '==', 'agendado')
+    .get()
+  return snapshot.docs
+    .map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as PublicacaoInstagram))
+    .filter((p) => {
+      if (p.pausado || p.avisoWhatsappEnviadoEm || !p.agendadoPara) return false
+      const quando = new Date(p.agendadoPara).getTime()
+      return quando >= janelaInicio.getTime() && quando <= janelaFim.getTime()
+    })
+}
+
+/** Publicações 'agendado' de uma conta cujo horário cai dentro do período informado — usado pra duplicar uma semana inteira. */
+export async function listarPublicacoesInstagramAgendadasNoPeriodo(contaId: string, inicio: Date, fim: Date): Promise<PublicacaoInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('publicacoesInstagram').where('status', '==', 'agendado').get()
+  return snapshot.docs
+    .map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as PublicacaoInstagram))
+    .filter((p) => p.agendadoPara && new Date(p.agendadoPara) >= inicio && new Date(p.agendadoPara) <= fim)
+}
+
+/** Pausa (ou retoma) todas as publicações 'agendado' de uma conta cujo horário cai no período informado. */
+export async function pausarPublicacoesInstagramNoPeriodo(contaId: string, inicio: Date, fim: Date, pausado: boolean): Promise<number> {
+  const db = getDb()
+  const colecao = db.collection('contas').doc(contaId).collection('publicacoesInstagram')
+  const snapshot = await colecao.where('status', '==', 'agendado').get()
+  const alvo = snapshot.docs.filter((doc) => {
+    const agendadoPara = doc.data().agendadoPara
+    if (!agendadoPara) return false
+    const quando = (agendadoPara as Timestamp).toDate().getTime()
+    return quando >= inicio.getTime() && quando <= fim.getTime()
+  })
+  await Promise.all(alvo.map((doc) => doc.ref.update({ pausado })))
+  return alvo.length
+}
+
+// ─────────────────────────────────────────
+// VERSÕES de publicação (Subcoleção: contas/{contaId}/publicacoesInstagram/{id}/versoes) —
+// snapshot da legenda/texto alternativo/colaboradores ANTES de cada edição, pra dar pra desfazer.
+// ─────────────────────────────────────────
+
+export async function registrarVersaoPublicacaoInstagram(
+  contaId: string,
+  publicacaoId: string,
+  data: Omit<VersaoPublicacaoInstagram, 'id' | 'criadoEm'>,
+): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('publicacoesInstagram').doc(publicacaoId).collection('versoes').add({
+    ...data,
+    criadoEm: Timestamp.now(),
+  })
+}
+
+/** Últimas versões de uma publicação, mais recente primeiro. */
+export async function listarVersoesPublicacaoInstagram(contaId: string, publicacaoId: string, limite = 20): Promise<VersaoPublicacaoInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('publicacoesInstagram').doc(publicacaoId).collection('versoes')
+    .orderBy('criadoEm', 'desc')
+    .limit(limite)
+    .get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamps(doc.data()) } as VersaoPublicacaoInstagram))
+}
+
+// ─────────────────────────────────────────
+// HORÁRIOS FIXOS (Subcoleção: contas/{contaId}/horariosFixosInstagram) — atalhos reutilizáveis
+// tipo "toda terça às 18h" pra preencher o campo de agendamento mais rápido.
+// ─────────────────────────────────────────
+
+export async function criarHorarioFixoInstagram(contaId: string, data: Omit<HorarioFixoInstagram, 'id'>): Promise<HorarioFixoInstagram> {
+  const db = getDb()
+  const docRef = await db.collection('contas').doc(contaId).collection('horariosFixosInstagram').add(data)
+  return { id: docRef.id, ...data }
+}
+
+export async function listarHorariosFixosInstagram(contaId: string): Promise<HorarioFixoInstagram[]> {
+  const db = getDb()
+  const snapshot = await db.collection('contas').doc(contaId).collection('horariosFixosInstagram').orderBy('diaSemana', 'asc').get()
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as HorarioFixoInstagram))
+}
+
+export async function excluirHorarioFixoInstagram(contaId: string, id: string): Promise<void> {
+  const db = getDb()
+  await db.collection('contas').doc(contaId).collection('horariosFixosInstagram').doc(id).delete()
 }
 
 // ─────────────────────────────────────────

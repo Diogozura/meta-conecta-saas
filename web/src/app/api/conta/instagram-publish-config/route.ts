@@ -36,6 +36,9 @@ export async function PUT(req: NextRequest) {
   if (Array.isArray(body.termosProibidos)) {
     patch.termosProibidos = body.termosProibidos.filter((t: unknown) => typeof t === 'string' && t.trim())
   }
+  if (typeof body.fusoHorario === 'string') patch.fusoHorario = body.fusoHorario.trim()
+  if (typeof body.numeroAvisoWhatsapp === 'string') patch.numeroAvisoWhatsapp = body.numeroAvisoWhatsapp.trim()
+  if (typeof body.confirmacaoManualAtiva === 'boolean') patch.confirmacaoManualAtiva = body.confirmacaoManualAtiva
 
   try {
     await atualizarInstagramPublishConfig(session.user.contaId, patch)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { obterPublicacaoInstagram, atualizarPublicacaoInstagram, excluirPublicacaoInstagram, registrarAuditoria } from '@/lib/firestore'
+import { obterPublicacaoInstagram, atualizarPublicacaoInstagram, excluirPublicacaoInstagram, registrarAuditoria, registrarVersaoPublicacaoInstagram } from '@/lib/firestore'
 import { finalizarSePronto, criarContainerDeAgendamento, limparArquivos } from '@/lib/instagramPublish'
 import { agendarPublicacaoExata } from '@/lib/qstash'
 import type { PublicacaoInstagram } from '@/types/database'
@@ -40,7 +40,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!publicacao) {
     return NextResponse.json({ error: 'Publicação não encontrada' }, { status: 404 })
   }
-  if (publicacao.status !== 'rascunho' && publicacao.status !== 'agendado') {
+  if (publicacao.status !== 'rascunho' && publicacao.status !== 'agendado' && publicacao.status !== 'aguardando_confirmacao') {
     return NextResponse.json({ error: 'Só dá pra editar rascunhos ou agendamentos.' }, { status: 400 })
   }
 
@@ -68,6 +68,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     ...(typeof body.isAiGenerated === 'boolean' ? { isAiGenerated: body.isAiGenerated } : {}),
     ...(body.agendadoPara === null ? { status: 'rascunho' as const, agendadoPara: null } : {}),
     ...(typeof body.agendadoPara === 'string' ? { status: 'agendado' as const, agendadoPara: new Date(body.agendadoPara), direitosAutoraisConfirmado: true } : {}),
+  }
+
+  // Snapshot do que estava ANTES dessa edição — só quando algo de texto realmente muda, pra não
+  // acumular versão idêntica só porque a pessoa reagendou a data sem tocar na legenda.
+  if (patch.caption !== undefined || patch.altText !== undefined || patch.collaborators !== undefined) {
+    await registrarVersaoPublicacaoInstagram(contaId, id, {
+      ...(publicacao.caption !== undefined ? { caption: publicacao.caption } : {}),
+      ...(publicacao.altText !== undefined ? { altText: publicacao.altText } : {}),
+      ...(publicacao.collaborators !== undefined ? { collaborators: publicacao.collaborators } : {}),
+    }).catch(() => {})
   }
 
   await atualizarPublicacaoInstagram(contaId, id, patch)

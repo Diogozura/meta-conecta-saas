@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verificarAssinaturaQstash } from '@/lib/qstash'
-import { obterPublicacaoInstagram } from '@/lib/firestore'
+import { obterPublicacaoInstagram, obterConta, atualizarPublicacaoInstagram } from '@/lib/firestore'
 import { criarContainerDeAgendamento, finalizarSePronto } from '@/lib/instagramPublish'
+import { avisarConfirmacaoPendentePorWhatsapp } from '@/lib/avisoAgendamentoWhatsapp'
 
 // POST /api/instagram/publish/execute - Disparado pelo Upstash QStash na hora exata de um
 // agendamento (ver lib/qstash.ts::agendarPublicacaoExata). Idempotente e seguro contra disparos
@@ -36,6 +37,20 @@ export async function POST(req: NextRequest) {
       const aindaNoFuturo = publicacao.agendadoPara && new Date(publicacao.agendadoPara) > new Date()
       if (aindaNoFuturo) {
         return NextResponse.json({ ok: true, ignorado: 'reagendado pra mais tarde' })
+      }
+      // Pausado (férias, crise) e "confirmação manual" também valem pro disparo exato do QStash,
+      // não só pra varredura do cron — senão o QStash publicaria na hora certa mesmo assim,
+      // ignorando as duas configurações (aconteceu justamente por faltar essa checagem aqui).
+      if (publicacao.pausado) {
+        return NextResponse.json({ ok: true, ignorado: 'pausado' })
+      }
+      const conta = await obterConta(payload.contaId)
+      if (conta?.instagramPublishConfig?.confirmacaoManualAtiva) {
+        await atualizarPublicacaoInstagram(payload.contaId, payload.publicacaoId, { status: 'aguardando_confirmacao' })
+        if (conta.instagramPublishConfig.numeroAvisoWhatsapp) {
+          await avisarConfirmacaoPendentePorWhatsapp(payload.contaId, publicacao, conta.instagramPublishConfig.numeroAvisoWhatsapp)
+        }
+        return NextResponse.json({ ok: true, aguardandoConfirmacao: true })
       }
       await criarContainerDeAgendamento(payload.contaId, publicacao)
     } else if (publicacao.status === 'processando') {
