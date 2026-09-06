@@ -29,6 +29,7 @@ import {
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
 import CropEditor, { CropThumb, exportCroppedFile, DEFAULT_CROP, type CropSettings } from './CropEditor'
+import VideoTrimEditor, { exportTrimmedFile, DEFAULT_TRIM, type VideoTrimSettings } from './VideoTrimEditor'
 import { encontrarHashtagsArriscadas } from '@/lib/hashtagsArriscadas'
 
 type PublishType = 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES' | 'CAROUSEL'
@@ -105,6 +106,7 @@ interface Publicacao {
 interface PublishItem {
   file: File
   crop: CropSettings
+  trim: VideoTrimSettings
 }
 
 const STATUS_LABEL: Record<Publicacao['status'], string> = {
@@ -201,8 +203,9 @@ export default function PublishTab({ connected }: { connected: boolean }) {
 
   const activeType = TYPE_OPTIONS.find((t) => t.key === tipo)!
   const isCarousel = tipo === 'CAROUSEL'
-  const imageIndices = useMemo(() => items.reduce<number[]>((acc, it, i) => (isImageFile(it.file) ? [...acc, i] : acc), []), [items])
-  const hasCropStep = (tipo === 'IMAGE' || tipo === 'CAROUSEL') && imageIndices.length > 0
+  // Toda imagem tem corte/filtro/texto (CropEditor) e todo vídeo tem recorte de início/fim/mudo
+  // (VideoTrimEditor) — o passo de edição aparece sempre que tiver pelo menos 1 item.
+  const hasCropStep = items.length > 0
   const itemsValid = isCarousel ? items.length >= MIN_CAROUSEL_ITEMS && items.length <= MAX_CAROUSEL_ITEMS : items.length === 1
 
   const previews = useMemo(() => items.map((it) => ({ file: it.file, url: URL.createObjectURL(it.file) })), [items])
@@ -283,7 +286,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     // Stories/Reels têm um formato vertical único de verdade (9:16) — feed é mais tolerante
     // (a Meta aceita de 4:5 a 1.91:1), então só forçamos um aspecto padrão nesses dois tipos.
     const aspectoPadrao = tipo === 'STORIES' || tipo === 'REELS' ? '9:16' : DEFAULT_CROP.aspect
-    const incoming = Array.from(list).map((file) => ({ file, crop: { ...DEFAULT_CROP, aspect: aspectoPadrao } }))
+    const incoming = Array.from(list).map((file) => ({ file, crop: { ...DEFAULT_CROP, aspect: aspectoPadrao }, trim: { ...DEFAULT_TRIM } }))
     if (incoming.length === 0) return
     if (isCarousel) {
       setItems((prev) => [...prev, ...incoming].slice(0, MAX_CAROUSEL_ITEMS))
@@ -308,6 +311,10 @@ export default function PublishTab({ connected }: { connected: boolean }) {
 
   function updateCrop(index: number, crop: CropSettings) {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, crop } : it)))
+  }
+
+  function updateTrim(index: number, trim: VideoTrimSettings) {
+    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, trim } : it)))
   }
 
   function switchTipo(next: PublishType) {
@@ -462,7 +469,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       return
     }
     if (hasCropStep) {
-      setActiveCropIndex(imageIndices[0])
+      setActiveCropIndex(0)
       setStep('crop')
     } else {
       setStep('share')
@@ -477,7 +484,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   async function buildFormData(): Promise<FormData> {
     const marcaDagua = { url: publishConfig.marcaDaguaUrl ?? '', ativa: applyWatermark && !!publishConfig.marcaDaguaUrl }
     const finalFiles = await Promise.all(
-      items.map((it) => (isImageFile(it.file) ? exportCroppedFile(it.file, it.crop, marcaDagua) : Promise.resolve(it.file))),
+      items.map((it) => (isImageFile(it.file) ? exportCroppedFile(it.file, it.crop, marcaDagua) : exportTrimmedFile(it.file, it.trim))),
     )
 
     const formData = new FormData()
@@ -924,11 +931,8 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                     <button
                       key={previews[i]?.url ?? i}
                       type="button"
-                      disabled={!imgOk}
                       onClick={() => setActiveCropIndex(i)}
-                      className={`relative shrink-0 rounded-md overflow-hidden border-2 ${
-                        activeCropIndex === i ? 'border-brand-600' : 'border-transparent'
-                      } ${!imgOk ? 'opacity-40 cursor-not-allowed' : ''}`}
+                      className={`relative shrink-0 rounded-md overflow-hidden border-2 ${activeCropIndex === i ? 'border-brand-600' : 'border-transparent'}`}
                     >
                       {imgOk ? (
                         <CropThumb url={previews[i].url} settings={it.crop} size={56} />
@@ -942,14 +946,20 @@ export default function PublishTab({ connected }: { connected: boolean }) {
             )}
 
             <div className="flex justify-center py-2">
-              {items[activeCropIndex] && isImageFile(items[activeCropIndex].file) ? (
-                <CropEditor
-                  url={previews[activeCropIndex].url}
-                  settings={items[activeCropIndex].crop}
-                  onChange={(next) => updateCrop(activeCropIndex, next)}
-                />
-              ) : (
-                <p className="text-sm text-ink-400 py-8 text-center">Vídeos não são cortados aqui — serão publicados no formato original.</p>
+              {items[activeCropIndex] && (
+                isImageFile(items[activeCropIndex].file) ? (
+                  <CropEditor
+                    url={previews[activeCropIndex].url}
+                    settings={items[activeCropIndex].crop}
+                    onChange={(next) => updateCrop(activeCropIndex, next)}
+                  />
+                ) : (
+                  <VideoTrimEditor
+                    url={previews[activeCropIndex].url}
+                    settings={items[activeCropIndex].trim}
+                    onChange={(next) => updateTrim(activeCropIndex, next)}
+                  />
+                )
               )}
             </div>
           </div>
