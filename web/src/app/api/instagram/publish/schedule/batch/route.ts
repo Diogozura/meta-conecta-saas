@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { getInstagramCredentials } from '@/lib/instagram'
 import { criarPublicacaoInstagram } from '@/lib/firestore'
+import { agendarPublicacaoExata } from '@/lib/qstash'
 import { uploadInstagramMedia } from '@/lib/storage'
 
 const MAX_ITENS_LOTE = 30
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
         mediaItems: [{ url: uploaded.url, path: uploaded.path, isVideo: false }],
         ...(caption ? { caption } : {}),
       })
+      await agendarPublicacaoExata(contaId, publicacao.id, agendadoPara)
       criadas.push({ id: publicacao.id, agendadoPara })
     }
 

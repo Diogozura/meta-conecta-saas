@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { obterPublicacaoInstagram, atualizarPublicacaoInstagram, excluirPublicacaoInstagram } from '@/lib/firestore'
 import { deleteInstagramPhoto } from '@/lib/storage'
 import { finalizarSePronto, criarContainerDeAgendamento } from '@/lib/instagramPublish'
+import { agendarPublicacaoExata } from '@/lib/qstash'
 import type { PublicacaoInstagram } from '@/types/database'
 
 // GET /api/instagram/publications/[id] - Consulta (e finaliza, se pronto) uma publicação
@@ -61,6 +62,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   await atualizarPublicacaoInstagram(contaId, id, patch)
+  if (patch.agendadoPara instanceof Date) await agendarPublicacaoExata(contaId, id, patch.agendadoPara)
   return NextResponse.json({ ok: true })
 }
 

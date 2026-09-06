@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { getInstagramCredentials } from '@/lib/instagram'
 import { criarPublicacaoInstagram } from '@/lib/firestore'
+import { agendarPublicacaoExata } from '@/lib/qstash'
 import { uploadInstagramMedia } from '@/lib/storage'
 import type { PublicacaoInstagramMediaItem } from '@/types/database'
 
@@ -98,6 +99,8 @@ export async function POST(request: NextRequest) {
       ...(tipo === 'REELS' ? { shareToFeed } : {}),
       ...(coverItem ? { coverItem } : {}),
     })
+
+    if (agendadoPara) await agendarPublicacaoExata(contaId, publicacao.id, agendadoPara)
 
     return NextResponse.json({ publicacaoId: publicacao.id, status: publicacao.status })
   } catch (err) {
