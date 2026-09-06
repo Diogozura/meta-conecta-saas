@@ -10,6 +10,7 @@ import CommentsTab from './CommentsTab'
 import PublishTab from './PublishTab'
 import InsightsTab from './InsightsTab'
 import CalendarTab from './CalendarTab'
+import AuditoriaTab from './AuditoriaTab'
 import { IG_TABS, type IgTab } from '@/lib/instagramTabs'
 
 export default function InstagramPage() {
@@ -89,6 +90,7 @@ function InstagramPageInner() {
       {tab === 'publicar' && <PublishTab connected={connected} />}
       {tab === 'calendario' && <CalendarTab connected={connected} />}
       {tab === 'metricas' && <InsightsTab connected={connected} />}
+      {tab === 'auditoria' && <AuditoriaTab />}
     </div>
   )
 }

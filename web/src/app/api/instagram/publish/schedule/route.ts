@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { getInstagramCredentials } from '@/lib/instagram'
-import { criarPublicacaoInstagram } from '@/lib/firestore'
+import { criarPublicacaoInstagram, registrarAuditoria } from '@/lib/firestore'
 import { agendarPublicacaoExata } from '@/lib/qstash'
 import { uploadInstagramMedia } from '@/lib/storage'
 import type { PublicacaoInstagramMediaItem } from '@/types/database'
@@ -43,9 +43,13 @@ export async function POST(request: NextRequest) {
   const coverFile = formData.get('coverFile')
   const agendadoParaRaw = formData.get('agendadoPara')
   const agendadoPara = typeof agendadoParaRaw === 'string' && agendadoParaRaw ? new Date(agendadoParaRaw) : undefined
+  const direitosAutoraisConfirmado = formData.get('direitosAutoraisConfirmado') === 'true'
 
   if (!tipo || files.length === 0) {
     return NextResponse.json({ error: 'Selecione ao menos um arquivo.' }, { status: 400 })
+  }
+  if (agendadoPara && !direitosAutoraisConfirmado) {
+    return NextResponse.json({ error: 'Confirme que você tem os direitos de uso dessa mídia antes de agendar.' }, { status: 400 })
   }
   if (tipo === 'CAROUSEL') {
     if (files.length < MIN_CAROUSEL_ITEMS || files.length > MAX_CAROUSEL_ITEMS) {
@@ -98,9 +102,20 @@ export async function POST(request: NextRequest) {
       ...(isAiGenerated ? { isAiGenerated } : {}),
       ...(tipo === 'REELS' ? { shareToFeed } : {}),
       ...(coverItem ? { coverItem } : {}),
+      ...(agendadoPara ? { direitosAutoraisConfirmado: true } : {}),
     })
 
-    if (agendadoPara) await agendarPublicacaoExata(contaId, publicacao.id, agendadoPara)
+    if (agendadoPara) {
+      await agendarPublicacaoExata(contaId, publicacao.id, agendadoPara)
+      await registrarAuditoria(contaId, {
+        entidade: 'instagram_publicacao',
+        entidadeId: publicacao.id,
+        acao: 'criar',
+        descricao: `Agendou ${tipo === 'CAROUSEL' ? 'um carrossel' : `um(a) ${tipo.toLowerCase()}`} para ${agendadoPara.toLocaleString('pt-BR')}`,
+        usuarioId: session.user.usuarioId ?? 'desconhecido',
+        usuarioNome: session.user.name ?? session.user.email ?? 'Atendente',
+      }).catch(() => {})
+    }
 
     return NextResponse.json({ publicacaoId: publicacao.id, status: publicacao.status })
   } catch (err) {

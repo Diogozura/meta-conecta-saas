@@ -9,8 +9,8 @@ import {
   publishContainer,
   InstagramApiError,
 } from '@/lib/instagram'
-import { criarPublicacaoInstagram, atualizarPublicacaoInstagram } from '@/lib/firestore'
-import { uploadInstagramPhoto, deleteInstagramPhoto } from '@/lib/storage'
+import { criarPublicacaoInstagram, atualizarPublicacaoInstagram, registrarAuditoria } from '@/lib/firestore'
+import { uploadInstagramPhoto, uploadInstagramBackup, deleteInstagramPhoto } from '@/lib/storage'
 
 const POLL_ATTEMPTS = 5
 const POLL_DELAY_MS = 2500
@@ -65,9 +65,13 @@ export async function POST(request: NextRequest) {
   const isAiGenerated = formData.get('isAiGenerated') === 'true'
   const shareToFeed = formData.get('shareToFeed') !== 'false'
   const coverFile = formData.get('coverFile')
+  const direitosAutoraisConfirmado = formData.get('direitosAutoraisConfirmado') === 'true'
 
   if (!tipo || files.length === 0) {
     return NextResponse.json({ error: 'Selecione ao menos um arquivo.' }, { status: 400 })
+  }
+  if (!direitosAutoraisConfirmado) {
+    return NextResponse.json({ error: 'Confirme que você tem os direitos de uso dessa mídia antes de publicar.' }, { status: 400 })
   }
   if (tipo === 'CAROUSEL') {
     if (files.length < MIN_CAROUSEL_ITEMS || files.length > MAX_CAROUSEL_ITEMS) {
@@ -87,6 +91,11 @@ export async function POST(request: NextRequest) {
   let publicacao
   const mediaPaths: string[] = []
   let coverPath: string | undefined
+  // Vídeo/Reels/Story em vídeo vão direto pra Meta via resumable upload, sem passar pelo nosso
+  // Blob — pra esses, essa é a ÚNICA cópia de backup que existe (ver storage.ts::uploadInstagramBackup
+  // e PublicacaoInstagram.backupItems). Foto já vira backup sozinha (só deixamos de apagar
+  // mediaPaths/coverPath depois de publicar).
+  const backupItems: { url: string; path: string }[] = []
 
   try {
     const credentials = await getInstagramCredentials()
@@ -111,9 +120,15 @@ export async function POST(request: NextRequest) {
 
         let childId: string
         if (isVideo) {
+          const backupPromise = uploadInstagramBackup(contaId, buffer, file.type, `${Date.now()}-${i}`).catch((err) => {
+            console.warn('Falha ao criar backup do vídeo do carrossel:', err)
+            return null
+          })
           const child = await createResumableMediaContainer(credentials.accessToken, credentials.igUserId, 'VIDEO', { isCarouselItem: true })
           await uploadResumableVideo(credentials.accessToken, child.id, buffer)
           childId = child.id
+          const backup = await backupPromise
+          if (backup) backupItems.push(backup)
         } else {
           const photo = await uploadInstagramPhoto(contaId, buffer, file.type, String(i))
           mediaPaths.push(photo.path)
@@ -144,6 +159,10 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(await file.arrayBuffer())
 
       if (isVideo) {
+        const backupPromise = uploadInstagramBackup(contaId, buffer, file.type, `${Date.now()}`).catch((err) => {
+          console.warn('Falha ao criar backup do vídeo:', err)
+          return null
+        })
         const container = await createResumableMediaContainer(credentials.accessToken, credentials.igUserId, tipo as 'VIDEO' | 'REELS' | 'STORIES', {
           caption,
           collaborators: collaborators.length ? collaborators : undefined,
@@ -152,6 +171,8 @@ export async function POST(request: NextRequest) {
         })
         await uploadResumableVideo(credentials.accessToken, container.id, buffer)
         containerId = container.id
+        const backup = await backupPromise
+        if (backup) backupItems.push(backup)
       } else {
         const photo = await uploadInstagramPhoto(contaId, buffer, file.type)
         mediaPaths.push(photo.path)
@@ -177,6 +198,7 @@ export async function POST(request: NextRequest) {
       ...(tipo === 'REELS' ? { shareToFeed } : {}),
       ...(tipo === 'CAROUSEL' ? { mediaPaths, itemCount: files.length } : mediaPaths[0] ? { mediaPath: mediaPaths[0] } : {}),
       ...(coverPath ? { coverPath } : {}),
+      direitosAutoraisConfirmado: true,
       status: 'enviando',
     })
 
@@ -189,9 +211,18 @@ export async function POST(request: NextRequest) {
           status: 'publicado',
           mediaId: published.id,
           publicadoEm: new Date(),
+          ...(backupItems.length ? { backupItems } : {}),
         })
-        await Promise.all(mediaPaths.map((p) => deleteInstagramPhoto(p)))
-        if (coverPath) await deleteInstagramPhoto(coverPath)
+        // NÃO apaga mediaPaths/coverPath — depois de publicado, esse arquivo já hospedado vira o
+        // backup automático da publicação (junto com backupItems, pro que veio de vídeo).
+        await registrarAuditoria(contaId, {
+          entidade: 'instagram_publicacao',
+          entidadeId: publicacao.id,
+          acao: 'criar',
+          descricao: `Publicou ${tipo === 'CAROUSEL' ? 'um carrossel' : `um(a) ${tipo.toLowerCase()}`} no Instagram`,
+          usuarioId: session.user.usuarioId ?? 'desconhecido',
+          usuarioNome: session.user.name ?? session.user.email ?? 'Atendente',
+        }).catch(() => {})
         return NextResponse.json({ publicacaoId: publicacao.id, status: 'publicado', mediaId: published.id })
       }
 
@@ -199,6 +230,7 @@ export async function POST(request: NextRequest) {
         await atualizarPublicacaoInstagram(contaId, publicacao.id, { status: 'falhou', erro: `Processamento falhou (${status_code})` })
         await Promise.all(mediaPaths.map((p) => deleteInstagramPhoto(p)))
         if (coverPath) await deleteInstagramPhoto(coverPath)
+        await Promise.all(backupItems.map((b) => deleteInstagramPhoto(b.path)))
         return NextResponse.json({ publicacaoId: publicacao.id, status: 'falhou', error: `Processamento falhou (${status_code})` }, { status: 502 })
       }
 
@@ -206,8 +238,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Ainda processando depois do tempo de espera dentro da requisição — o
-    // painel continua consultando GET /api/instagram/publications/[id].
-    await atualizarPublicacaoInstagram(contaId, publicacao.id, { status: 'processando' })
+    // painel continua consultando GET /api/instagram/publications/[id], que finaliza (e loga a
+    // auditoria) via lib/instagramPublish.ts::finalizarSePronto quando o container terminar.
+    await atualizarPublicacaoInstagram(contaId, publicacao.id, { status: 'processando', ...(backupItems.length ? { backupItems } : {}) })
     return NextResponse.json({ publicacaoId: publicacao.id, status: 'processando' })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido'
@@ -217,6 +250,7 @@ export async function POST(request: NextRequest) {
     }
     await Promise.all(mediaPaths.map((p) => deleteInstagramPhoto(p)))
     if (coverPath) await deleteInstagramPhoto(coverPath)
+    await Promise.all(backupItems.map((b) => deleteInstagramPhoto(b.path)))
     return NextResponse.json({ error: message, code }, { status: 502 })
   }
 }

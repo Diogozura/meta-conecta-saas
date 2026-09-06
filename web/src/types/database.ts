@@ -35,6 +35,16 @@ export interface InstagramPublishConfig {
   assinaturaAtiva?: boolean
   marcaDaguaUrl?: string
   marcaDaguaAtiva?: boolean
+  // Guia de marca (cores/fontes/tom de voz) mostrado como referência na hora de escrever a
+  // legenda (PublishTab) — não é aplicado automaticamente em nada, é só consulta.
+  guiaDeMarca?: {
+    cores?: string[]
+    fontes?: string[]
+    tomDeVoz?: string
+  }
+  // Palavras/termos que essa conta nunca quer ver numa legenda (nome de concorrente, gíria fora
+  // do tom da marca, termo sensível do nicho etc.) — checado ao vivo em PublishTab, ver lib/textoRiscos.ts.
+  termosProibidos?: string[]
 }
 
 export interface ServicosContratados {
@@ -404,7 +414,9 @@ export interface ModeloLegenda {
 // (fluxo de atendimento, respostas rápidas, equipe/atendentes). Não cobre
 // TUDO no sistema, só o que afeta como a conta atende os clientes.
 // ─────────────────────────────────────────
-export type AuditoriaEntidade = 'fluxo' | 'resposta_rapida' | 'atendente' | 'dados_cliente' | 'conjunto_hashtags' | 'modelo_legenda'
+export type AuditoriaEntidade =
+  | 'fluxo' | 'resposta_rapida' | 'atendente' | 'dados_cliente' | 'conjunto_hashtags' | 'modelo_legenda'
+  | 'instagram_conta' | 'instagram_publicacao' | 'instagram_config'
 export type AuditoriaAcao = 'criar' | 'atualizar' | 'excluir' | 'ativar' | 'convidar'
 
 export interface RegistroAuditoria {
@@ -582,6 +594,15 @@ export interface PublicacaoInstagram {
   erro?: string
   dataCriacao: Date
   publicadoEm?: Date
+  // Checklist de conformidade: a pessoa confirmou ter os direitos de uso da mídia (imagem/vídeo/
+  // música) antes de publicar/agendar — guardado pra auditoria, não é só um "risco" de UI.
+  direitosAutoraisConfirmado?: boolean
+  // Cópia de backup permanente no Vercel Blob (nunca apagada) — só existe quando o arquivo
+  // original NÃO passa pela hospedagem própria durante a publicação normal (vídeo publicado na
+  // hora vai direto pra Meta via upload resumable, sem tocar no nosso Blob). Nos outros casos
+  // (foto publicada na hora, e qualquer rascunho/agendamento), o próprio mediaPath(s)/mediaItems/
+  // coverPath(Item) já servem de backup — deixam de ser apagados depois de publicar.
+  backupItems?: { url: string; path: string }[]
 }
 
 // ─────────────────────────────────────────

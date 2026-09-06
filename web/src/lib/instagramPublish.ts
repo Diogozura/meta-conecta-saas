@@ -9,7 +9,7 @@
  * via `imageUrl`/`videoUrl`, nunca por resumable upload.
  */
 
-import { obterInstagramAccess, atualizarPublicacaoInstagram } from '@/lib/firestore'
+import { obterInstagramAccess, atualizarPublicacaoInstagram, registrarAuditoria } from '@/lib/firestore'
 import { createMediaContainer, getContainerStatus, publishContainer, InstagramApiError } from '@/lib/instagram'
 import { deleteInstagramPhoto } from '@/lib/storage'
 import type { PublicacaoInstagram } from '@/types/database'
@@ -40,8 +40,20 @@ async function limparArquivos(publicacao: PublicacaoInstagram): Promise<void> {
     ...(publicacao.mediaPath ? [publicacao.mediaPath] : []),
     ...(publicacao.coverItem ? [publicacao.coverItem.path] : []),
     ...(publicacao.coverPath ? [publicacao.coverPath] : []),
+    ...(publicacao.backupItems?.map((b) => b.path) ?? []),
   ]
   await Promise.all(paths.map((p) => deleteInstagramPhoto(p)))
+}
+
+async function logarPublicacaoAuditoria(contaId: string, publicacao: PublicacaoInstagram): Promise<void> {
+  await registrarAuditoria(contaId, {
+    entidade: 'instagram_publicacao',
+    entidadeId: publicacao.id,
+    acao: 'atualizar',
+    descricao: `Publicou ${publicacao.tipo === 'CAROUSEL' ? 'um carrossel' : `um(a) ${publicacao.tipo.toLowerCase()}`} no Instagram`,
+    usuarioId: 'sistema',
+    usuarioNome: 'Agendamento automático',
+  }).catch(() => {})
 }
 
 /**
@@ -66,7 +78,9 @@ export async function finalizarSePronto(contaId: string, publicacao: PublicacaoI
     if (status_code === 'FINISHED') {
       const published = await publishContainer(credentials.accessToken, credentials.igUserId, publicacao.containerId)
       await atualizarPublicacaoInstagram(contaId, publicacao.id, { status: 'publicado', mediaId: published.id, publicadoEm: new Date() })
-      await limparArquivos(publicacao)
+      // NÃO apaga mediaItems/coverItem — depois de publicado, esse arquivo já hospedado vira o
+      // backup automático da publicação (ver PublicacaoInstagram.backupItems/mediaItems).
+      await logarPublicacaoAuditoria(contaId, publicacao)
       return { ...publicacao, status: 'publicado', mediaId: published.id }
     }
 

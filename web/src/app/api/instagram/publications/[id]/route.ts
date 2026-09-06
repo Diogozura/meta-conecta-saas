@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { obterPublicacaoInstagram, atualizarPublicacaoInstagram, excluirPublicacaoInstagram } from '@/lib/firestore'
+import { obterPublicacaoInstagram, atualizarPublicacaoInstagram, excluirPublicacaoInstagram, registrarAuditoria } from '@/lib/firestore'
 import { deleteInstagramPhoto } from '@/lib/storage'
 import { finalizarSePronto, criarContainerDeAgendamento } from '@/lib/instagramPublish'
 import { agendarPublicacaoExata } from '@/lib/qstash'
@@ -63,12 +63,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   await atualizarPublicacaoInstagram(contaId, id, patch)
   if (patch.agendadoPara instanceof Date) await agendarPublicacaoExata(contaId, id, patch.agendadoPara)
+  await registrarAuditoria(contaId, {
+    entidade: 'instagram_publicacao',
+    entidadeId: id,
+    acao: 'atualizar',
+    descricao: body.publicarAgora
+      ? 'Disparou "publicar agora" num rascunho/agendamento'
+      : patch.agendadoPara instanceof Date
+        ? `Reagendou uma publicação para ${patch.agendadoPara.toLocaleString('pt-BR')}`
+        : 'Editou um rascunho/agendamento do Instagram',
+    usuarioId: session.user.usuarioId ?? 'desconhecido',
+    usuarioNome: session.user.name ?? session.user.email ?? 'Atendente',
+  }).catch(() => {})
   return NextResponse.json({ ok: true })
 }
 
 // DELETE /api/instagram/publications/[id] - Remove o registro do histórico no painel
-// (e os arquivos ainda hospedados de um rascunho/agendamento); não apaga a publicação
-// real no Instagram quando já publicada.
+// (e os arquivos temporários de um rascunho/agendamento nunca publicado); não apaga a publicação
+// real no Instagram, e preserva o backup automático (mediaItems/backupItems) de tudo que já foi
+// publicado — o histórico "some" da tela, mas o backup na nuvem própria continua existindo.
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
@@ -82,10 +95,21 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Publicação não encontrada' }, { status: 404 })
   }
 
-  await Promise.all([
-    ...(publicacao.mediaItems ?? []).map((m) => deleteInstagramPhoto(m.path)),
-    ...(publicacao.coverItem ? [deleteInstagramPhoto(publicacao.coverItem.path)] : []),
-  ])
+  if (publicacao.status !== 'publicado') {
+    await Promise.all([
+      ...(publicacao.mediaItems ?? []).map((m) => deleteInstagramPhoto(m.path)),
+      ...(publicacao.coverItem ? [deleteInstagramPhoto(publicacao.coverItem.path)] : []),
+      ...(publicacao.backupItems ?? []).map((b) => deleteInstagramPhoto(b.path)),
+    ])
+  }
   await excluirPublicacaoInstagram(session.user.contaId, id)
+  await registrarAuditoria(session.user.contaId, {
+    entidade: 'instagram_publicacao',
+    entidadeId: id,
+    acao: 'excluir',
+    descricao: `Removeu do histórico uma publicação (status: ${publicacao.status})`,
+    usuarioId: session.user.usuarioId ?? 'desconhecido',
+    usuarioNome: session.user.name ?? session.user.email ?? 'Atendente',
+  }).catch(() => {})
   return NextResponse.json({ ok: true })
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { exchangeCodeForShortLivedToken, exchangeForLongLivedToken, getInstagramProfile } from '@/lib/instagram'
-import { criarInstagramAccess, obterInstagramAccess, atualizarInstagramAccess } from '@/lib/firestore'
+import { criarInstagramAccess, obterInstagramAccess, atualizarInstagramAccess, registrarAuditoria } from '@/lib/firestore'
 
 // Redirect URI do "Business Login for Instagram" — recebe o `code`, troca
 // pelos tokens (curta → longa duração), busca o perfil e salva na conta
@@ -57,6 +57,13 @@ export async function GET(request: NextRequest) {
     } else {
       await criarInstagramAccess(session.user.contaId, dados)
     }
+    await registrarAuditoria(session.user.contaId, {
+      entidade: 'instagram_conta',
+      acao: existing ? 'atualizar' : 'criar',
+      descricao: `${existing ? 'Reconectou' : 'Conectou'} a conta do Instagram (@${profile.username})`,
+      usuarioId: session.user.usuarioId ?? 'desconhecido',
+      usuarioNome: session.user.name ?? session.user.email ?? 'Atendente',
+    }).catch(() => {})
 
     destino.searchParams.set('conectado', '1')
     return NextResponse.redirect(destino)

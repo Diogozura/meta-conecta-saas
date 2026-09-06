@@ -34,6 +34,7 @@ import { useConfirmDialog } from '@/components/ConfirmDialog'
 import CropEditor, { CropThumb, exportCroppedFile, DEFAULT_CROP, type CropSettings } from './CropEditor'
 import VideoTrimEditor, { exportTrimmedFile, DEFAULT_TRIM, type VideoTrimSettings } from './VideoTrimEditor'
 import { encontrarHashtagsArriscadas } from '@/lib/hashtagsArriscadas'
+import { encontrarTermosProibidos, encontrarRiscosPolitica } from '@/lib/textoRiscos'
 
 type PublishType = 'IMAGE' | 'VIDEO' | 'REELS' | 'STORIES' | 'CAROUSEL'
 type WizardStep = 'upload' | 'crop' | 'share'
@@ -68,6 +69,8 @@ interface InstagramPublishConfig {
   assinaturaAtiva?: boolean
   marcaDaguaUrl?: string
   marcaDaguaAtiva?: boolean
+  guiaDeMarca?: { cores?: string[]; fontes?: string[]; tomDeVoz?: string }
+  termosProibidos?: string[]
 }
 
 const HASHTAG_LIMIT = 30
@@ -213,6 +216,14 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [canvaContinuation, setCanvaContinuation] = useState<string | undefined>(undefined)
   const [canvaLoadingDesigns, setCanvaLoadingDesigns] = useState(false)
   const [canvaExportingId, setCanvaExportingId] = useState<string | null>(null)
+  const [direitosAutoraisConfirmado, setDireitosAutoraisConfirmado] = useState(false)
+  const [guiaDeMarcaAberto, setGuiaDeMarcaAberto] = useState(false)
+  const [editandoGuiaDeMarca, setEditandoGuiaDeMarca] = useState(false)
+  const [coresInput, setCoresInput] = useState('')
+  const [fontesInput, setFontesInput] = useState('')
+  const [tomDeVozInput, setTomDeVozInput] = useState('')
+  const [savingGuiaDeMarca, setSavingGuiaDeMarca] = useState(false)
+  const [loteDireitosConfirmados, setLoteDireitosConfirmados] = useState(false)
 
   const activeType = TYPE_OPTIONS.find((t) => t.key === tipo)!
   const isCarousel = tipo === 'CAROUSEL'
@@ -231,6 +242,8 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const hashtagCount = useMemo(() => (caption.match(/#[\p{L}0-9_]+/gu) ?? []).length, [caption])
   const mentionCount = useMemo(() => (caption.match(/@[\p{L}0-9_.]+/gu) ?? []).length, [caption])
   const hashtagsArriscadas = useMemo(() => encontrarHashtagsArriscadas(caption), [caption])
+  const termosProibidosEncontrados = useMemo(() => encontrarTermosProibidos(caption, publishConfig.termosProibidos), [caption, publishConfig.termosProibidos])
+  const riscosPolitica = useMemo(() => encontrarRiscosPolitica(caption), [caption])
 
   async function loadHistory() {
     try {
@@ -266,12 +279,39 @@ export default function PublishTab({ connected }: { connected: boolean }) {
         setAssinaturaInput(config.assinatura ?? '')
         setAssinaturaAutoInput(!!config.assinaturaAtiva)
         setApplyWatermark(!!config.marcaDaguaAtiva)
+        setCoresInput((config.guiaDeMarca?.cores ?? []).join(', '))
+        setFontesInput((config.guiaDeMarca?.fontes ?? []).join(', '))
+        setTomDeVozInput(config.guiaDeMarca?.tomDeVoz ?? '')
         if (config.assinaturaAtiva && config.assinatura) {
           setCaption((prev) => (prev ? prev : config.assinatura!))
         }
       })
       .catch(() => {})
   }, [connected])
+
+  async function handleSalvarGuiaDeMarca() {
+    setSavingGuiaDeMarca(true)
+    try {
+      const guiaDeMarca = {
+        cores: coresInput.split(',').map((c) => c.trim()).filter(Boolean),
+        fontes: fontesInput.split(',').map((f) => f.trim()).filter(Boolean),
+        tomDeVoz: tomDeVozInput.trim(),
+      }
+      const res = await fetch('/api/conta/instagram-publish-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guiaDeMarca }),
+      })
+      if (!res.ok) throw new Error('Erro ao salvar guia de marca')
+      setPublishConfig((prev) => ({ ...prev, guiaDeMarca }))
+      setEditandoGuiaDeMarca(false)
+      toast.success('Guia de marca salvo.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar guia de marca')
+    } finally {
+      setSavingGuiaDeMarca(false)
+    }
+  }
 
   // Continua consultando publicações "processando" (vídeo/reels/carrossel ainda processando na Meta)
   useEffect(() => {
@@ -351,6 +391,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     setEnabledBlocks(new Set())
     setAgendarAberto(false)
     setAgendadoParaInput('')
+    setDireitosAutoraisConfirmado(false)
   }
 
   function addBlock(key: BlockKey) {
@@ -511,6 +552,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       formData.append('shareToFeed', String(shareToFeed))
       if (coverFile) formData.append('coverFile', coverFile)
     }
+    if (direitosAutoraisConfirmado) formData.append('direitosAutoraisConfirmado', 'true')
     return formData
   }
 
@@ -519,6 +561,10 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     if (step !== 'share') return
     if (!itemsValid) {
       toast.error(isCarousel ? `Carrossel precisa de ${MIN_CAROUSEL_ITEMS} a ${MAX_CAROUSEL_ITEMS} itens.` : 'Selecione ao menos um arquivo.')
+      return
+    }
+    if (!direitosAutoraisConfirmado) {
+      toast.error('Confirme que você tem os direitos de uso dessa mídia antes de publicar.')
       return
     }
 
@@ -546,6 +592,10 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     }
     if (mode === 'agendado' && !agendadoParaInput) {
       toast.error('Escolha a data e hora do agendamento.')
+      return
+    }
+    if (mode === 'agendado' && !direitosAutoraisConfirmado) {
+      toast.error('Confirme que você tem os direitos de uso dessa mídia antes de agendar.')
       return
     }
 
@@ -598,6 +648,10 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       toast.error('Escolha a data do primeiro post.')
       return
     }
+    if (!loteDireitosConfirmados) {
+      toast.error('Confirme que você tem os direitos de uso dessas imagens antes de agendar.')
+      return
+    }
     setLoteSaving(true)
     try {
       const formData = new FormData()
@@ -605,6 +659,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       if (loteCaption.trim()) formData.append('caption', loteCaption.trim())
       formData.append('primeiraData', new Date(lotePrimeiraData).toISOString())
       formData.append('intervaloDias', String(loteIntervalo))
+      formData.append('direitosAutoraisConfirmado', 'true')
 
       const res = await fetch('/api/instagram/publish/schedule/batch', { method: 'POST', body: formData })
       const json = await res.json()
@@ -615,6 +670,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       setLoteFiles([])
       setLoteCaption('')
       setLotePrimeiraData('')
+      setLoteDireitosConfirmados(false)
       await loadHistory()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao importar em lote')
@@ -832,12 +888,22 @@ export default function PublishTab({ connected }: { connected: boolean }) {
               </ul>
             )}
 
+            <label className="flex items-start gap-2 text-xs text-ink-600">
+              <input
+                type="checkbox"
+                checked={loteDireitosConfirmados}
+                onChange={(e) => setLoteDireitosConfirmados(e.target.checked)}
+                className="w-4 h-4 mt-0.5 accent-brand-600"
+              />
+              Confirmo que tenho os direitos de uso dessas imagens.
+            </label>
+
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setLoteAberto(false)} className="px-3 py-2 text-sm text-ink-600 hover:text-ink-900">Cancelar</button>
               <button
                 type="button"
                 onClick={handleImportarLote}
-                disabled={loteSaving}
+                disabled={loteSaving || !loteDireitosConfirmados}
                 className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
               >
                 {loteSaving ? 'Agendando...' : `Agendar ${loteFiles.length || ''} posts`}
@@ -1079,7 +1145,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                 </button>
                 <button
                   type="submit"
-                  disabled={publishing || !!savingSchedule}
+                  disabled={publishing || !!savingSchedule || !direitosAutoraisConfirmado}
                   className="flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {publishing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -1087,6 +1153,16 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                 </button>
               </div>
             </div>
+
+            <label className="flex items-start gap-2 text-xs text-ink-600 bg-ink-50 rounded-lg px-3 py-2">
+              <input
+                type="checkbox"
+                checked={direitosAutoraisConfirmado}
+                onChange={(e) => setDireitosAutoraisConfirmado(e.target.checked)}
+                className="w-4 h-4 mt-0.5 accent-brand-600 shrink-0"
+              />
+              Confirmo que tenho os direitos de uso desta mídia (imagem, vídeo e áudio) e que ela não viola direitos autorais de terceiros. Necessário pra agendar ou publicar (não pra salvar rascunho).
+            </label>
 
             {agendarAberto && (
               <div className="flex items-center gap-2 rounded-lg border border-ink-200 p-3">
@@ -1100,7 +1176,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                 <button
                   type="button"
                   onClick={() => handleSaveDraftOrSchedule('agendado')}
-                  disabled={savingSchedule === 'agendado'}
+                  disabled={savingSchedule === 'agendado' || !direitosAutoraisConfirmado}
                   className="px-3 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 shrink-0"
                 >
                   {savingSchedule === 'agendado' ? 'Agendando...' : 'Confirmar'}
@@ -1152,7 +1228,103 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                     <span>Frequentemente sinalizadas por uso excessivo (não é confirmação de shadowban): {hashtagsArriscadas.map((h) => `#${h}`).join(', ')}</span>
                   </p>
                 )}
+                {termosProibidosEncontrados.length > 0 && (
+                  <p className="mt-1.5 flex items-start gap-1.5 text-xs text-red-700 bg-red-50 rounded-md px-2.5 py-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>Termo proibido pela conta: {termosProibidosEncontrados.join(', ')}</span>
+                  </p>
+                )}
+                {riscosPolitica.length > 0 && (
+                  <p className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-md px-2.5 py-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>Possível violação das políticas do Instagram: {riscosPolitica.join('; ')}</span>
+                  </p>
+                )}
               </div>
+            </div>
+
+            <div className="rounded-lg border border-ink-200">
+              <button
+                type="button"
+                onClick={() => setGuiaDeMarcaAberto((v) => !v)}
+                className="w-full flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-ink-600 hover:text-brand-700"
+              >
+                <Palette className="w-3.5 h-3.5" /> Guia de marca
+              </button>
+              {guiaDeMarcaAberto && (
+                <div className="px-3 pb-3 space-y-2">
+                  {editandoGuiaDeMarca ? (
+                    <>
+                      <div>
+                        <label className="text-[11px] text-ink-500">Cores (separadas por vírgula, ex: #123456, #abcdef)</label>
+                        <input
+                          value={coresInput}
+                          onChange={(e) => setCoresInput(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-ink-500">Fontes (separadas por vírgula)</label>
+                        <input
+                          value={fontesInput}
+                          onChange={(e) => setFontesInput(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-ink-500">Tom de voz</label>
+                        <textarea
+                          value={tomDeVozInput}
+                          onChange={(e) => setTomDeVozInput(e.target.value)}
+                          rows={2}
+                          placeholder="Ex: direto, descontraído, sem gírias, sempre na 2ª pessoa..."
+                          className="w-full px-2.5 py-1.5 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button type="button" onClick={() => setEditandoGuiaDeMarca(false)} className="text-xs text-ink-500 hover:text-ink-800">Cancelar</button>
+                        <button
+                          type="button"
+                          onClick={handleSalvarGuiaDeMarca}
+                          disabled={savingGuiaDeMarca}
+                          className="px-3 py-1.5 bg-brand-600 text-white rounded-md text-xs font-medium hover:bg-brand-700 disabled:opacity-50"
+                        >
+                          {savingGuiaDeMarca ? 'Salvando...' : 'Salvar'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {(publishConfig.guiaDeMarca?.cores?.length || publishConfig.guiaDeMarca?.fontes?.length || publishConfig.guiaDeMarca?.tomDeVoz) ? (
+                        <div className="space-y-1.5 text-xs text-ink-600">
+                          {!!publishConfig.guiaDeMarca?.cores?.length && (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-ink-400">Cores:</span>
+                              {publishConfig.guiaDeMarca.cores.map((c) => (
+                                <span key={c} className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-ink-200">
+                                  <span className="w-3 h-3 rounded-full border border-ink-200" style={{ backgroundColor: c }} />
+                                  {c}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {!!publishConfig.guiaDeMarca?.fontes?.length && (
+                            <p><span className="text-ink-400">Fontes:</span> {publishConfig.guiaDeMarca.fontes.join(', ')}</p>
+                          )}
+                          {!!publishConfig.guiaDeMarca?.tomDeVoz && (
+                            <p><span className="text-ink-400">Tom de voz:</span> {publishConfig.guiaDeMarca.tomDeVoz}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-ink-400">Nenhum guia de marca configurado ainda.</p>
+                      )}
+                      <button type="button" onClick={() => setEditandoGuiaDeMarca(true)} className="text-xs text-brand-600 hover:text-brand-700 font-medium">
+                        {(publishConfig.guiaDeMarca?.cores?.length || publishConfig.guiaDeMarca?.fontes?.length || publishConfig.guiaDeMarca?.tomDeVoz) ? 'Editar' : 'Configurar'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {tipo === 'REELS' && (

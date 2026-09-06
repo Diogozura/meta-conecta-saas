@@ -67,6 +67,24 @@ export async function uploadLogoMarca(contaId: string, buffer: Buffer, contentTy
   return { url: blob.url, path: blob.pathname }
 }
 
+/**
+ * Backup permanente de uma mídia publicada — usado só quando o arquivo NUNCA passa pelo Blob
+ * durante a publicação normal (vídeo/Reels/Story publicados na hora, que vão direto pra Meta via
+ * upload resumable). Ao contrário de uploadInstagramPhoto/uploadInstagramMedia, essa cópia NUNCA
+ * é apagada automaticamente — é o backup automático de publicações (PublicacaoInstagram.backupItems).
+ */
+export async function uploadInstagramBackup(
+  contaId: string,
+  buffer: Buffer,
+  contentType: string,
+  suffix: string,
+): Promise<{ url: string; path: string }> {
+  const ext = MEDIA_EXTENSIONS[contentType] ?? (contentType.startsWith('video/') ? 'mp4' : 'jpg')
+  const pathname = `instagram-backup/${contaId}/${suffix}.${ext}`
+  const blob = await put(pathname, buffer, { access: 'public', contentType, addRandomSuffix: false })
+  return { url: blob.url, path: blob.pathname }
+}
+
 export async function uploadInstagramMedia(
   contaId: string,
   buffer: Buffer,

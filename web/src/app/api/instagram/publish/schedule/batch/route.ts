@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { getInstagramCredentials } from '@/lib/instagram'
-import { criarPublicacaoInstagram } from '@/lib/firestore'
+import { criarPublicacaoInstagram, registrarAuditoria } from '@/lib/firestore'
 import { agendarPublicacaoExata } from '@/lib/qstash'
 import { uploadInstagramMedia } from '@/lib/storage'
 
@@ -27,9 +27,13 @@ export async function POST(request: NextRequest) {
   const primeiraDataRaw = formData.get('primeiraData')
   const intervaloDiasRaw = formData.get('intervaloDias')
   const intervaloDias = Number(intervaloDiasRaw) || 1
+  const direitosAutoraisConfirmado = formData.get('direitosAutoraisConfirmado') === 'true'
 
   if (files.length === 0) {
     return NextResponse.json({ error: 'Selecione ao menos uma imagem.' }, { status: 400 })
+  }
+  if (!direitosAutoraisConfirmado) {
+    return NextResponse.json({ error: 'Confirme que você tem os direitos de uso dessas imagens antes de agendar.' }, { status: 400 })
   }
   if (files.length > MAX_ITENS_LOTE) {
     return NextResponse.json({ error: `Máximo de ${MAX_ITENS_LOTE} imagens por lote.` }, { status: 400 })
@@ -62,11 +66,20 @@ export async function POST(request: NextRequest) {
         status: 'agendado',
         agendadoPara,
         mediaItems: [{ url: uploaded.url, path: uploaded.path, isVideo: false }],
+        direitosAutoraisConfirmado: true,
         ...(caption ? { caption } : {}),
       })
       await agendarPublicacaoExata(contaId, publicacao.id, agendadoPara)
       criadas.push({ id: publicacao.id, agendadoPara })
     }
+
+    await registrarAuditoria(contaId, {
+      entidade: 'instagram_publicacao',
+      acao: 'criar',
+      descricao: `Importou ${criadas.length} publicação(ões) em lote`,
+      usuarioId: session.user.usuarioId ?? 'desconhecido',
+      usuarioNome: session.user.name ?? session.user.email ?? 'Atendente',
+    }).catch(() => {})
 
     return NextResponse.json({ criadas })
   } catch (err) {
