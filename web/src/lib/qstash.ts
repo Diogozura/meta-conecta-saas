@@ -7,6 +7,7 @@
  */
 
 import { Client, Receiver } from '@upstash/qstash'
+import { atualizarPublicacaoInstagram } from '@/lib/firestore'
 
 function getClient(): Client | null {
   if (!process.env.QSTASH_TOKEN) return null
@@ -25,19 +26,24 @@ function getAppUrl(): string {
 export async function agendarPublicacaoExata(contaId: string, publicacaoId: string, quando: Date): Promise<void> {
   const client = getClient()
   if (!client) {
-    console.warn('QSTASH_TOKEN não configurada — publicação vai depender só do cron de varredura.')
+    const erro = 'QSTASH_TOKEN não configurada nesse ambiente — depende só do cron de varredura (5 min).'
+    console.warn(erro)
+    await atualizarPublicacaoInstagram(contaId, publicacaoId, { qstashErro: erro }).catch(() => {})
     return
   }
 
   try {
-    await client.publishJSON({
+    const result = await client.publishJSON({
       url: `${getAppUrl()}/api/instagram/publish/execute`,
       body: { contaId, publicacaoId },
       notBefore: Math.floor(quando.getTime() / 1000),
     })
+    await atualizarPublicacaoInstagram(contaId, publicacaoId, { qstashMessageId: result.messageId, qstashErro: null }).catch(() => {})
   } catch (error) {
     // Best-effort — se o QStash falhar ao agendar, o cron de varredura ainda publica (com atraso).
+    const mensagem = error instanceof Error ? error.message : String(error)
     console.error('Erro ao agendar publicação exata no QStash:', error)
+    await atualizarPublicacaoInstagram(contaId, publicacaoId, { qstashErro: mensagem }).catch(() => {})
   }
 }
 

@@ -103,6 +103,8 @@ interface Publicacao {
   agendadoPara?: string
   erro?: string
   dataCriacao: string
+  qstashMessageId?: string | null
+  qstashErro?: string | null
 }
 
 interface PublishItem {
@@ -1494,6 +1496,13 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                         {p.tipo}{p.tipo === 'CAROUSEL' && p.itemCount ? ` · ${p.itemCount} itens` : ''}
                         {p.status === 'agendado' && p.agendadoPara ? ` · agendado pra ${formatAgendadoPara(p.agendadoPara)}` : ` · ${new Date(p.dataCriacao).toLocaleString('pt-BR')}`}
                       </p>
+                      {p.status === 'agendado' && (
+                        p.qstashMessageId ? (
+                          <p className="text-[10px] text-brand-600" title={p.qstashMessageId}>⏱ Disparo exato agendado (QStash)</p>
+                        ) : p.qstashErro ? (
+                          <p className="text-[10px] text-red-600" title={p.qstashErro}>⚠ Sem disparo exato — vai depender só do cron de 5 min ({p.qstashErro.slice(0, 60)})</p>
+                        ) : null
+                      )}
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
                       <button type="button" onClick={() => handleDuplicate(p)} className="p-1.5 text-ink-400 hover:text-brand-600" aria-label="Duplicar" title="Duplicar (legenda e configurações, escolha o arquivo de novo)">

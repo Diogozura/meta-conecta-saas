@@ -574,6 +574,11 @@ export interface PublicacaoInstagram {
   shareToFeed?: boolean            // Só Reels: também aparece no Feed além da aba Reels
   status: 'rascunho' | 'agendado' | 'enviando' | 'processando' | 'publicado' | 'falhou'
   agendadoPara?: Date | null       // Quando o cron deve publicar (status 'agendado')
+  // Diagnóstico do agendamento exato (QStash) — ajuda a saber, direto no painel, se o disparo
+  // exato foi mesmo registrado ou se a publicação vai depender só da varredura do cron a cada
+  // 5 min (ver lib/qstash.ts). Um limpa o outro dependendo do resultado da última tentativa.
+  qstashMessageId?: string | null
+  qstashErro?: string | null
   erro?: string
   dataCriacao: Date
   publicadoEm?: Date
