@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
+import { useConfirmDialog } from '@/components/ConfirmDialog'
 import CropEditor, { CropThumb, exportCroppedFile, DEFAULT_CROP, type CropSettings } from './CropEditor'
 import VideoTrimEditor, { exportTrimmedFile, DEFAULT_TRIM, type VideoTrimSettings } from './VideoTrimEditor'
 import { encontrarHashtagsArriscadas } from '@/lib/hashtagsArriscadas'
@@ -158,6 +159,7 @@ function isoToLocalInput(iso: string): string {
 }
 
 export default function PublishTab({ connected }: { connected: boolean }) {
+  const { confirm, ConfirmDialogElement } = useConfirmDialog()
   const [tipo, setTipo] = useState<PublishType>('IMAGE')
   const [items, setItems] = useState<PublishItem[]>([])
   const [step, setStep] = useState<WizardStep>('upload')
@@ -386,9 +388,9 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     setShowCollabDropdown(false)
   }
 
-  function aplicarModeloLegenda(m: ModeloLegenda) {
+  async function aplicarModeloLegenda(m: ModeloLegenda) {
     const texto = [m.gancho, m.corpo, m.cta].filter(Boolean).join('\n\n')
-    if (caption.trim() && !window.confirm('Substituir a legenda atual pelo modelo escolhido?')) return
+    if (caption.trim() && !(await confirm('Substituir a legenda atual pelo modelo escolhido?', { danger: false }))) return
     setCaption(texto)
   }
 
@@ -755,7 +757,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     const mensagem = status === 'rascunho' || status === 'agendado'
       ? 'Cancelar essa publicação? O arquivo enviado será descartado.'
       : 'Remover esta publicação do histórico do painel? O post publicado no Instagram não é afetado.'
-    if (!window.confirm(mensagem)) return
+    if (!(await confirm(mensagem, { confirmLabel: status === 'rascunho' || status === 'agendado' ? 'Cancelar publicação' : 'Remover' }))) return
     setDeletingId(id)
     try {
       const res = await fetch(`/api/instagram/publications/${id}`, { method: 'DELETE' })
@@ -1575,6 +1577,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
           </div>
         )}
       </div>
+      {ConfirmDialogElement}
     </div>
   )
 }

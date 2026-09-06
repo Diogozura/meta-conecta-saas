@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { logout, enableViewAsClient, disableViewAsClient } from '@/lib/auth'
 import {
   Building2,
@@ -20,8 +20,13 @@ import {
   ShieldCheck,
   Eye,
   Loader2,
+  MessageSquare,
+  BarChart3,
+  Workflow,
+  Users,
+  History,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { Toaster } from 'sonner'
 import { RealtimeListeners } from '@/components/RealtimeListeners'
 import { ConnectWabaPrompt } from '@/components/ConnectWabaPrompt'
@@ -30,6 +35,7 @@ import { WhatsAppGlyph, InstagramGlyph /*, FacebookGlyph */ } from '@/components
 import { TourProvider, useTour } from '@/lib/tour/TourContext'
 import { getGlobalTourSteps, getPageTourSteps } from '@/lib/tour/steps'
 import type { ServicosContratados } from '@/types/database'
+import { IG_TABS } from '@/lib/instagramTabs'
 
 type NavItem = {
   href: string
@@ -43,6 +49,24 @@ const manageNavItems: (NavItem & { platformAdminOnly: boolean })[] = [
   { href: '/dashboard/servicos', label: 'Serviços por conta', icon: ShieldCheck, platformAdminOnly: true },
   { href: '/dashboard/configuracoes', label: 'Configurações', icon: Settings, platformAdminOnly: false, tour: 'nav-configuracoes' },
 ]
+
+// Sub-itens do grupo "WhatsApp" no menu lateral — 3 deles abrem um modal que já vive dentro de
+// ConversasInner (não são páginas próprias), então navegam via query string (?painel=...) em vez
+// de rota; "Fluxo" é uma página de verdade. ConversasInner escuta esse `painel` e abre o modal certo.
+const WHATSAPP_TABS: { key: string; label: string; icon: React.ComponentType<{ className?: string }>; href: string }[] = [
+  { key: 'conversas', label: 'Conversas', icon: MessageSquare, href: '/dashboard/conversas' },
+  { key: 'metricas', label: 'Métricas da fila', icon: BarChart3, href: '/dashboard/conversas?painel=metricas' },
+  { key: 'fluxo', label: 'Fluxo de atendimento', icon: Workflow, href: '/dashboard/conversas/fluxo' },
+  { key: 'atendentes', label: 'Setores dos atendentes', icon: Users, href: '/dashboard/conversas?painel=atendentes' },
+  { key: 'auditoria', label: 'Log de auditoria', icon: History, href: '/dashboard/conversas?painel=auditoria' },
+]
+
+function whatsappTabAtivo(key: string, pathname: string, searchParams: URLSearchParams): boolean {
+  if (key === 'fluxo') return pathname.startsWith('/dashboard/conversas/fluxo')
+  if (pathname !== '/dashboard/conversas') return false
+  const painel = searchParams.get('painel')
+  return key === 'conversas' ? !painel : painel === key
+}
 
 const TOUR_SEEN_KEY = 'zybot_tour_seen_global'
 const WABA_SKIP_PATH_PREFIXES = ['/dashboard/onboarding', '/dashboard/configuracoes']
@@ -89,6 +113,9 @@ function DashboardShellInner({
 }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Aberto por padrão se a pessoa já está em alguma aba do Instagram (link direto, F5 etc).
+  const [instagramMenuOpen, setInstagramMenuOpen] = useState(() => pathname.startsWith('/dashboard/instagram'))
+  const [whatsappMenuOpen, setWhatsappMenuOpen] = useState(() => pathname.startsWith('/dashboard/conversas'))
   const [helpOpen, setHelpOpen] = useState(false)
   const helpRef = useRef<HTMLDivElement>(null)
   const { active, steps, index, start } = useTour()
@@ -260,18 +287,40 @@ function DashboardShellInner({
           {mostraCanaisAtendimento && (
             <NavSection label="Canais de atendimento">
               {servicosContratados.whatsapp && (
-                <NavLink
-                  item={{ href: '/dashboard/conversas', label: 'WhatsApp', icon: WhatsAppGlyph, tour: 'nav-conversas' }}
-                  active={pathname.startsWith('/dashboard/conversas')}
-                  onNavigate={() => setSidebarOpen(false)}
-                />
+                <Suspense
+                  fallback={
+                    <NavLink
+                      item={{ href: '/dashboard/conversas', label: 'WhatsApp', icon: WhatsAppGlyph, tour: 'nav-conversas' }}
+                      active={pathname.startsWith('/dashboard/conversas')}
+                      onNavigate={() => setSidebarOpen(false)}
+                    />
+                  }
+                >
+                  <WhatsAppNavGroup
+                    pathname={pathname}
+                    open={whatsappMenuOpen}
+                    setOpen={setWhatsappMenuOpen}
+                    onNavigate={() => setSidebarOpen(false)}
+                  />
+                </Suspense>
               )}
               {servicosContratados.instagram && (
-                <NavLink
-                  item={{ href: '/dashboard/instagram', label: 'Instagram', icon: InstagramGlyph, tour: 'nav-instagram' }}
-                  active={pathname.startsWith('/dashboard/instagram')}
-                  onNavigate={() => setSidebarOpen(false)}
-                />
+                <Suspense
+                  fallback={
+                    <NavLink
+                      item={{ href: '/dashboard/instagram', label: 'Instagram', icon: InstagramGlyph, tour: 'nav-instagram' }}
+                      active={pathname.startsWith('/dashboard/instagram')}
+                      onNavigate={() => setSidebarOpen(false)}
+                    />
+                  }
+                >
+                  <InstagramNavGroup
+                    pathname={pathname}
+                    open={instagramMenuOpen}
+                    setOpen={setInstagramMenuOpen}
+                    onNavigate={() => setSidebarOpen(false)}
+                  />
+                </Suspense>
               )}
               {/* Facebook (Página) segue pausado sem previsão — reativar quando entrar em desenvolvimento. */}
               {/* <ComingSoonRow icon={FacebookGlyph} label="Facebook" /> */}
@@ -418,6 +467,142 @@ function NavLink({ item, active, onNavigate }: { item: NavItem; active: boolean;
       <span className="flex-1">{item.label}</span>
       {active && <ChevronRight className="w-4 h-4 text-brand-500" />}
     </Link>
+  )
+}
+
+// Grupo expansível do Instagram: clicar no cabeçalho abre a lista de abas
+// (Visão geral, Caixa de entrada, Comentários...) direto no menu lateral, em
+// vez da barra de abas horizontal que existia dentro da página — pedido pra
+// centralizar a navegação só no sidebar.
+function InstagramNavGroup({
+  pathname,
+  open,
+  setOpen,
+  onNavigate,
+}: {
+  pathname: string
+  open: boolean
+  setOpen: (value: boolean | ((prev: boolean) => boolean)) => void
+  onNavigate: () => void
+}) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const naSecaoInstagram = pathname.startsWith('/dashboard/instagram')
+  const tabAtual = searchParams.get('tab') ?? 'visao-geral'
+
+  return (
+    <div>
+      <button
+        type="button"
+        data-tour="nav-instagram"
+        onClick={() => {
+          if (naSecaoInstagram) {
+            setOpen((v) => !v)
+          } else {
+            setOpen(true)
+            router.push('/dashboard/instagram')
+            onNavigate()
+          }
+        }}
+        className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group ${
+          naSecaoInstagram ? 'bg-brand-50 text-brand-700' : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+        }`}
+      >
+        <InstagramGlyph className={`w-5 h-5 ${naSecaoInstagram ? 'text-brand-600' : 'text-ink-400 group-hover:text-ink-600'}`} />
+        <span className="flex-1 text-left">Instagram</span>
+        <ChevronRight
+          className={`w-4 h-4 transition-transform ${open ? 'rotate-90' : ''} ${naSecaoInstagram ? 'text-brand-500' : 'text-ink-300'}`}
+        />
+      </button>
+      {open && (
+        <div className="mt-1 ml-4 pl-3 border-l border-ink-100 space-y-0.5">
+          {IG_TABS.map((t) => {
+            const Icon = t.icon
+            const ativo = naSecaoInstagram && tabAtual === t.key
+            return (
+              <Link
+                key={t.key}
+                href={`/dashboard/instagram?tab=${t.key}`}
+                onClick={onNavigate}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${
+                  ativo ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:bg-ink-100 hover:text-ink-800'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${ativo ? 'text-brand-600' : 'text-ink-400'}`} />
+                {t.label}
+              </Link>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Mesmo padrão do InstagramNavGroup, mas pra WhatsApp: Métricas/Atendentes/Auditoria eram ícones
+// soltos dentro da lista de conversas (abriam modal) — agora vivem só aqui, navegando via
+// ?painel=... que a ConversasInner escuta pra abrir o modal certo.
+function WhatsAppNavGroup({
+  pathname,
+  open,
+  setOpen,
+  onNavigate,
+}: {
+  pathname: string
+  open: boolean
+  setOpen: (value: boolean | ((prev: boolean) => boolean)) => void
+  onNavigate: () => void
+}) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const naSecaoWhatsApp = pathname.startsWith('/dashboard/conversas')
+
+  return (
+    <div>
+      <button
+        type="button"
+        data-tour="nav-conversas"
+        onClick={() => {
+          if (naSecaoWhatsApp) {
+            setOpen((v) => !v)
+          } else {
+            setOpen(true)
+            router.push('/dashboard/conversas')
+            onNavigate()
+          }
+        }}
+        className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group ${
+          naSecaoWhatsApp ? 'bg-brand-50 text-brand-700' : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+        }`}
+      >
+        <WhatsAppGlyph className={`w-5 h-5 ${naSecaoWhatsApp ? 'text-brand-600' : 'text-ink-400 group-hover:text-ink-600'}`} />
+        <span className="flex-1 text-left">WhatsApp</span>
+        <ChevronRight
+          className={`w-4 h-4 transition-transform ${open ? 'rotate-90' : ''} ${naSecaoWhatsApp ? 'text-brand-500' : 'text-ink-300'}`}
+        />
+      </button>
+      {open && (
+        <div className="mt-1 ml-4 pl-3 border-l border-ink-100 space-y-0.5">
+          {WHATSAPP_TABS.map((t) => {
+            const Icon = t.icon
+            const ativo = whatsappTabAtivo(t.key, pathname, searchParams)
+            return (
+              <Link
+                key={t.key}
+                href={t.href}
+                onClick={onNavigate}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${
+                  ativo ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:bg-ink-100 hover:text-ink-800'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${ativo ? 'text-brand-600' : 'text-ink-400'}`} />
+                {t.label}
+              </Link>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -2,11 +2,11 @@
 
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import Link from 'next/link'
 import { toast } from 'sonner'
-import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck, Bot, ArrowLeft, Clock, CheckCircle2, RotateCcw, Workflow, BarChart3, Users as UsersIcon, Zap, Trash2, Download, History, Paperclip, MoreVertical, ShieldOff } from 'lucide-react'
+import { MessageSquare, Search, Send, Loader2, AlertCircle, Plus, X, UserCheck, Bot, ArrowLeft, Clock, CheckCircle2, RotateCcw, Zap, Trash2, Download, Paperclip, MoreVertical, ShieldOff } from 'lucide-react'
 import { Skeleton } from '@/components/Skeleton'
 import { Modal } from '@/components/Modal'
+import { useConfirmDialog } from '@/components/ConfirmDialog'
 import {
   type ConversaStatus,
   type ConversaMeta,
@@ -193,6 +193,7 @@ export default function ConversasPage() {
 }
 
 function ConversasInner() {
+  const { confirm, ConfirmDialogElement } = useConfirmDialog()
   // Começa vazio (igual no servidor e no cliente, na primeira renderização)
   // e só lê o localStorage depois de montado — ler direto no useState
   // divergia entre servidor (sem localStorage) e cliente (com dados
@@ -320,6 +321,19 @@ function ConversasInner() {
       setSelectedNumber(newConv.number)
       return sortConvs([newConv, ...prev])
     })
+  }, [searchParams])
+
+  // Abre o painel certo quando a navegação vem do menu lateral (?painel=metricas|atendentes|auditoria)
+  useEffect(() => {
+    const painel = searchParams.get('painel')
+    if (painel === 'metricas') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- navegação via URL, mesmo padrão do ?from= acima
+      setShowMetricas(true)
+    } else if (painel === 'atendentes') {
+      setShowAtendentes(true)
+    } else if (painel === 'auditoria') {
+      setShowAuditoria(true)
+    }
   }, [searchParams])
 
   // Status/fila/atendente de TODAS as conversas — sobreposto na lista
@@ -896,8 +910,9 @@ function ConversasInner() {
 
   async function handleExcluirDadosLgpd() {
     if (!currentConv) return
-    const confirmado = window.confirm(
-      `Isso apaga PERMANENTEMENTE todas as mensagens, o cadastro e as avaliações desse cliente (${currentConv.name} — ${currentConv.number}). Não tem como desfazer. Confirma?`
+    const confirmado = await confirm(
+      `Isso apaga PERMANENTEMENTE todas as mensagens, o cadastro e as avaliações desse cliente (${currentConv.name} — ${currentConv.number}). Não tem como desfazer. Confirma?`,
+      { confirmLabel: 'Apagar tudo' }
     )
     if (!confirmado) return
 
@@ -954,34 +969,8 @@ function ConversasInner() {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-ink-900">Conversas</h2>
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => setShowMetricas(true)}
-                className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
-                title="Métricas da fila"
-              >
-                <BarChart3 className="w-4 h-4" />
-              </button>
-              <Link
-                href="/dashboard/conversas/fluxo"
-                className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
-                title="Fluxo de atendimento"
-              >
-                <Workflow className="w-4 h-4" />
-              </Link>
-              <button
-                onClick={() => setShowAtendentes(true)}
-                className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
-                title="Setores dos atendentes (round-robin)"
-              >
-                <UsersIcon className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setShowAuditoria(true)}
-                className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
-                title="Log de auditoria (quem mudou o quê)"
-              >
-                <History className="w-4 h-4" />
-              </button>
+              {/* Métricas/Fluxo/Atendentes/Auditoria saíram daqui — agora vivem só no
+                  menu lateral, dentro do grupo expansível "WhatsApp" (mesmo padrão do Instagram). */}
               <button
                 onClick={() => setShowNewForm((v) => !v)}
                 className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-600 transition-colors"
@@ -1715,6 +1704,7 @@ function ConversasInner() {
           )}
         </div>
       </Modal>
+      {ConfirmDialogElement}
     </div>
   )
 }

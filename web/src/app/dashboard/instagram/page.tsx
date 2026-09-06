@@ -4,24 +4,13 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { Inbox, MessageCircle, Send, BarChart3, LayoutGrid, Calendar } from 'lucide-react'
 import ActivityPanel from './ActivityPanel'
 import InboxTab from './InboxTab'
 import CommentsTab from './CommentsTab'
 import PublishTab from './PublishTab'
 import InsightsTab from './InsightsTab'
 import CalendarTab from './CalendarTab'
-
-type IgTab = 'visao-geral' | 'inbox' | 'comentarios' | 'publicar' | 'calendario' | 'metricas'
-
-const igTabs: { key: IgTab; label: string; icon: typeof Inbox }[] = [
-  { key: 'visao-geral', label: 'Visão geral', icon: LayoutGrid },
-  { key: 'inbox', label: 'Caixa de entrada', icon: Inbox },
-  { key: 'comentarios', label: 'Comentários', icon: MessageCircle },
-  { key: 'publicar', label: 'Publicar', icon: Send },
-  { key: 'calendario', label: 'Calendário', icon: Calendar },
-  { key: 'metricas', label: 'Métricas', icon: BarChart3 },
-]
+import { IG_TABS, type IgTab } from '@/lib/instagramTabs'
 
 export default function InstagramPage() {
   return (
@@ -34,7 +23,10 @@ export default function InstagramPage() {
 function InstagramPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [tab, setTab] = useState<IgTab>(() => (searchParams.get('tab') === 'publicar' ? 'publicar' : 'visao-geral'))
+  // A aba agora é controlada pelo menu lateral (que navega via ?tab=...) — a
+  // página só lê o valor atual da URL, sem estado próprio nem abas aqui dentro.
+  const tabParam = searchParams.get('tab')
+  const tab: IgTab = (IG_TABS.some((t) => t.key === tabParam) ? tabParam : 'visao-geral') as IgTab
   const [connected, setConnected] = useState(false)
   const [checkingConnection, setCheckingConnection] = useState(true)
 
@@ -49,13 +41,12 @@ function InstagramPageInner() {
       .finally(() => setCheckingConnection(false))
   }, [])
 
-  // Feedback do callback OAuth (/api/instagram/callback)
+  // Feedback do callback OAuth (/api/instagram/callback e /api/canva/callback)
   useEffect(() => {
     const erro = searchParams.get('erro')
     const conectado = searchParams.get('conectado')
     const canvaErro = searchParams.get('canvaErro')
     const canvaConectado = searchParams.get('canvaConectado')
-    const tabParam = searchParams.get('tab')
 
     if (erro) {
       toast.error(erro)
@@ -65,37 +56,19 @@ function InstagramPageInner() {
       toast.error(canvaErro)
     } else if (canvaConectado) {
       toast.success('Canva conectado com sucesso!')
-    } else if (!tabParam) {
+    } else {
       return
     }
-    router.replace('/dashboard/instagram')
+    // Limpa só os parâmetros de feedback do OAuth — preserva a aba atual.
+    router.replace(tabParam ? `/dashboard/instagram?tab=${tabParam}` : '/dashboard/instagram')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
   return (
     <div>
-      <div className="mb-2">
+      <div className="mb-6">
         <h1 className="text-lg font-bold text-ink-900">Instagram</h1>
         <p className="text-sm text-ink-500">Mensagens diretas, comentários, publicações e métricas da sua conta profissional — tudo em um só lugar.</p>
-      </div>
-
-      <div className="flex items-center gap-1 border-b border-ink-200 mb-6 mt-4 overflow-x-auto overflow-y-hidden scrollbar-thin">
-        {igTabs.map((t) => {
-          const Icon = t.icon
-          const active = tab === t.key
-          return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
-                active ? 'border-brand-600 text-brand-700' : 'border-transparent text-ink-500 hover:text-ink-800'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {t.label}
-            </button>
-          )
-        })}
       </div>
 
       {tab === 'visao-geral' && (

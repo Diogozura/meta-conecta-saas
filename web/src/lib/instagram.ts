@@ -245,10 +245,10 @@ export interface InstagramMessageShare {
   url?: string // CDN da imagem/vídeo compartilhado
 }
 
-export interface InstagramMessageStory {
-  id?: string
-  link?: string // CDN da imagem/vídeo do story mencionado/respondido
-}
+// Formato real ainda não confirmado pra esse tipo de login (nenhum subcampo testado até agora foi
+// aceito pela API) — fica como registro solto pra não travar em runtime, seja lá o que a API
+// devolver quando pedida "pelada" (sem chaves). A UI varre os valores procurando algo que pareça URL.
+export type InstagramMessageStory = Record<string, unknown>
 
 export interface InstagramMessage {
   id: string
@@ -269,7 +269,10 @@ const MESSAGE_FIELDS_ATTACHMENTS = `${MESSAGE_FIELDS_BASE},attachments{id,file_u
 // Instagram via Página do Facebook, e na prática essa conta rejeita a chamada quando eles vêm
 // junto de attachments (derrubando os dois). Por isso vivem numa chamada TOTALMENTE separada,
 // combinada por ID depois — se essa chamada falhar, não afeta attachments em nada.
-const MESSAGE_FIELDS_SHARES = 'id,shares{name,description,type,url},story{link}'
+// story: nem "id" nem "link" são aceitos como subcampo pra esse tipo de login — a própria API
+// rejeita com "Tried accessing nonexisting field" pra qualquer subcampo testado até agora. Pedido
+// "pelado" (sem chaves), a API devolve o que ela quiser (formato ainda sendo mapeado ao vivo).
+const MESSAGE_FIELDS_SHARES = 'id,shares{name,description,type,url},story'
 
 async function buscarMensagens(accessToken: string, conversationId: string, fields: string): Promise<InstagramMessage[]> {
   const data = await igFetch<{ messages: { data: InstagramMessage[] } }>(

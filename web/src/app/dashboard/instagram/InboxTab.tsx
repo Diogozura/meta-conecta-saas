@@ -66,7 +66,7 @@ interface ThreadMessage {
   created_time?: string
   attachments?: { data: ThreadMessageAttachment[] }
   shares?: { data: ThreadMessageShare[] } | ThreadMessageShare
-  story?: { id?: string; link?: string }
+  story?: Record<string, unknown>
 }
 
 /** `shares` às vezes vem como objeto único, às vezes como `{data: [...]}` — normaliza pro primeiro item. */
@@ -74,6 +74,17 @@ function primeiroShare(shares: ThreadMessage['shares']): ThreadMessageShare | un
   if (!shares) return undefined
   if ('data' in shares) return shares.data?.[0]
   return shares
+}
+
+// Formato real do campo "story" ainda não confirmado pra esse tipo de login (a API rejeitou todo
+// subcampo testado até agora), então em vez de assumir uma chave fixa, varre os valores do objeto
+// (1 nível) procurando algo que pareça uma URL de mídia.
+function extrairUrlDeStory(story: ThreadMessage['story']): string | undefined {
+  if (!story) return undefined
+  for (const valor of Object.values(story)) {
+    if (typeof valor === 'string' && /^https?:\/\//.test(valor)) return valor
+  }
+  return undefined
 }
 
 // Compara por ID e por username — a Graph API às vezes devolve o participante
@@ -368,7 +379,7 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                 const videoUrl = anexo?.video_data?.url
                 const audioUrl = !imagemUrl && !videoUrl ? anexo?.file_url : undefined
                 const share = primeiroShare(msg.shares)
-                const storyLink = msg.story?.link
+                const storyLink = extrairUrlDeStory(msg.story)
                 const shareEhVideo = share?.type === 'reel' || share?.type === 'ig_reel'
                 const shareEhImagemDeMidia = share?.type === 'post' || share?.type === 'ig_post'
                 const midiaClass = 'max-w-[220px] max-h-[280px] w-auto h-auto rounded-lg mb-1 object-contain'
