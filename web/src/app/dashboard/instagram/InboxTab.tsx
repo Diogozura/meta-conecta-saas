@@ -30,12 +30,29 @@ interface ThreadMessageAttachment {
   video_data?: { url?: string }
 }
 
+interface ThreadMessageShare {
+  id?: string
+  name?: string
+  description?: string
+  type?: string
+  url?: string
+}
+
 interface ThreadMessage {
   id: string
   from?: { id: string; username?: string }
   message?: string
   created_time?: string
   attachments?: { data: ThreadMessageAttachment[] }
+  shares?: { data: ThreadMessageShare[] } | ThreadMessageShare
+  story?: { id?: string; link?: string }
+}
+
+/** `shares` às vezes vem como objeto único, às vezes como `{data: [...]}` — normaliza pro primeiro item. */
+function primeiroShare(shares: ThreadMessage['shares']): ThreadMessageShare | undefined {
+  if (!shares) return undefined
+  if ('data' in shares) return shares.data?.[0]
+  return shares
 }
 
 // Compara por ID e por username — a Graph API às vezes devolve o participante
@@ -320,15 +337,43 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                 const imagemUrl = anexo?.image_data?.url ?? anexo?.image_data?.media_url
                 const videoUrl = anexo?.video_data?.url
                 const audioUrl = !imagemUrl && !videoUrl ? anexo?.file_url : undefined
+                const share = primeiroShare(msg.shares)
+                const storyLink = msg.story?.link
+                const shareEhVideo = share?.type === 'reel' || share?.type === 'ig_reel'
+                const midiaClass = 'max-w-[220px] max-h-[280px] w-auto h-auto rounded-lg mb-1 object-contain'
+                const semNadaReconhecido = !msg.message && !imagemUrl && !videoUrl && !audioUrl && !storyLink && !share?.url
                 return (
                   <div key={msg.id} className={`flex ${sentByMe ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm shadow-sm ${sentByMe ? 'bg-brand-600 text-white rounded-br-sm' : 'bg-white text-ink-900 rounded-bl-sm'}`}>
                       {imagemUrl && (
                         // eslint-disable-next-line @next/next/no-img-element -- imagem vinda da CDN da Meta, sem domínio fixo pra configurar no next/image
-                        <img src={imagemUrl} alt="" className="max-w-full rounded-lg mb-1" />
+                        <img src={imagemUrl} alt="" className={midiaClass} />
                       )}
-                      {videoUrl && <video src={videoUrl} controls className="max-w-full rounded-lg mb-1" />}
-                      {audioUrl && <audio src={audioUrl} controls className="max-w-full mb-1" />}
+                      {videoUrl && <video src={videoUrl} controls className={midiaClass} />}
+                      {audioUrl && <audio src={audioUrl} controls className="max-w-[220px] mb-1" />}
+                      {storyLink && (
+                        <div className="mb-1">
+                          <span className="text-[10px] uppercase tracking-wide opacity-70">Story</span>
+                          {/* eslint-disable-next-line @next/next/no-img-element -- imagem vinda da CDN da Meta */}
+                          <img src={storyLink} alt="" className={midiaClass} />
+                        </div>
+                      )}
+                      {share?.url && (
+                        <div className="mb-1">
+                          <span className="text-[10px] uppercase tracking-wide opacity-70">{share.type ?? 'Compartilhado'}</span>
+                          {shareEhVideo
+                            ? <video src={share.url} controls className={midiaClass} />
+                            /* eslint-disable-next-line @next/next/no-img-element -- imagem vinda da CDN da Meta */
+                            : <img src={share.url} alt={share.name ?? ''} className={midiaClass} />}
+                          {(share.name || share.description) && <p className="text-xs mt-1 opacity-80">{share.name || share.description}</p>}
+                        </div>
+                      )}
+                      {semNadaReconhecido && (
+                        <details className={`text-xs ${sentByMe ? 'text-brand-100' : 'text-ink-400'}`}>
+                          <summary className="italic cursor-pointer">Conteúdo não suportado (ex: nota de voz) — clique pra ver o dado bruto</summary>
+                          <pre className="mt-1 text-[10px] whitespace-pre-wrap break-all opacity-80">{JSON.stringify({ attachments: msg.attachments, shares: msg.shares, story: msg.story }, null, 2)}</pre>
+                        </details>
+                      )}
                       {msg.message}
                       <p className={`text-[10px] mt-1 ${sentByMe ? 'text-brand-100' : 'text-ink-400'}`}>{formatTime(msg.created_time)}</p>
                     </div>

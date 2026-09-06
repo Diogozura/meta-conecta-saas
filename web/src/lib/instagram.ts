@@ -237,6 +237,19 @@ export interface InstagramMessageAttachment {
   video_data?: { url?: string }
 }
 
+export interface InstagramMessageShare {
+  id?: string
+  name?: string
+  description?: string
+  type?: string // 'post' | 'reel' | 'ig_post' | 'ig_reel' | ...
+  url?: string // CDN da imagem/vídeo compartilhado
+}
+
+export interface InstagramMessageStory {
+  id?: string
+  link?: string // CDN da imagem/vídeo do story mencionado/respondido
+}
+
 export interface InstagramMessage {
   id: string
   from?: { id: string; username?: string }
@@ -244,10 +257,16 @@ export interface InstagramMessage {
   message?: string
   created_time?: string
   attachments?: { data: InstagramMessageAttachment[] }
+  shares?: { data: InstagramMessageShare[] } | InstagramMessageShare
+  story?: InstagramMessageStory
 }
 
 const MESSAGE_FIELDS_BASE = 'id,from{id,username},to{id,username},message,created_time'
-const MESSAGE_FIELDS_COM_ANEXO = `${MESSAGE_FIELDS_BASE},attachments{id,file_url,image_data,video_data}`
+// attachments = foto/áudio/vídeo enviados direto; shares = post/reel compartilhado na DM;
+// story = menção/resposta a um story. Nenhum dos 3 é confirmado pro login direto do Instagram
+// (graph.instagram.com) — só documentado pra Instagram via Página do Facebook — por isso o
+// fallback abaixo pra buscar só o texto se a Graph API rejeitar algum desses campos.
+const MESSAGE_FIELDS_COM_ANEXO = `${MESSAGE_FIELDS_BASE},attachments{id,file_url,image_data,video_data},shares{id,name,description,type,url},story{id,link}`
 
 /**
  * Lista as mensagens de uma conversa específica. Tenta pedir `attachments` (foto/áudio/vídeo
