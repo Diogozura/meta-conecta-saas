@@ -368,9 +368,14 @@ export default function InboxTab({ connected }: { connected: boolean }) {
                           {(share.name || share.description) && <p className="text-xs mt-1 opacity-80">{share.name || share.description}</p>}
                         </div>
                       )}
-                      {semNadaReconhecido && (
+                      {semNadaReconhecido && !msg.attachments && !msg.shares && !msg.story && (
+                        // Confirmado: a Meta não devolve NADA (nem esses campos vêm preenchidos) pra
+                        // nota de voz — não é falta de suporte nosso, a API não expõe esse conteúdo.
+                        <p className={`italic text-xs ${sentByMe ? 'text-brand-100' : 'text-ink-400'}`}>🎤 Nota de voz — a API do Instagram não permite acessar esse conteúdo.</p>
+                      )}
+                      {semNadaReconhecido && (msg.attachments || msg.shares || msg.story) && (
                         <details className={`text-xs ${sentByMe ? 'text-brand-100' : 'text-ink-400'}`}>
-                          <summary className="italic cursor-pointer">Conteúdo não suportado (ex: nota de voz) — clique pra ver o dado bruto</summary>
+                          <summary className="italic cursor-pointer">Conteúdo não suportado — clique pra ver o dado bruto</summary>
                           <pre className="mt-1 text-[10px] whitespace-pre-wrap break-all opacity-80">{JSON.stringify({ attachments: msg.attachments, shares: msg.shares, story: msg.story }, null, 2)}</pre>
                         </details>
                       )}
