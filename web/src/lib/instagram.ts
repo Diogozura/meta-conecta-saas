@@ -296,21 +296,11 @@ export interface ListConversationMessagesResult {
   sharesStoryErro?: string
 }
 
-/**
- * Lista as mensagens de uma conversa específica. `attachments` sempre é tentado (com fallback pro
- * texto puro se falhar); `shares`/`story` são buscados numa chamada extra e independente, mesclada
- * por ID de mensagem — assim uma eventual rejeição desses dois campos nunca derruba `attachments`.
- * Devolve o erro de shares/story (se der) pra dar pra diagnosticar direto no painel, já que esses
- * dois campos nunca foram confirmados pra esse tipo de login do Instagram.
- */
-export async function listConversationMessages(accessToken: string, conversationId: string): Promise<ListConversationMessagesResult> {
-  let mensagens: InstagramMessage[]
-  try {
-    mensagens = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_ATTACHMENTS)
-  } catch {
-    mensagens = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_BASE)
-  }
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
+async function buscarSharesEStory(accessToken: string, conversationId: string, mensagens: InstagramMessage[]): Promise<{ mensagens: InstagramMessage[]; erros: string[] }> {
   const erros: string[] = []
 
   try {
@@ -335,7 +325,49 @@ export async function listConversationMessages(accessToken: string, conversation
     erros.push(`story: ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  return { mensagens, sharesStoryErro: erros.length > 0 ? erros.join(' | ') : undefined }
+  return { mensagens, erros }
+}
+
+const RETENTATIVA_JANELA_MS = 2 * 60 * 1000 // 2 minutos
+const RETENTATIVA_DELAY_MS = 2500
+
+/**
+ * Mensagem sem NADA reconhecido (nem texto, nem attachment, nem shares/story) e enviada há pouco
+ * tempo — pode ser que a Meta ainda não tenha terminado de processar o conteúdo rico do lado dela
+ * (visto ao vivo: o mesmo tipo de compartilhamento às vezes vem populado, às vezes não, buscado
+ * poucos segundos depois de enviado). Mensagem antiga sem dado não entra aqui — já foi buscada
+ * várias vezes ao longo desta investigação e nunca chegou depois, então tentar de novo é desperdício.
+ */
+function podeEstarProcessando(m: InstagramMessage): boolean {
+  const semNada = !m.message && !(m.attachments?.data?.length) && !m.shares && !m.story
+  if (!semNada || !m.created_time) return false
+  const idadeMs = Date.now() - new Date(m.created_time).getTime()
+  return idadeMs >= 0 && idadeMs < RETENTATIVA_JANELA_MS
+}
+
+/**
+ * Lista as mensagens de uma conversa específica. `attachments` sempre é tentado (com fallback pro
+ * texto puro se falhar); `shares`/`story` são buscados numa chamada extra e independente, mesclada
+ * por ID de mensagem — assim uma eventual rejeição desses dois campos nunca derruba `attachments`.
+ * Devolve o erro de shares/story (se der) pra dar pra diagnosticar direto no painel, já que esses
+ * dois campos nunca foram confirmados pra esse tipo de login do Instagram.
+ */
+export async function listConversationMessages(accessToken: string, conversationId: string): Promise<ListConversationMessagesResult> {
+  let mensagens: InstagramMessage[]
+  try {
+    mensagens = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_ATTACHMENTS)
+  } catch {
+    mensagens = await buscarMensagens(accessToken, conversationId, MESSAGE_FIELDS_BASE)
+  }
+
+  let resultado = await buscarSharesEStory(accessToken, conversationId, mensagens)
+
+  if (resultado.mensagens.some(podeEstarProcessando)) {
+    await sleep(RETENTATIVA_DELAY_MS)
+    resultado = await buscarSharesEStory(accessToken, conversationId, mensagens)
+  }
+
+  return { mensagens: resultado.mensagens, sharesStoryErro: resultado.erros.length > 0 ? resultado.erros.join(' | ') : undefined }
 }
 
 /** Envia uma DM de texto para um usuário do Instagram (Instagram-scoped ID). */
