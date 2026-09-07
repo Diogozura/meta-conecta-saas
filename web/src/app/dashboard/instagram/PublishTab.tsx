@@ -212,6 +212,19 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [savingEdit, setSavingEdit] = useState(false)
   const [forcingId, setForcingId] = useState<string | null>(null)
   const [generatingCaption, setGeneratingCaption] = useState(false)
+  const [captionSugestoes, setCaptionSugestoes] = useState<string[] | null>(null)
+  const [sugerindoHashtags, setSugerindoHashtags] = useState(false)
+  const [gerarImagemAberto, setGerarImagemAberto] = useState(false)
+  const [gerarImagemPrompt, setGerarImagemPrompt] = useState('')
+  const [gerandoImagem, setGerandoImagem] = useState(false)
+  const [pautaAberta, setPautaAberta] = useState(false)
+  const [sugestoesPauta, setSugestoesPauta] = useState<string[] | null>(null)
+  const [carregandoPauta, setCarregandoPauta] = useState(false)
+  const [transcrevendoVideo, setTranscrevendoVideo] = useState(false)
+  const [assistenteAberto, setAssistenteAberto] = useState(false)
+  const [assistentePergunta, setAssistentePergunta] = useState('')
+  const [assistenteHistorico, setAssistenteHistorico] = useState<{ role: 'user' | 'model'; text: string }[]>([])
+  const [assistenteCarregando, setAssistenteCarregando] = useState(false)
   const [conjuntosHashtags, setConjuntosHashtags] = useState<ConjuntoHashtags[] | null>(null)
   const [novoHashtagNome, setNovoHashtagNome] = useState('')
   const [novoHashtagTexto, setNovoHashtagTexto] = useState('')
@@ -447,6 +460,24 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       setItems((prev) => [...prev, ...incoming].slice(0, MAX_CAROUSEL_ITEMS))
     } else {
       setItems(incoming.slice(0, 1))
+      // Sinaliza (heurística por IA, não é garantia) se a imagem parece gerada por IA, pra
+      // pré-marcar o selo — só pra post único de imagem, não vale a pena rodar em carrossel
+      // inteiro nem em vídeo (o Instagram não pede esse selo pra vídeo do mesmo jeito).
+      const unica = incoming[0].file
+      if (isImageFile(unica)) {
+        const detectFormData = new FormData()
+        detectFormData.append('file', unica)
+        fetch('/api/instagram/publish/detectar-ia', { method: 'POST', body: detectFormData })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data: { resultado?: string } | null) => {
+            if (data?.resultado === 'sim') {
+              setIsAiGenerated(true)
+              addBlock('ai')
+              toast('Essa imagem parece ter sido gerada por IA — marcamos o selo automaticamente, confira antes de publicar.')
+            }
+          })
+          .catch(() => {})
+      }
     }
   }
 
@@ -594,6 +625,114 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     setCaption((prev) => (prev.trim() ? `${prev.trim()} ${texto}` : texto))
   }
 
+  async function handleSugerirHashtags() {
+    if (!caption.trim()) {
+      toast.error('Escreva (ou gere) a legenda antes de pedir hashtags.')
+      return
+    }
+    setSugerindoHashtags(true)
+    try {
+      const res = await fetch('/api/instagram/publish/sugerir-hashtags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao sugerir hashtags')
+      inserirHashtags((json.hashtags as string[]).map((h) => `#${h}`).join(' '))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao sugerir hashtags')
+    } finally {
+      setSugerindoHashtags(false)
+    }
+  }
+
+  async function handleGerarImagem() {
+    if (!gerarImagemPrompt.trim()) return
+    setGerandoImagem(true)
+    try {
+      const res = await fetch('/api/instagram/publish/gerar-imagem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: gerarImagemPrompt.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao gerar imagem')
+      const imgRes = await fetch(json.url)
+      const blob = await imgRes.blob()
+      const file = new File([blob], 'imagem-gerada-por-ia.png', { type: blob.type || 'image/png' })
+      addFiles([file])
+      // Gerada pela nossa própria IA — não precisa esperar a heurística de detecção (que é só um
+      // palpite) confirmar o que já sabemos com certeza.
+      setIsAiGenerated(true)
+      addBlock('ai')
+      setGerarImagemAberto(false)
+      setGerarImagemPrompt('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao gerar imagem')
+    } finally {
+      setGerandoImagem(false)
+    }
+  }
+
+  async function handleSugerirPauta() {
+    setCarregandoPauta(true)
+    try {
+      const res = await fetch('/api/instagram/publish/sugerir-pauta')
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao sugerir pauta')
+      setSugestoesPauta(json.sugestoes ?? [])
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao sugerir pauta')
+    } finally {
+      setCarregandoPauta(false)
+    }
+  }
+
+  async function handleTranscreverVideo() {
+    const video = items.find((it) => !isImageFile(it.file))
+    if (!video) {
+      toast.error('Selecione um vídeo primeiro.')
+      return
+    }
+    setTranscrevendoVideo(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', video.file)
+      const res = await fetch('/api/instagram/publish/legenda-de-video', { method: 'POST', body: formData })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao transcrever vídeo')
+      setCaption(json.caption)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao transcrever vídeo')
+    } finally {
+      setTranscrevendoVideo(false)
+    }
+  }
+
+  async function handlePerguntarAssistente() {
+    if (!assistentePergunta.trim()) return
+    const pergunta = assistentePergunta.trim()
+    setAssistentePergunta('')
+    setAssistenteHistorico((prev) => [...prev, { role: 'user', text: pergunta }])
+    setAssistenteCarregando(true)
+    try {
+      const res = await fetch('/api/instagram/assistente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pergunta, historico: assistenteHistorico }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao perguntar')
+      setAssistenteHistorico((prev) => [...prev, { role: 'model', text: json.resposta }])
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao perguntar pro assistente')
+      setAssistenteHistorico((prev) => prev.slice(0, -1))
+    } finally {
+      setAssistenteCarregando(false)
+    }
+  }
+
   async function handleCriarConjuntoHashtags() {
     if (!novoHashtagNome.trim() || !novoHashtagTexto.trim()) return
     try {
@@ -734,18 +873,24 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       return
     }
     setGeneratingCaption(true)
+    setCaptionSugestoes(null)
     try {
       const formData = new FormData()
       formData.append('file', primeiraImagem.file)
       const res = await fetch('/api/instagram/publish/caption-suggestion', { method: 'POST', body: formData })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erro ao gerar legenda')
-      setCaption(json.caption)
+      setCaptionSugestoes(json.captions ?? [])
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao gerar legenda')
     } finally {
       setGeneratingCaption(false)
     }
+  }
+
+  function escolherSugestaoCaption(texto: string) {
+    setCaption(texto)
+    setCaptionSugestoes(null)
   }
 
   async function handleImportarLote() {
@@ -1085,6 +1230,67 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       <form onSubmit={handlePublish} className="bg-white rounded-xl border border-ink-200 p-6 space-y-5">
         {step === 'upload' && (
           <>
+            <div className="rounded-lg border border-ink-200">
+              <button
+                type="button"
+                onClick={() => { setPautaAberta((v) => !v); if (!pautaAberta && sugestoesPauta === null) handleSugerirPauta() }}
+                className="w-full flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-ink-600 hover:text-brand-700"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Sugerir pauta com base no que já performou bem
+              </button>
+              {pautaAberta && (
+                <div className="px-3 pb-3 space-y-1.5">
+                  {carregandoPauta ? (
+                    <p className="text-xs text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analisando suas publicações...</p>
+                  ) : sugestoesPauta === null || sugestoesPauta.length === 0 ? (
+                    <p className="text-xs text-ink-400">Nenhuma sugestão disponível ainda.</p>
+                  ) : (
+                    sugestoesPauta.map((s, i) => (
+                      <p key={i} className="text-xs text-ink-700 bg-ink-50 rounded-md px-2.5 py-1.5">{s}</p>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-ink-200">
+              <button
+                type="button"
+                onClick={() => setAssistenteAberto((v) => !v)}
+                className="w-full flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-ink-600 hover:text-brand-700"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Assistente de IA — pergunte sobre estratégia e pauta
+              </button>
+              {assistenteAberto && (
+                <div className="px-3 pb-3 space-y-2">
+                  {assistenteHistorico.length > 0 && (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                      {assistenteHistorico.map((h, i) => (
+                        <p key={i} className={`text-xs px-2.5 py-1.5 rounded-lg ${h.role === 'user' ? 'bg-brand-50 text-brand-800 ml-6' : 'bg-ink-50 text-ink-700 mr-6'}`}>{h.text}</p>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      value={assistentePergunta}
+                      onChange={(e) => setAssistentePergunta(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handlePerguntarAssistente() } }}
+                      placeholder="Ex: quando devo postar sobre a promoção de fim de mês?"
+                      className="flex-1 px-2.5 py-1.5 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                    />
+                    <button
+                      type="button"
+                      onClick={handlePerguntarAssistente}
+                      disabled={assistenteCarregando || !assistentePergunta.trim()}
+                      className="px-3 py-1.5 bg-brand-600 text-white rounded-md text-xs font-medium hover:bg-brand-700 disabled:opacity-50 shrink-0"
+                    >
+                      {assistenteCarregando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Perguntar'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-ink-700 mb-2">Tipo de publicação</label>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
@@ -1147,6 +1353,35 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                 >
                   <Palette className="w-3.5 h-3.5" /> Importar do Canva
                 </button>
+              )}
+
+              {items.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => setGerarImagemAberto((v) => !v)}
+                  className="mt-2 ml-3 flex items-center gap-1.5 text-xs font-medium text-ink-600 hover:text-brand-700"
+                >
+                  <Sparkles className="w-3.5 h-3.5" /> Gerar imagem com IA
+                </button>
+              )}
+
+              {items.length === 0 && gerarImagemAberto && (
+                <div className="mt-2 flex items-center gap-1.5">
+                  <input
+                    value={gerarImagemPrompt}
+                    onChange={(e) => setGerarImagemPrompt(e.target.value)}
+                    placeholder="Descreva a imagem que você quer (ex: café fumegante numa mesa de madeira, luz da manhã)"
+                    className="flex-1 px-2.5 py-1.5 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleGerarImagem}
+                    disabled={gerandoImagem || !gerarImagemPrompt.trim()}
+                    className="px-3 py-1.5 bg-brand-600 text-white rounded-md text-xs font-medium hover:bg-brand-700 disabled:opacity-50 shrink-0"
+                  >
+                    {gerandoImagem ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Gerar'}
+                  </button>
+                </div>
               )}
 
               {items.length > 0 && (
@@ -1429,6 +1664,26 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                         {generatingCaption ? 'Gerando...' : 'Sugerir com IA'}
                       </button>
                     )}
+                    {items[0] && !isImageFile(items[0].file) && (
+                      <button
+                        type="button"
+                        onClick={handleTranscreverVideo}
+                        disabled={transcrevendoVideo}
+                        className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"
+                      >
+                        {transcrevendoVideo ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                        {transcrevendoVideo ? 'Transcrevendo...' : 'Transcrever vídeo'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleSugerirHashtags}
+                      disabled={sugerindoHashtags}
+                      className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"
+                    >
+                      {sugerindoHashtags ? <Loader2 className="w-3 h-3 animate-spin" /> : <Hash className="w-3 h-3" />}
+                      {sugerindoHashtags ? 'Sugerindo...' : 'Sugerir hashtags'}
+                    </button>
                     <span className={`text-xs ${caption.length > CAPTION_LIMIT ? 'text-red-600' : 'text-ink-400'}`}>{caption.length}/{CAPTION_LIMIT}</span>
                   </div>
                 </div>
@@ -1440,6 +1695,22 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                   className="w-full px-4 py-2 border border-ink-300 rounded-lg focus:ring-2 focus:ring-brand-400 focus:border-transparent text-sm"
                   placeholder="Escreva uma legenda (opcional)... use #hashtags e @menções"
                 />
+                {captionSugestoes && captionSugestoes.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    <p className="text-[11px] font-medium text-ink-500">Escolha uma sugestão (ou continue editando a sua):</p>
+                    {captionSugestoes.map((sugestao, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => escolherSugestaoCaption(sugestao)}
+                        className="w-full text-left text-xs text-ink-700 bg-brand-50 hover:bg-brand-100 rounded-lg px-3 py-2 whitespace-pre-wrap transition-colors"
+                      >
+                        {sugestao}
+                      </button>
+                    ))}
+                    <button type="button" onClick={() => setCaptionSugestoes(null)} className="text-[11px] text-ink-400 hover:text-ink-600">Fechar sugestões</button>
+                  </div>
+                )}
                 <p className="mt-1 text-xs flex flex-wrap gap-x-3">
                   <span className={hashtagCount > HASHTAG_LIMIT ? 'text-red-600 font-medium' : 'text-ink-400'}>{hashtagCount}/{HASHTAG_LIMIT} hashtags</span>
                   <span className={mentionCount > MENTION_LIMIT ? 'text-red-600 font-medium' : 'text-ink-400'}>{mentionCount}/{MENTION_LIMIT} menções</span>

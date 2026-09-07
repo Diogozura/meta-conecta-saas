@@ -96,6 +96,9 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
   // Sentimento (23) e tradução (30)
   const [sentimentos, setSentimentos] = useState<Record<string, Sentimento>>({})
   const [classificandoMediaId, setClassificandoMediaId] = useState<string | null>(null)
+  const [resumindoMediaId, setResumindoMediaId] = useState<string | null>(null)
+  const [resumos, setResumos] = useState<Record<string, { duvidas: string[]; elogios: string[] }>>({})
+  const [sugerindoRespostaId, setSugerindoRespostaId] = useState<string | null>(null)
   const [traducoes, setTraducoes] = useState<Record<string, string>>({})
   const [traduzindoId, setTraduzindoId] = useState<string | null>(null)
   const [ocultandoId, setOcultandoId] = useState<string | null>(null)
@@ -266,6 +269,38 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
       toast.error(err instanceof Error ? err.message : 'Erro ao classificar comentários')
     } finally {
       setClassificandoMediaId(null)
+    }
+  }
+
+  async function handleResumirComentarios(mediaId: string) {
+    setResumindoMediaId(mediaId)
+    try {
+      const res = await fetch(`/api/instagram/media/${mediaId}/resumo-comentarios`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao resumir')
+      setResumos((prev) => ({ ...prev, [mediaId]: { duvidas: json.duvidas ?? [], elogios: json.elogios ?? [] } }))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao resumir comentários')
+    } finally {
+      setResumindoMediaId(null)
+    }
+  }
+
+  async function handleSugerirResposta(commentId: string, texto: string) {
+    setSugerindoRespostaId(commentId)
+    try {
+      const res = await fetch('/api/instagram/comments/sugerir-resposta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erro ao sugerir resposta')
+      setReplyText((prev) => ({ ...prev, [commentId]: json.resposta }))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao sugerir resposta')
+    } finally {
+      setSugerindoRespostaId(null)
     }
   }
 
@@ -597,15 +632,46 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
                 <p className="text-xs text-ink-400 text-center py-4">Nenhum comentário ainda.</p>
               )}
               {loadingComments !== m.id && (comments[m.id]?.length ?? 0) > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handleClassificar(m.id)}
-                  disabled={classificandoMediaId === m.id}
-                  className="flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"
-                >
-                  {classificandoMediaId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                  Classificar sentimento com IA
-                </button>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => handleClassificar(m.id)}
+                    disabled={classificandoMediaId === m.id}
+                    className="flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"
+                  >
+                    {classificandoMediaId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    Classificar sentimento com IA
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleResumirComentarios(m.id)}
+                    disabled={resumindoMediaId === m.id}
+                    className="flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"
+                  >
+                    {resumindoMediaId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    Resumir dúvidas e elogios
+                  </button>
+                </div>
+              )}
+              {resumos[m.id] && (
+                <div className="bg-white rounded-lg border border-ink-200 p-3 space-y-2 text-xs">
+                  {resumos[m.id].duvidas.length > 0 && (
+                    <div>
+                      <p className="font-semibold text-ink-700 mb-1">Principais dúvidas</p>
+                      <ul className="list-disc list-inside space-y-0.5 text-ink-600">
+                        {resumos[m.id].duvidas.map((d, i) => <li key={i}>{d}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {resumos[m.id].elogios.length > 0 && (
+                    <div>
+                      <p className="font-semibold text-ink-700 mb-1">Principais elogios</p>
+                      <ul className="list-disc list-inside space-y-0.5 text-ink-600">
+                        {resumos[m.id].elogios.map((e, i) => <li key={i}>{e}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               )}
               {loadingComments !== m.id && comments[m.id]?.map((c) => {
                 const jaEhCliente = !!c.username && usernamesClientes?.has(c.username)
@@ -624,6 +690,9 @@ export default function CommentsTab({ connected }: { connected: boolean }) {
                     <div className="flex items-center gap-1 flex-wrap">
                       <button type="button" onClick={() => handleTraduzir(c.id, c.text)} disabled={traduzindoId === c.id} className="p-1.5 text-ink-400 hover:text-brand-600 rounded-lg hover:bg-ink-100" title="Traduzir">
                         {traduzindoId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Languages className="w-3.5 h-3.5" />}
+                      </button>
+                      <button type="button" onClick={() => handleSugerirResposta(c.id, c.text)} disabled={sugerindoRespostaId === c.id} className="p-1.5 text-ink-400 hover:text-brand-600 rounded-lg hover:bg-ink-100" title="Sugerir resposta com IA">
+                        {sugerindoRespostaId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                       </button>
                       <button type="button" onClick={() => handleOcultar(m.id, c.id, true)} disabled={ocultandoId === c.id} className="p-1.5 text-ink-400 hover:text-amber-600 rounded-lg hover:bg-ink-100" title="Ocultar comentário">
                         {ocultandoId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <EyeOff className="w-3.5 h-3.5" />}

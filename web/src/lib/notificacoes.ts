@@ -72,13 +72,18 @@ export interface RelatorioSemanalInstagramParams {
   curtidas: number
   comentarios: number
   publicacoesNaSemana: number
+  // Parágrafo em linguagem natural (gerado por IA, ver lib/relatorioNaturalInstagram.ts) — opcional,
+  // só vem preenchido quando a conta tem uma chave Gemini configurada. Sem ele, o e-mail continua
+  // funcionando normalmente, só com os números (comportamento de sempre).
+  resumoNatural?: string
 }
 
 export function emailRelatorioSemanalInstagram(params: RelatorioSemanalInstagramParams): { assunto: string; corpoHtml: string } {
   return {
     assunto: '📊 Seu resumo semanal do Instagram',
     corpoHtml: `
-      <p>Resumo dos últimos 7 dias da sua conta do Instagram:</p>
+      ${params.resumoNatural ? `<p>${params.resumoNatural}</p>` : ''}
+      <p>Números dos últimos 7 dias:</p>
       <ul>
         ${params.seguidores !== undefined ? `<li><strong>Seguidores:</strong> ${params.seguidores.toLocaleString('pt-BR')}${params.crescimentoSemana !== undefined ? ` (${params.crescimentoSemana >= 0 ? '+' : ''}${params.crescimentoSemana} na semana)` : ''}</li>` : ''}
         <li><strong>Publicações feitas:</strong> ${params.publicacoesNaSemana}</li>

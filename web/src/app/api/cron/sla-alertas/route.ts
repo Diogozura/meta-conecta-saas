@@ -7,6 +7,7 @@ import {
 import { esperaExcedeuSla, slaParaPrioridade, SLA_ALERTA_MINUTOS } from '@/lib/conversaStatus'
 import { enviarEmail, emailAlertaSla, emailPendenciasInstagram, emailRelatorioSemanalInstagram, type PendenciaInstagramItem } from '@/lib/notificacoes'
 import { getAccountTotals, getFollowerGrowth, listRecentMedia } from '@/lib/instagram'
+import { gerarResumoNaturalRelatorio } from '@/lib/relatorioNaturalInstagram'
 import type { Conta } from '@/types/database'
 
 // Comentário/DM do Instagram sem resposta há mais de 1 dia vira pendência — bem maior que o
@@ -69,13 +70,15 @@ async function enviarRelatorioSemanalSeSegunda(conta: Conta, agora: Date): Promi
   const comentarios = mediaDaSemana.reduce((sum, m) => sum + (m.comments_count ?? 0), 0)
   const publicacoesNaSemana = publicacoes.filter((p) => p.status === 'publicado' && p.publicadoEm && new Date(p.publicadoEm).getTime() >= seteDiasAtras).length
 
-  const { assunto, corpoHtml } = emailRelatorioSemanalInstagram({
+  const paramsRelatorio = {
     seguidores: totais?.followers_count,
     crescimentoSemana: crescimento?.net,
     curtidas,
     comentarios,
     publicacoesNaSemana,
-  })
+  }
+  const resumoNatural = await gerarResumoNaturalRelatorio(conta.id, paramsRelatorio)
+  const { assunto, corpoHtml } = emailRelatorioSemanalInstagram({ ...paramsRelatorio, resumoNatural })
   return enviarEmail({ para: conta.email, assunto, corpoHtml })
 }
 
