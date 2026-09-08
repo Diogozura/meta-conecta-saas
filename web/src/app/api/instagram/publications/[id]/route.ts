@@ -61,11 +61,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ publicacao: atualizada })
   }
 
-  const patch: Partial<Pick<PublicacaoInstagram, 'caption' | 'altText' | 'collaborators' | 'isAiGenerated' | 'status' | 'agendadoPara' | 'direitosAutoraisConfirmado'>> = {
+  const patch: Partial<Pick<PublicacaoInstagram, 'caption' | 'altText' | 'collaborators' | 'isAiGenerated' | 'status' | 'agendadoPara' | 'direitosAutoraisConfirmado' | 'tema'>> = {
     ...(typeof body.caption === 'string' && body.caption.trim() ? { caption: body.caption.trim() } : {}),
     ...(typeof body.altText === 'string' && body.altText.trim() ? { altText: body.altText.trim() } : {}),
     ...(Array.isArray(body.collaborators) ? { collaborators: body.collaborators } : {}),
     ...(typeof body.isAiGenerated === 'boolean' ? { isAiGenerated: body.isAiGenerated } : {}),
+    ...(typeof body.tema === 'string' ? { tema: body.tema.trim() } : {}),
     ...(body.agendadoPara === null ? { status: 'rascunho' as const, agendadoPara: null } : {}),
     ...(typeof body.agendadoPara === 'string' ? { status: 'agendado' as const, agendadoPara: new Date(body.agendadoPara), direitosAutoraisConfirmado: true } : {}),
   }

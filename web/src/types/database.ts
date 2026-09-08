@@ -63,6 +63,9 @@ export interface InstagramPublishConfig {
   // frequente cadastrada (ver PerguntaFrequenteInstagram) — nunca responde automaticamente fora
   // desse casamento (não é um agente livre como o do WhatsApp).
   faqAtiva?: boolean
+  // Meta de frequência de publicação ("3 posts por semana") — ver CalendarTab.tsx, indicador de
+  // progresso contando publicados+agendados na semana corrente.
+  metaPostsPorSemana?: number
 }
 
 export interface ServicosContratados {
@@ -674,6 +677,9 @@ export interface PublicacaoInstagram {
   // (foto publicada na hora, e qualquer rascunho/agendamento), o próprio mediaPath(s)/mediaItems/
   // coverPath(Item) já servem de backup — deixam de ser apagados depois de publicar.
   backupItems?: { url: string; path: string }[]
+  // Tema livre de semana/mês ("Lançamento X", "Semana da promoção") pra agrupar visualmente um
+  // conjunto de posts no calendário — não afeta nada na publicação em si, é só organização.
+  tema?: string
 }
 
 // Snapshot da legenda/texto alternativo/colaboradores ANTES de uma edição — subcoleção

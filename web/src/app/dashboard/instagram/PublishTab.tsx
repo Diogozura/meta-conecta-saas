@@ -139,6 +139,7 @@ interface Publicacao {
   qstashErro?: string | null
   direitosAutoraisConfirmado?: boolean
   pausado?: boolean
+  tema?: string
 }
 
 interface PublishItem {
@@ -187,6 +188,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [altText, setAltText] = useState('')
   const [collaboratorsInput, setCollaboratorsInput] = useState('')
   const [isAiGenerated, setIsAiGenerated] = useState(false)
+  const [tema, setTema] = useState('')
   const [shareToFeed, setShareToFeed] = useState(true)
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [enabledBlocks, setEnabledBlocks] = useState<Set<BlockKey>>(new Set())
@@ -204,6 +206,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   const [savingSchedule, setSavingSchedule] = useState<'rascunho' | 'agendado' | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editCaption, setEditCaption] = useState('')
+  const [editTema, setEditTema] = useState('')
   const [editAgendadoPara, setEditAgendadoPara] = useState('')
   const [editDireitosConfirmados, setEditDireitosConfirmados] = useState(false)
   const [versoesAberto, setVersoesAberto] = useState(false)
@@ -525,6 +528,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
     setAgendarAberto(false)
     setAgendadoParaInput('')
     setDireitosAutoraisConfirmado(false)
+    setTema('')
   }
 
   function addBlock(key: BlockKey) {
@@ -794,6 +798,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
       if (coverFile) formData.append('coverFile', coverFile)
     }
     if (direitosAutoraisConfirmado) formData.append('direitosAutoraisConfirmado', 'true')
+    if (tema.trim()) formData.append('tema', tema.trim())
     return formData
   }
 
@@ -1015,6 +1020,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
   function handleStartEdit(p: Publicacao) {
     setEditingId(p.id)
     setEditCaption(p.caption ?? '')
+    setEditTema(p.tema ?? '')
     setEditAgendadoPara(p.agendadoPara ? dataParaInput(p.agendadoPara, publishConfig.fusoHorario) : '')
     // Só reabre a exigência de confirmação se essa publicação nunca teve os direitos confirmados
     // antes (ex: um rascunho salvo sem agendar) — reagendar algo que já foi confirmado na criação
@@ -1062,6 +1068,7 @@ export default function PublishTab({ connected }: { connected: boolean }) {
         ? { publicarAgora: true }
         : {
           caption: editCaption,
+          tema: editTema,
           agendadoPara: novaData ? novaData.toISOString() : null,
         }
       const res = await fetch(`/api/instagram/publications/${id}`, {
@@ -1733,6 +1740,15 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                     <span>Possível violação das políticas do Instagram: {riscosPolitica.join('; ')}</span>
                   </p>
                 )}
+                <div className="mt-2">
+                  <label className="text-[11px] text-ink-500">Tema (opcional — agrupa esse post com outros da mesma semana/mês no calendário)</label>
+                  <input
+                    value={tema}
+                    onChange={(e) => setTema(e.target.value)}
+                    placeholder="Ex: Lançamento de coleção, Semana da promoção..."
+                    className="w-full px-2.5 py-1.5 border border-ink-300 rounded-md text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                  />
+                </div>
               </div>
             </div>
 
@@ -2294,6 +2310,12 @@ export default function PublishTab({ connected }: { connected: boolean }) {
                         maxLength={CAPTION_LIMIT}
                         className="w-full px-3 py-2 border border-ink-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-transparent"
                         placeholder="Legenda"
+                      />
+                      <input
+                        value={editTema}
+                        onChange={(e) => setEditTema(e.target.value)}
+                        placeholder="Tema (opcional)"
+                        className="w-full px-3 py-1.5 border border-ink-300 rounded-lg text-xs focus:ring-2 focus:ring-brand-400 focus:border-transparent"
                       />
                       <div className="flex items-center gap-2">
                         <input

@@ -6,7 +6,11 @@ import { uploadInstagramMedia } from '@/lib/storage'
 import { humanizarErroAgente } from '@/lib/aiAgentTypes'
 import { obterGeminiDaConta, ERRO_SEM_GEMINI } from '@/lib/geminiInstagram'
 
-const IMAGE_MODEL = 'imagen-4.0-generate-001'
+// "imagen-4.0-generate-001" (usado antes) devolveu 404 "not found for API version v1beta, or is
+// not supported for predict" ao vivo — não disponível pra chave/versão de API usada aqui (talvez
+// exclusivo do Vertex AI, não da API pública do Gemini). "imagen-3.0-generate-002" é o modelo de
+// geração de imagem mais amplamente documentado como disponível via API pública do Gemini.
+const IMAGE_MODEL = 'imagen-3.0-generate-002'
 
 // POST /api/instagram/publish/gerar-imagem - Gera uma imagem (Imagen, via a mesma chave Gemini)
 // a partir de um prompt em texto — devolve a URL pública já hospedada, pra virar um arquivo

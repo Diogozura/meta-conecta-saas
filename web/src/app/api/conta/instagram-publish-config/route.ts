@@ -44,6 +44,7 @@ export async function PUT(req: NextRequest) {
     patch.termosModeracao = body.termosModeracao.filter((t: unknown) => typeof t === 'string' && t.trim())
   }
   if (typeof body.faqAtiva === 'boolean') patch.faqAtiva = body.faqAtiva
+  if (typeof body.metaPostsPorSemana === 'number' && Number.isInteger(body.metaPostsPorSemana) && body.metaPostsPorSemana >= 1) patch.metaPostsPorSemana = body.metaPostsPorSemana
 
   try {
     await atualizarInstagramPublishConfig(session.user.contaId, patch)

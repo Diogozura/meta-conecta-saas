@@ -44,6 +44,8 @@ export async function POST(request: NextRequest) {
   const agendadoParaRaw = formData.get('agendadoPara')
   const agendadoPara = typeof agendadoParaRaw === 'string' && agendadoParaRaw ? new Date(agendadoParaRaw) : undefined
   const direitosAutoraisConfirmado = formData.get('direitosAutoraisConfirmado') === 'true'
+  const temaRaw = formData.get('tema')
+  const tema = typeof temaRaw === 'string' && temaRaw.trim() ? temaRaw.trim() : undefined
 
   if (!tipo || files.length === 0) {
     return NextResponse.json({ error: 'Selecione ao menos um arquivo.' }, { status: 400 })
@@ -97,6 +99,7 @@ export async function POST(request: NextRequest) {
       ...(tipo === 'CAROUSEL' ? { itemCount: files.length } : {}),
       ...(agendadoPara ? { agendadoPara } : {}),
       ...(caption ? { caption } : {}),
+      ...(tema ? { tema } : {}),
       ...(altText && tipo === 'IMAGE' ? { altText } : {}),
       ...(collaborators.length ? { collaborators } : {}),
       ...(isAiGenerated ? { isAiGenerated } : {}),
