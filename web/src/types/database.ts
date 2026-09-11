@@ -186,8 +186,10 @@ export interface Conversa {
   // Etiquetas adicionadas por um nó "adicionar_etiqueta" do fluxo — só
   // acumula, sem duplicar (ver lib/firestore.ts adicionarEtiquetaConversa).
   etiquetas?: string[]
-  // Gerado por um nó "gerar_protocolo" do fluxo — número curto pro cliente
-  // referenciar esse atendimento depois.
+  // Gerado automaticamente sempre que a conversa entra num fluxo (ver
+  // lib/fluxoService.ts processarMensagemComFluxo) — número curto pro
+  // cliente referenciar esse atendimento depois. Pode ser sobrescrito por um
+  // nó "gerar_protocolo" manual, se o fluxo tiver um.
   protocolo?: string
 
   // Coluna do Kanban do CRM leve em que essa conversa está — ausente/id que

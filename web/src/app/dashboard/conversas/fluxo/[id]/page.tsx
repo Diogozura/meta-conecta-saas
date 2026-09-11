@@ -12,13 +12,14 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
+  reconnectEdge,
   type Connection,
   type Edge,
   type NodeChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { ArrowLeft, Plus, Save, Trash2, Loader2, Power, ChevronDown } from 'lucide-react'
-import { NODE_TYPES, TIPO_INFO, type FluxoRFNode } from '@/components/fluxo/FluxoNodes'
+import { NODE_TYPES, EDGE_TYPES, TIPO_INFO, type FluxoRFNode } from '@/components/fluxo/FluxoNodes'
 import type { Fluxo, FluxoNode, FluxoEdge as FluxoEdgeData, FluxoNodeTipo } from '@/types/database'
 
 // Agrupado por categoria (em vez de uma fileira só com os 18 tipos) — cada
@@ -52,7 +53,7 @@ function fluxoNodeParaRF(n: FluxoNode): FluxoRFNode {
 }
 
 function fluxoEdgeParaRF(e: FluxoEdgeData): Edge {
-  return { id: e.id, source: e.origem, target: e.destino, sourceHandle: e.opcaoId ?? null, type: 'smoothstep' }
+  return { id: e.id, source: e.origem, target: e.destino, sourceHandle: e.opcaoId ?? null, type: 'removable' }
 }
 
 function rfParaFluxoNode(n: FluxoRFNode): FluxoNode {
@@ -155,7 +156,20 @@ export default function FluxoEditorPage() {
         // lado do horário, ou a única saída de um nó de mensagem) — conectar
         // de novo substitui a anterior.
         const semAntiga = eds.filter((e) => !(e.source === connection.source && (e.sourceHandle ?? null) === (connection.sourceHandle ?? null)))
-        return addEdge({ ...connection, id: `e-${novoId()}`, type: 'smoothstep' }, semAntiga)
+        return addEdge({ ...connection, id: `e-${novoId()}`, type: 'removable' }, semAntiga)
+      })
+    },
+    [setEdges]
+  )
+
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      setEdges((eds) => {
+        // Mesma regra do onConnect: no máximo 1 aresta saindo de cada handle.
+        const semAntiga = eds.filter(
+          (e) => e.id === oldEdge.id || !(e.source === newConnection.source && (e.sourceHandle ?? null) === (newConnection.sourceHandle ?? null))
+        )
+        return reconnectEdge(oldEdge, newConnection, semAntiga)
       })
     },
     [setEdges]
@@ -167,7 +181,7 @@ export default function FluxoEditorPage() {
     const novo: FluxoRFNode = {
       id,
       type: tipo,
-      position: { x: 320 + (offset % 3) * 280, y: 40 + Math.floor(offset / 3) * 180 },
+      position: { x: 320 + (offset % 3) * 400, y: 40 + Math.floor(offset / 3) * 280 },
       data: { id, tipo, posicao: { x: 0, y: 0 }, ...(tipo === 'menu' ? { opcoes: [] } : {}), ...(tipo === 'horario' ? { horario: { ...HORARIO_PADRAO } } : {}) },
       deletable: true,
     }
@@ -377,10 +391,14 @@ export default function FluxoEditorPage() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChangeBase}
             onConnect={onConnect}
+            onReconnect={onReconnect}
             onNodeClick={(_e, node) => setSelectedNodeId(node.id)}
             onPaneClick={() => setSelectedNodeId(null)}
             nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
             fitView
+            fitViewOptions={{ padding: 0.4, maxZoom: 1 }}
+            proOptions={{ hideAttribution: true }}
           >
             <Background />
             <Controls />

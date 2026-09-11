@@ -232,6 +232,21 @@ export async function processarMensagemComFluxo(contaId: string, numero: string,
   // logo em seguida no mesmo fluxo já enxergar esse valor fresco (o
   // `conversa` foi lido do Firestore ANTES dessa gravação).
   let dadosColetados = conversa?.dadosColetados ?? {}
+
+  // Protocolo automático: toda vez que a conversa entra num fluxo do zero
+  // (primeira mensagem, ou reabertura — mesmo gatilho de `iniciarFluxo`
+  // logo abaixo), gera um novo protocolo sozinho — equivalente a ter um nó
+  // "Gerar protocolo" logo após o Início em TODO fluxo, sem o admin precisar
+  // montar isso manualmente. Fica disponível como {{protocolo}} pro resto do
+  // fluxo e visível no painel/CRM; o nó manual continua existindo pra quem
+  // quiser anunciar o número numa mensagem específica.
+  let protocoloConversa = conversa?.protocolo
+  if (!conversa?.fluxoNoAtualId) {
+    protocoloConversa = gerarProtocolo()
+    await definirProtocoloConversa(contaId, numero, protocoloConversa)
+  }
+  if (protocoloConversa) dadosColetados = { ...dadosColetados, protocolo: protocoloConversa }
+
   if (conversa?.fluxoNoAtualId) {
     const noAtual = encontrarNo(fluxoAtual, conversa.fluxoNoAtualId)
     if ((noAtual?.tipo === 'coleta' || noAtual?.tipo === 'solicitar_localizacao') && noAtual.variavel) {

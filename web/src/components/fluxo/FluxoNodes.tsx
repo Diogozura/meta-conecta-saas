@@ -1,7 +1,7 @@
 'use client'
 
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
-import { Play, MessageSquare, ListTree, Clock, TextCursorInput, Bot, UserCheck, Square, FileText, Link2, Mail, StickyNote, MapPin, QrCode, Tag, Hash, Variable, GitBranch, Timer, Workflow, Columns3, Ticket as TicketIcon } from 'lucide-react'
+import { BaseEdge, EdgeLabelRenderer, Handle, Position, getSmoothStepPath, useReactFlow, type EdgeProps, type NodeProps, type Node } from '@xyflow/react'
+import { Play, MessageSquare, ListTree, Clock, TextCursorInput, Bot, UserCheck, Square, FileText, Link2, Mail, StickyNote, MapPin, QrCode, Tag, Hash, Variable, GitBranch, Timer, Workflow, Columns3, Ticket as TicketIcon, X } from 'lucide-react'
 import type { FluxoNode, FluxoNodeTipo } from '@/types/database'
 
 // O React Flow exige que `data` seja um Record indexável — a interface
@@ -350,6 +350,35 @@ export function CriarTicketNode({ data, selected }: NodeProps<FluxoRFNode>) {
     </NodeShell>
   )
 }
+
+// Aresta com um botão "×" no meio — arraste a pontinha (fica arredondada,
+// "reconnectable") pra trocar a origem/destino, ou clique no × pra remover.
+export function RemovableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, selected }: EdgeProps) {
+  const { setEdges } = useReactFlow()
+  const [edgePath, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
+  return (
+    <>
+      <BaseEdge id={id} path={edgePath} style={style} markerEnd={markerEnd} />
+      <EdgeLabelRenderer>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            setEdges((eds) => eds.filter((edge) => edge.id !== id))
+          }}
+          title="Remover conexão"
+          className={`absolute w-4 h-4 rounded-full bg-white border border-ink-300 text-ink-400 hover:text-red-600 hover:border-red-400 flex items-center justify-center shadow-sm transition-opacity ${
+            selected ? 'opacity-100' : 'opacity-0 hover:opacity-100 focus:opacity-100'
+          }`}
+          style={{ pointerEvents: 'all', transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+        >
+          <X className="w-2.5 h-2.5" />
+        </button>
+      </EdgeLabelRenderer>
+    </>
+  )
+}
+
+export const EDGE_TYPES = { removable: RemovableEdge }
 
 export const NODE_TYPES = {
   inicio: InicioNode,

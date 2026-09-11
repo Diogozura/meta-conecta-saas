@@ -93,8 +93,8 @@ function fluxoDeTeste(): Fluxo {
   }
 }
 
-function conversaParada(noAtualId: string | null, dadosColetados: Record<string, string> = {}): Conversa {
-  return { numero: NUMERO, iaAtiva: !noAtualId, fluxoNoAtualId: noAtualId, dadosColetados }
+function conversaParada(noAtualId: string | null, dadosColetados: Record<string, string> = {}, protocolo?: string): Conversa {
+  return { numero: NUMERO, iaAtiva: !noAtualId, fluxoNoAtualId: noAtualId, dadosColetados, protocolo }
 }
 
 beforeEach(() => {
@@ -121,6 +121,28 @@ describe('processarMensagemComFluxo — primeiro contato', () => {
     // Conversa marcada esperando resposta no nó do menu, presa no fluxo1.
     expect(firestore.atualizarFluxoConversa).toHaveBeenCalledWith(CONTA_ID, NUMERO, 'menu', 'fluxo1')
     expect(firestore.marcarConversaEmAndamento).toHaveBeenCalledWith(CONTA_ID, NUMERO)
+  })
+
+  it('gera um protocolo automaticamente, sem precisar de um nó "gerar_protocolo" no fluxo', async () => {
+    vi.mocked(firestore.obterConversa).mockResolvedValue(null)
+
+    await processarMensagemComFluxo(CONTA_ID, NUMERO, 'oi')
+
+    expect(firestore.definirProtocoloConversa).toHaveBeenCalledTimes(1)
+    const [contaChamada, numeroChamado, protocolo] = vi.mocked(firestore.definirProtocoloConversa).mock.calls[0]
+    expect(contaChamada).toBe(CONTA_ID)
+    expect(numeroChamado).toBe(NUMERO)
+    expect(protocolo).toMatch(/^\d{6}-[A-Z0-9]{4}$/)
+  })
+})
+
+describe('processarMensagemComFluxo — conversa que já entrou no fluxo antes', () => {
+  it('não gera um novo protocolo pra cada mensagem — reaproveita o que já está salvo', async () => {
+    vi.mocked(firestore.obterConversa).mockResolvedValue(conversaParada('menu', {}, '260101-AAAA'))
+
+    await processarMensagemComFluxo(CONTA_ID, NUMERO, '2')
+
+    expect(firestore.definirProtocoloConversa).not.toHaveBeenCalled()
   })
 })
 
