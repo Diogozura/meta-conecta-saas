@@ -11,5 +11,5 @@ export async function GET() {
   }
 
   const conta = await obterConta(session.user.contaId)
-  return NextResponse.json({ servicos: conta?.servicosContratados ?? SERVICOS_PADRAO })
+  return NextResponse.json({ servicos: conta?.servicosContratados ?? SERVICOS_PADRAO, plano: conta?.plano ?? null })
 }

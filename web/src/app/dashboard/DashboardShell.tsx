@@ -25,6 +25,8 @@ import {
   Workflow,
   Users,
   History,
+  Lock,
+  CreditCard,
 } from 'lucide-react'
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { Toaster } from 'sonner'
@@ -165,7 +167,10 @@ function DashboardShellInner({
   // plataforma — vê/gerencia TODAS as contas. Usuários comuns de uma conta
   // (mesmo Administrador daquela conta) nunca veem esses itens no menu.
   const visibleManageItems = manageNavItems.filter((item) => !item.platformAdminOnly || isPlatformAdmin)
-  const mostraCanaisAtendimento = servicosContratados.whatsapp || servicosContratados.instagram
+  // Instagram sempre aparece na seção de canais, mesmo sem o serviço contratado — como vitrine do
+  // recurso (só desabilitado, ver LockedNavRow abaixo) — por isso essa seção sempre é mostrada,
+  // independente de `servicosContratados`.
+  const mostraCanaisAtendimento = true
   const allLabeledItems: { href: string; label: string }[] = [
     { href: '/dashboard', label: 'Visão Geral' },
     ...(servicosContratados.agenda ? [{ href: '/dashboard/agenda', label: 'Agenda' }] : []),
@@ -304,7 +309,7 @@ function DashboardShellInner({
                   />
                 </Suspense>
               )}
-              {servicosContratados.instagram && (
+              {servicosContratados.instagram ? (
                 <Suspense
                   fallback={
                     <NavLink
@@ -321,6 +326,8 @@ function DashboardShellInner({
                     onNavigate={() => setSidebarOpen(false)}
                   />
                 </Suspense>
+              ) : (
+                <LockedNavRow icon={InstagramGlyph} label="Instagram" motivo="Disponível nos planos Médio e Premium" />
               )}
               {/* Facebook (Página) segue pausado sem previsão — reativar quando entrar em desenvolvimento. */}
               {/* <ComingSoonRow icon={FacebookGlyph} label="Facebook" /> */}
@@ -334,8 +341,18 @@ function DashboardShellInner({
           </NavSection>
         </nav>
 
-        {/* Logout */}
-        <div className="px-3 py-4 border-t border-ink-100">
+        {/* Plano + Logout */}
+        <div className="px-3 py-4 border-t border-ink-100 space-y-1">
+          <Link
+            href="/dashboard/configuracoes?tab=plano"
+            onClick={() => setSidebarOpen(false)}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group ${
+              pathname === '/dashboard/configuracoes' ? 'bg-brand-50 text-brand-700' : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+            }`}
+          >
+            <CreditCard className="w-5 h-5 text-ink-400 group-hover:text-ink-600" />
+            Plano
+          </Link>
           <form action={logout}>
             <button
               type="submit"
@@ -602,6 +619,21 @@ function WhatsAppNavGroup({
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+// Mostra o módulo no menu (vitrine do recurso) mas sem deixar clicar — usado quando o plano da
+// conta não inclui esse serviço (ver DashboardShell → servicosContratados.instagram).
+function LockedNavRow({ icon: Icon, label, motivo }: { icon: React.ComponentType<{ className?: string }>; label: string; motivo: string }) {
+  return (
+    <div
+      title={motivo}
+      className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-ink-400 cursor-not-allowed select-none"
+    >
+      <Icon className="w-5 h-5 text-ink-300" />
+      <span className="flex-1">{label}</span>
+      <Lock className="w-3.5 h-3.5 text-ink-300" />
     </div>
   )
 }

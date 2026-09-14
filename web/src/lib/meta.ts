@@ -101,6 +101,33 @@ export async function subscribeToWebhooks(wabaId: string, accessToken: string) {
   return res.json()
 }
 
+// Escopos que o token do WhatsApp (gerado pelo Embedded Signup) precisa ter
+// pra funcionar — ver META_VARIABLES_GUIDE.md.
+export const WHATSAPP_REQUIRED_SCOPES = ['whatsapp_business_messaging', 'whatsapp_business_management']
+
+/**
+ * Verifica ativamente, contra a Graph API, se um token ainda é válido e quais
+ * escopos ele tem — usa o próprio app (appId/appSecret) como "app access
+ * token" pra inspecionar o token do negócio. Não é chamado em nenhum fluxo
+ * automático hoje, só sob demanda (ver /api/meta/health).
+ */
+export async function debugAccessToken(
+  inputToken: string,
+  appId: string,
+  appSecret: string,
+): Promise<{ is_valid: boolean; expires_at?: number; scopes?: string[]; error?: { message: string } }> {
+  const url = new URL(`${GRAPH_API}/debug_token`)
+  url.searchParams.set('input_token', inputToken)
+  url.searchParams.set('access_token', `${appId}|${appSecret}`)
+
+  const res = await fetch(url.toString())
+  const json = await res.json()
+  if (!res.ok) {
+    throw new Error(json?.error?.message ?? 'Falha ao verificar o token na Meta')
+  }
+  return json.data
+}
+
 /** Erro retornado pela Graph API — preserva o `code` do erro (ex: 131047
  * quando a janela de 24h de atendimento expirou) pra quem chamou decidir
  * como tratar cada caso. */

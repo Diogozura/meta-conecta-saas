@@ -1,17 +1,20 @@
 'use client'
 
-import { useState, useEffect, type ComponentType } from 'react'
-import { Save, Eye, EyeOff, AlertCircle, AlertTriangle, Sparkles, SlidersHorizontal, FileText, UserCog, Plug, ExternalLink, Gauge, ShieldCheck, Loader2, CheckCircle2 } from 'lucide-react'
+import { Suspense, useState, useEffect, type ComponentType } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Save, Eye, EyeOff, AlertCircle, AlertTriangle, Sparkles, SlidersHorizontal, FileText, UserCog, Plug, ExternalLink, Gauge, ShieldCheck, Loader2, CheckCircle2, CreditCard, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { AGENT_PROVIDERS } from '@/lib/aiAgentTypes'
 import { Skeleton } from '@/components/Skeleton'
-import { InstagramGlyph } from '@/components/BrandIcons'
+import { InstagramGlyph, WhatsAppGlyph } from '@/components/BrandIcons'
 import InstagramStatusCard from '@/components/instagram/InstagramStatusCard'
+import { PLANOS, PLANO_SERVICOS } from '@/lib/servicos'
+import type { PlanoTipo } from '@/types/database'
 import TemplatesPage from '../templates/page'
 import UsuariosPage from '../usuarios/page'
 import OnboardingPage from '../onboarding/page'
 
-type ConfigTab = 'geral' | 'templates' | 'usuarios' | 'onboarding' | 'instagram' | 'seguranca'
+type ConfigTab = 'geral' | 'templates' | 'usuarios' | 'onboarding' | 'instagram' | 'plano' | 'seguranca'
 
 // Abas ligadas a um canal específico só aparecem se a conta tiver esse
 // serviço contratado — sem isso, uma conta sem WhatsApp ainda via "Templates"
@@ -22,11 +25,25 @@ const configTabs: { key: ConfigTab; label: string; icon: ComponentType<{ classNa
   { key: 'usuarios', label: 'Usuários', icon: UserCog, servico: null },
   { key: 'onboarding', label: 'Conectar WABA', icon: Plug, servico: 'whatsapp' },
   { key: 'instagram', label: 'Instagram', icon: InstagramGlyph, servico: 'instagram' },
+  { key: 'plano', label: 'Plano', icon: CreditCard, servico: null },
   { key: 'seguranca', label: 'Segurança', icon: ShieldCheck, servico: null },
 ]
 
 export default function ConfiguracoesPage() {
-  const [tab, setTab] = useState<ConfigTab>('geral')
+  return (
+    <Suspense fallback={null}>
+      <ConfiguracoesPageInner />
+    </Suspense>
+  )
+}
+
+// Separado num componente à parte só por causa do useSearchParams — o Next exige um Suspense
+// acima de qualquer client component que o use (ver link direto "Plano" no menu lateral, que abre
+// já na aba certa via /dashboard/configuracoes?tab=plano).
+function ConfiguracoesPageInner() {
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get('tab') as ConfigTab | null
+  const [tab, setTab] = useState<ConfigTab>(tabParam && configTabs.some((t) => t.key === tabParam) ? tabParam : 'geral')
   const [servicos, setServicos] = useState<{ whatsapp: boolean; instagram: boolean } | null>(null)
 
   useEffect(() => {
@@ -79,7 +96,129 @@ export default function ConfiguracoesPage() {
       {tab === 'usuarios' && <UsuariosPage />}
       {tab === 'onboarding' && <OnboardingPage />}
       {tab === 'instagram' && <InstagramStatusCard variant="full" />}
+      {tab === 'plano' && <PlanoTab />}
       {tab === 'seguranca' && <SecurityTab />}
+    </div>
+  )
+}
+
+const PLANO_DESCRICOES: Record<PlanoTipo, string> = {
+  base: 'Pra começar — atendimento por um canal só.',
+  medio: 'WhatsApp e Instagram juntos, no mesmo painel.',
+  premium: 'Tudo liberado, sem restrição de canal.',
+}
+
+function PlanoTab() {
+  const [carregando, setCarregando] = useState(true)
+  const [planoAtual, setPlanoAtual] = useState<PlanoTipo | null>(null)
+  const [trocando, setTrocando] = useState<PlanoTipo | null>(null)
+
+  async function carregarPlano() {
+    try {
+      const res = await fetch('/api/conta/servicos')
+      const data = await res.json()
+      setPlanoAtual(data.plano ?? null)
+    } catch {
+      toast.error('Erro ao carregar o plano da conta')
+    } finally {
+      setCarregando(false)
+    }
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesmo padrão usado nas demais telas do dashboard
+    carregarPlano()
+  }, [])
+
+  async function handleTrocarPlano(plano: PlanoTipo) {
+    setTrocando(plano)
+    try {
+      const res = await fetch('/api/conta/plano', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plano }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error ?? 'Erro ao trocar o plano')
+      setPlanoAtual(plano)
+      toast.success(`Plano alterado para ${PLANOS.find((p) => p.valor === plano)?.label}.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao trocar o plano')
+    } finally {
+      setTrocando(null)
+    }
+  }
+
+  if (carregando) {
+    return (
+      <div className="max-w-4xl grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-56 w-full rounded-xl" />
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-4xl space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-ink-900">Plano da conta</h2>
+        <p className="text-sm text-ink-500 mt-1">
+          Escolha o plano que libera os canais de atendimento que sua conta usa. Essa é uma versão de demonstração — a troca é
+          imediata e não envolve cobrança.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {PLANOS.map((p, index) => {
+          const servicos = PLANO_SERVICOS[p.valor]
+          const atual = planoAtual === p.valor
+          const indiceAtual = planoAtual ? PLANOS.findIndex((x) => x.valor === planoAtual) : -1
+          const acao = indiceAtual === -1 ? 'Selecionar plano' : index > indiceAtual ? 'Fazer upgrade' : 'Fazer downgrade'
+          return (
+            <div
+              key={p.valor}
+              className={`rounded-xl border p-5 flex flex-col gap-4 ${atual ? 'border-brand-400 bg-brand-50/40 ring-1 ring-brand-200' : 'border-ink-200 bg-white'}`}
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-ink-900">{p.label}</h3>
+                  {atual && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide bg-brand-600 text-white px-1.5 py-0.5 rounded-full">
+                      Plano atual
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-ink-500 mt-1">{PLANO_DESCRICOES[p.valor]}</p>
+              </div>
+
+              <ul className="space-y-2 text-sm flex-1">
+                <li className="flex items-center gap-2">
+                  {servicos.whatsapp ? <Check className="w-4 h-4 text-brand-600 shrink-0" /> : <X className="w-4 h-4 text-ink-300 shrink-0" />}
+                  <WhatsAppGlyph className={`w-4 h-4 shrink-0 ${servicos.whatsapp ? '' : 'opacity-40'}`} />
+                  <span className={servicos.whatsapp ? 'text-ink-800' : 'text-ink-400'}>WhatsApp</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  {servicos.instagram ? <Check className="w-4 h-4 text-brand-600 shrink-0" /> : <X className="w-4 h-4 text-ink-300 shrink-0" />}
+                  <InstagramGlyph className={`w-4 h-4 shrink-0 ${servicos.instagram ? '' : 'opacity-40'}`} />
+                  <span className={servicos.instagram ? 'text-ink-800' : 'text-ink-400'}>Instagram</span>
+                </li>
+              </ul>
+
+              <button
+                onClick={() => handleTrocarPlano(p.valor)}
+                disabled={atual || trocando !== null}
+                className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
+                  atual ? 'bg-ink-100 text-ink-400 cursor-default' : 'bg-brand-600 text-white hover:bg-brand-700'
+                }`}
+              >
+                {trocando === p.valor && <Loader2 className="w-4 h-4 animate-spin" />}
+                {atual ? 'Plano atual' : acao}
+              </button>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

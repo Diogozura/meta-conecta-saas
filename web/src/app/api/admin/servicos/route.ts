@@ -18,6 +18,7 @@ export async function GET() {
         nome: c.nome,
         email: c.email,
         servicosContratados: c.servicosContratados ?? SERVICOS_PADRAO,
+        plano: c.plano ?? null,
       }))
       .sort((a, b) => a.nome.localeCompare(b.nome))
     return NextResponse.json({ contas: resultado })

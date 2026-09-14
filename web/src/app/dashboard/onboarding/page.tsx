@@ -2,9 +2,18 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import EmbeddedSignup from '@/components/EmbeddedSignup'
-import { AlertTriangle, CheckCircle2, Loader2, Plus, RefreshCw, ShieldCheck, Smartphone, Trash2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2, Plus, RefreshCw, ShieldCheck, ShieldQuestion, Smartphone, Trash2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
+
+interface HealthResult {
+  conectado: boolean
+  tokenValido?: boolean
+  escopos?: string[]
+  escoposFaltando?: string[]
+  motivo?: string
+  erro?: string
+}
 
 interface NumeroAdicional {
   phoneNumberId: string
@@ -39,6 +48,27 @@ export default function OnboardingPage() {
   const [novoNumeroNome, setNovoNumeroNome] = useState('')
   const [adicionandoNumero, setAdicionandoNumero] = useState(false)
   const [removendoNumero, setRemovendoNumero] = useState<string | null>(null)
+  const [verificando, setVerificando] = useState(false)
+  const [health, setHealth] = useState<HealthResult | null>(null)
+
+  async function handleVerificarPermissoes() {
+    setVerificando(true)
+    setHealth(null)
+    try {
+      const res = await fetch('/api/meta/health')
+      const data: HealthResult = await res.json()
+      setHealth(data)
+      if (data.tokenValido) {
+        toast.success('Token válido na Meta — permissões conferidas.')
+      } else {
+        toast.error(data.motivo ?? data.erro ?? 'Token inválido ou sem permissão')
+      }
+    } catch {
+      toast.error('Erro ao verificar permissões na Meta')
+    } finally {
+      setVerificando(false)
+    }
+  }
 
   async function loadNumeros() {
     try {
@@ -213,13 +243,36 @@ export default function OnboardingPage() {
             <p className="text-xs font-mono font-bold text-ink-600">Número principal (Phone Number ID)</p>
             <p className="text-xs font-mono text-ink-800 mt-0.5">{status.phoneNumberId}</p>
           </div>
-          <button
-            onClick={() => setReconnecting(true)}
-            className="inline-flex items-center gap-2 text-sm font-medium text-brand-700 hover:text-brand-800"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Conectar outro número
-          </button>
+          <div className="flex items-center gap-4 flex-wrap">
+            <button
+              onClick={() => setReconnecting(true)}
+              className="inline-flex items-center gap-2 text-sm font-medium text-brand-700 hover:text-brand-800"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Conectar outro número
+            </button>
+            <button
+              onClick={handleVerificarPermissoes}
+              disabled={verificando}
+              className="inline-flex items-center gap-2 text-sm font-medium text-ink-600 hover:text-ink-800 disabled:opacity-50"
+            >
+              {verificando ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldQuestion className="w-4 h-4" />}
+              Verificar permissões
+            </button>
+          </div>
+
+          {health && (
+            <div className={`rounded-lg border p-3 text-xs space-y-1 ${health.tokenValido ? 'bg-white border-brand-200' : 'bg-red-50 border-red-200'}`}>
+              <div className={`flex items-center gap-1.5 font-semibold ${health.tokenValido ? 'text-brand-700' : 'text-red-700'}`}>
+                {health.tokenValido ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                {health.tokenValido ? 'Token válido' : (health.motivo ?? health.erro ?? 'Token inválido')}
+              </div>
+              {health.escopos && <p className="text-ink-500">Escopos: {health.escopos.join(', ') || 'nenhum'}</p>}
+              {health.escoposFaltando && health.escoposFaltando.length > 0 && (
+                <p className="text-red-600">Faltando: {health.escoposFaltando.join(', ')}</p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

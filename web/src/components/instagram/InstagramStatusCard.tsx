@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, ShieldQuestion, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/Skeleton'
 import { InstagramGlyph } from '@/components/BrandIcons'
@@ -12,6 +12,12 @@ interface InstagramStatus {
   username?: string
   accountType?: string
   profilePictureUrl?: string
+}
+
+interface HealthResult {
+  conectado: boolean
+  tokenValido?: boolean
+  motivo?: string
 }
 
 const SCOPES = [
@@ -50,6 +56,27 @@ export default function InstagramStatusCard({ variant = 'full', showHeader = tru
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<InstagramStatus>({ connected: false })
   const [disconnecting, setDisconnecting] = useState(false)
+  const [verificando, setVerificando] = useState(false)
+  const [health, setHealth] = useState<HealthResult | null>(null)
+
+  async function handleVerificarPermissoes() {
+    setVerificando(true)
+    setHealth(null)
+    try {
+      const res = await fetch('/api/instagram/health')
+      const data: HealthResult = await res.json()
+      setHealth(data)
+      if (data.tokenValido) {
+        toast.success('Token válido no Instagram — permissões conferidas.')
+      } else {
+        toast.error(data.motivo ?? 'Token inválido ou sem permissão')
+      }
+    } catch {
+      toast.error('Erro ao verificar permissões no Instagram')
+    } finally {
+      setVerificando(false)
+    }
+  }
 
   async function loadStatus() {
     try {
@@ -146,15 +173,36 @@ export default function InstagramStatusCard({ variant = 'full', showHeader = tru
               Gerenciar
             </Link>
           ) : (
-            <button
-              type="button"
-              onClick={handleDisconnect}
-              disabled={disconnecting}
-              className="inline-flex items-center gap-2 text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Desconectar
-            </button>
+            <>
+              <div className="flex items-center gap-4 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  disabled={disconnecting}
+                  className="inline-flex items-center gap-2 text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Desconectar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleVerificarPermissoes}
+                  disabled={verificando}
+                  className="inline-flex items-center gap-2 text-sm font-medium text-ink-600 hover:text-ink-800 disabled:opacity-50"
+                >
+                  {verificando ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldQuestion className="w-4 h-4" />}
+                  Verificar permissões
+                </button>
+              </div>
+              {health && (
+                <div className={`rounded-lg border p-3 text-xs ${health.tokenValido ? 'bg-white border-brand-200' : 'bg-red-50 border-red-200'}`}>
+                  <div className={`flex items-center gap-1.5 font-semibold ${health.tokenValido ? 'text-brand-700' : 'text-red-700'}`}>
+                    {health.tokenValido ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                    {health.tokenValido ? 'Token válido' : (health.motivo ?? 'Token inválido')}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

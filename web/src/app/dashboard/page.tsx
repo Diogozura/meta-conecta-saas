@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { FileText, Plug, ArrowRight, Building2, Calendar } from 'lucide-react'
+import { FileText, Plug, ArrowRight, Building2, Calendar, Lock } from 'lucide-react'
 import { auth, getSessionWithPlatformAdmin } from '@/lib/auth'
 import { obterConta, listarMensagens, listarAgendamentos, obterMetaAccess } from '@/lib/firestore'
 import { listTemplates } from '@/lib/meta'
@@ -83,9 +83,12 @@ export default async function DashboardPage() {
     ...(servicos.agenda ? [{ label: 'Agendamentos hoje', value: String(agendamentosHoje), icon: Calendar, color: 'bg-accent-50 text-accent-600' }] : []),
   ]
 
-  const visibleQuickLinks = quickLinks.filter(
-    (q) => (!q.platformAdminOnly || isPlatformAdmin) && (q.servico === null || servicos[q.servico])
-  )
+  // Instagram continua aparecendo mesmo sem o serviço contratado — só desabilitado, como vitrine do
+  // recurso (ver DashboardShell.tsx pro mesmo tratamento no menu lateral). Os demais módulos seguem
+  // escondidos quando não contratados.
+  const visibleQuickLinks = quickLinks
+    .filter((q) => (!q.platformAdminOnly || isPlatformAdmin) && (q.servico === null || q.servico === 'instagram' || servicos[q.servico]))
+    .map((q) => ({ ...q, bloqueado: q.servico === 'instagram' && !servicos.instagram }))
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -115,6 +118,29 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {visibleQuickLinks.map((q) => {
             const Icon = q.icon
+            if (q.bloqueado) {
+              return (
+                <div
+                  key={q.href}
+                  title="Disponível nos planos Médio e Premium"
+                  className="bg-ink-50 rounded-xl border border-ink-200 p-5 flex items-start gap-4 cursor-not-allowed select-none"
+                >
+                  <div className="w-10 h-10 bg-ink-100 rounded-lg flex items-center justify-center shrink-0">
+                    <Icon className="w-5 h-5 text-ink-300" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-ink-400 text-sm">{q.label}</p>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-ink-200 text-ink-500">
+                        <Lock className="w-2.5 h-2.5" />
+                        Bloqueado
+                      </span>
+                    </div>
+                    <p className="text-xs text-ink-400 mt-0.5">Disponível nos planos Médio e Premium</p>
+                  </div>
+                </div>
+              )
+            }
             return (
               <Link
                 key={q.href}

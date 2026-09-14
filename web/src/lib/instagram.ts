@@ -18,13 +18,14 @@ function getRedirectUri() {
   return process.env.NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI ?? 'https://www.zybot.com.br/api/instagram/callback'
 }
 
-const SCOPES = [
+export const INSTAGRAM_REQUIRED_SCOPES = [
   'instagram_business_basic',
   'instagram_business_manage_messages',
   'instagram_business_manage_comments',
   'instagram_business_content_publish',
   'instagram_business_manage_insights',
-].join(',')
+]
+const SCOPES = INSTAGRAM_REQUIRED_SCOPES.join(',')
 
 /** Monta a URL de autorização — usada num link/botão simples, sem SDK. */
 export function getInstagramAuthorizeUrl(state: string): string {

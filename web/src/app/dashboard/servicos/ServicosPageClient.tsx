@@ -5,12 +5,15 @@ import { toast } from 'sonner'
 import { Loader2, Search, Calendar, Columns3, Ticket } from 'lucide-react'
 import { Skeleton } from '@/components/Skeleton'
 import { WhatsAppGlyph, InstagramGlyph } from '@/components/BrandIcons'
+import { PLANOS } from '@/lib/servicos'
+import type { PlanoTipo } from '@/types/database'
 
 interface ContaServicos {
   id: string
   nome: string
   email: string
   servicosContratados: { whatsapp: boolean; agenda: boolean; instagram: boolean; crm: boolean; tickets: boolean }
+  plano: PlanoTipo | null
 }
 
 const MODULOS = [
@@ -58,6 +61,31 @@ export default function ServicosPageClient() {
     }
   }
 
+  async function alterarPlano(contaId: string, plano: PlanoTipo) {
+    if (!contas) return
+    const conta = contas.find((c) => c.id === contaId)
+    if (!conta) return
+
+    setSalvando(contaId)
+    try {
+      const res = await fetch(`/api/admin/plano/${contaId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plano }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error()
+      setContas((prev) =>
+        prev?.map((c) => (c.id === contaId ? { ...c, plano, servicosContratados: json.servicosContratados ?? c.servicosContratados } : c)) ?? null
+      )
+      toast.success(`${conta.nome} agora está no plano ${PLANOS.find((p) => p.valor === plano)?.label ?? plano}.`)
+    } catch {
+      toast.error('Erro ao salvar — tente de novo')
+    } finally {
+      setSalvando(null)
+    }
+  }
+
   const contasFiltradas = contas?.filter(
     (c) => c.nome.toLowerCase().includes(busca.toLowerCase()) || c.email.toLowerCase().includes(busca.toLowerCase())
   )
@@ -69,6 +97,11 @@ export default function ServicosPageClient() {
         <p className="text-sm text-ink-500 mt-1">
           Controla quais módulos cada conta enxerga no menu e consegue acessar. Uma conta sem nada configurado aqui tem acesso a
           tudo por padrão — só passa a restringir depois que você desmarca algum módulo dela.
+        </p>
+        <p className="text-sm text-ink-500 mt-1">
+          O seletor de <strong>Plano</strong> é demonstrativo: escolher um plano liga/desliga automaticamente WhatsApp e Instagram
+          (Base = só WhatsApp; Médio/Premium = os dois). Não controla quantidade de números ou contas conectadas — isso continua
+          livre. Você ainda pode ajustar os módulos manualmente depois pelos botões ao lado.
         </p>
       </div>
 
@@ -100,6 +133,21 @@ export default function ServicosPageClient() {
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 {salvando === conta.id && <Loader2 className="w-4 h-4 animate-spin text-ink-400" />}
+                <select
+                  value={conta.plano ?? ''}
+                  onChange={(e) => alterarPlano(conta.id, e.target.value as PlanoTipo)}
+                  disabled={salvando === conta.id}
+                  className="px-2 py-1.5 border border-ink-300 rounded-lg text-xs font-medium text-ink-700 bg-white disabled:opacity-50"
+                >
+                  <option value="" disabled>
+                    Plano...
+                  </option>
+                  {PLANOS.map((p) => (
+                    <option key={p.valor} value={p.valor}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
                 {MODULOS.map((m) => {
                   const Icon = m.icon
                   const ativo = conta.servicosContratados[m.key]

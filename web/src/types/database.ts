@@ -22,6 +22,10 @@ export interface Conta {
   // ninguém por padrão); só passa a restringir depois que um admin define
   // esse campo explicitamente pra essa conta. Ver lib/servicos.ts.
   servicosContratados?: ServicosContratados
+  // Plano comercial da conta — só demonstrativo por enquanto (não trava
+  // quantidade de números/contas conectadas, só decide se WhatsApp/Instagram
+  // aparecem habilitados). Ver PLANO_SERVICOS em lib/servicos.ts.
+  plano?: PlanoTipo
   // Colunas do Kanban do CRM leve — ausente/vazio = usa ETAPAS_PADRAO
   // (ver lib/funil.ts), mesmo padrão "ausente = default" do resto da conta.
   funilEtapas?: FunilEtapa[]
@@ -75,6 +79,9 @@ export interface ServicosContratados {
   crm: boolean
   tickets: boolean
 }
+
+// Plano comercial — só demonstrativo (ver comentário no campo Conta.plano).
+export type PlanoTipo = 'base' | 'medio' | 'premium'
 
 // Etapa de funil configurável pela conta (CRM leve) — ex: "Novo lead", "Em
 // negociação", "Fechado". A ORDEM no array é a ordem das colunas do Kanban;
